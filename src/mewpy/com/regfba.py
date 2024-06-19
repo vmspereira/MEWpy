@@ -30,6 +30,9 @@ def regComFBA(cmodel, objective=None, maximize=True, constraints=None, obj_frac=
     else:
         sim = get_simulator(cmodel)
 
+    if not hasattr(sim, 'community'):
+        raise Exception('The model does not seem to be a community model')
+   
     if not objective:
         objective = sim.objective
         if len(objective) == 0:
@@ -51,12 +54,11 @@ def regComFBA(cmodel, objective=None, maximize=True, constraints=None, obj_frac=
                               obj_frac * pre_solution.objective_value)
 
     solver.update()
-   
-    org_bio=list(sim.organisms_biomass.values())
+    org_bio=list(sim.community.organisms_biomass.values())
     qobjective = {(rid,rid):1 for rid in org_bio}
 
     solution = solver.solve(quadratic=qobjective, minimize=True, constraints=constraints)
 
-    result = to_simulation_result(sim, solution.fobj, constraints, sim, solution, regComFBA )
+    result = to_simulation_result(sim, solution.fobj, constraints, sim, solution, regComFBA)
     
     return result
