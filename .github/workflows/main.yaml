@@ -3,13 +3,13 @@ name: CI-CD
 on:
   push:
     branches:
-    - devel
+    - dev
     tags:
     - '[0-9]+.[0-9]+.[0-9]+'
     - '[0-9]+.[0-9]+.[0-9]+a[0-9]+'
   pull_request:
     branches:
-    - devel
+    - dev
 
 jobs:
   test:
@@ -33,6 +33,4 @@ jobs:
     - name: Test with tox
       run:
         tox -e py
-    - name: Report coverage
-      shell: bash
-      run: bash <(curl -s https://codecov.io/bash)
+    
