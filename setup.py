@@ -15,7 +15,7 @@ install_requirements = requirements
 
 setup(
     name='mewpy',
-    version='0.1.34',
+    version='0.1.35',
     python_requires='>=3.6',
     package_dir={'': 'src'},
     packages=find_packages('src'),
@@ -25,8 +25,7 @@ setup(
     install_requires=install_requirements,
     setup_requires=setup_requirements,
     tests_require=test_requirements,
-    author='BiSBII CEB University of Minho',
-    author_email='vpereira@ceb.uminho.pt',
+    author='Vitor Pereira and BiSBII CEB University of Minho',
     description='MEWpy - Metabolic Engineering in Python ',
     license='GPL v3 License',
     keywords='strain optimization',

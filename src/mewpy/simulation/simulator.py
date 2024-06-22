@@ -54,7 +54,7 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
     """
     # already is a Simulator instance
     if isinstance(model, Simulator):
-        return model
+        return model.copy()
 
     instance = None
     name = f"{model.__class__.__module__}.{model.__class__.__name__}"

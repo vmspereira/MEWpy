@@ -40,6 +40,7 @@ def SteadyCom(community, constraints=None, solver=None):
     # set the proper community building configuration
     community.add_compartments = False
     community.merged_biomasses = False
+    community.balance_exchanges = False
     
     if solver is None:
         solver = build_problem(community)

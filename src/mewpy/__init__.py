@@ -1,6 +1,3 @@
-# Copyright (C) 2019- Centre of Biological Engineering,
-#     University of Minho, Portugal
-
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -16,9 +13,9 @@
 
 from .simulation import get_simulator 
 
-__author__ = 'Vitor Pereira (2019-) | CEB University of Minho (2019-2023)'
-__email__ = 'vmsapereira@gmail.com'
-__version__ = '0.1.34'
+__author__ = 'Vitor Pereira and CEB University of Minho (2019-2023)'
+__email__ = 'vpereira@ceb.uminho.pt'
+__version__ = '0.1.35'
 
 
 

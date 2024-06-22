@@ -58,6 +58,9 @@ class SimulationMethod(Enum):
 
     def __hash__(self):
         return hash(self.name)
+    
+    def __str__(self) -> str:
+        return self.name
 
 
 class SStatus(Enum):
