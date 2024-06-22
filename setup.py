@@ -2,9 +2,6 @@ from setuptools import setup, find_packages
 
 files = ["model/data/*"]
 
-with open('README.rst') as readme_file:
-    readme = readme_file.read()
-
 requirements = ['cobra', 'inspyred', 'jmetalpy<=1.5.5',
                 'reframed', 'networkx', 'matplotlib<=3.5.0',
                 'joblib', 'tdqm', 'httpx<=0.23.0']
@@ -30,6 +27,5 @@ setup(
     license='GPL v3 License',
     keywords='strain optimization',
     url='https://github.com/BioSystemsUM/mewpy/',
-    long_description=readme,
     test_suite='tests',
 )

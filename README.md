@@ -15,7 +15,7 @@ MEWPy currently supports [REFRAMED](https://github.com/cdanielmachado/reframed) 
 
 ## Examples
 
-Examples are provided as [jupyter notebooks](examples) and as [python scripts](examples).
+Examples are provided as [jupyter notebooks](https://github.com/vmspereira/MEWpy/tree/vpereira/dev/examples) and as [python scripts](https://github.com/vmspereira/MEWpy/tree/vpereira/dev/examples/scripts).
 
 ## Documentation
 
@@ -31,7 +31,7 @@ Installing from github:
 
 1. clone the repository
 
-`git clone https://github.com/BioSystemsUM/mewpy.git -b master`
+`git clone https://github.com/vmspereira/MEWpy.git -b master`
 
 2. run `python setup.py install`
 
