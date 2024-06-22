@@ -70,6 +70,8 @@ class CommunityModel:
         """
         self.organisms = AttrDict()
         self.model_ids = list({model.id for model in models})
+        if len(self.model_ids)!= len(set(self.model_ids)):
+            raise ValueError('Each model must have a different ID.')
         self.flavor = flavor
 
         self.organisms_biomass = None
@@ -144,6 +146,20 @@ class CommunityModel:
             self.clear()
 
     @property
+    def balance_exchanges(self):
+        return self._balance_exchange
+    
+    @balance_exchanges.setter
+    def balance_exchanges(self, value: bool):
+        if value == self._balance_exchange:
+            return
+        self._balance_exchange = value
+        if value:
+            self._update_exchanges()
+        else:
+            self._update_exchanges({k:1 for k in self.model_ids})
+
+    @property
     def merge_biomasses(self):
         return self._merge_biomasses
 
@@ -201,7 +217,7 @@ class CommunityModel:
         if self._balance_exchange:
             self._update_exchanges()
 
-    def _update_exchanges(self):
+    def _update_exchanges(self,abundances:dict=None):
         if self.merged_model and self._merge_biomasses and self._balance_exchange:
             exchange = self.merged_model.get_exchange_reactions()
             m_r = self.merged_model.metabolite_reaction_lookup()
@@ -211,7 +227,10 @@ class CommunityModel:
                     if rx in exchange:
                         continue
                     org = self.reverse_map[rx][0]
-                    ab = self.organisms_abundance[org]
+                    if abundances:
+                        ab = abundances[org] 
+                    else:   
+                        ab = self.organisms_abundance[org]
                     rxn = self.merged_model.get_reaction(rx)
                     stch = rxn.stoichiometry
                     new_stch = stch.copy()
