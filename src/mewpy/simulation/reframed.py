@@ -627,7 +627,7 @@ class Simulation(CBModelContainer, Simulator):
 
         else:
             status = self.__status_mapping[solution.status]
-            result = SimulationResult(self.model, solution.fobj, fluxes=solution.values, status=status,
+            result = SimulationResult(self, solution.fobj, fluxes=solution.values, status=status,
                                       envcond=self.environmental_conditions, model_constraints=self._constraints.copy(),
                                       simul_constraints=constraints, maximize=maximize, method=method)
             return result

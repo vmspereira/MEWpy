@@ -62,9 +62,11 @@ class CommunityModel:
         :param merge_biomasses: If a biomass equation is to be build requiring
             each organism to grow in acordance to a relative abundance.
             Default True.
-            If no abundance list is provided all organism will have equal abundance.
+            If no abundance list is provided, all organism will have equal abundance.
         :param add_compartments: If each organism external compartment is to be added
             to the community model. Default True.
+        :param balance_exchange: If the organisms uptakes should reflect their abundances. 
+            This will normalize each organism flux value in acordance to the abundance. Default True.  
         :param bool copy_models: if the models are to be copied, default True.
         :param str flavor: use 'cobrapy' or 'reframed. Default 'reframed'.
         """

@@ -656,7 +656,7 @@ class Simulation(CobraModelContainer, Simulator):
 
         else:
             status = self.__status_mapping[solution.status]
-            result = SimulationResult(model, 
+            result = SimulationResult(self, 
                                       solution.objective_value,
                                       fluxes=solution.fluxes.to_dict(OrderedDict),
                                       status=status, envcond=self.environmental_conditions,
