@@ -7,9 +7,11 @@
 
 MEWpy is an integrated Metabolic Engineering Workbench for strain design optimization. It offers methods to explore different classes of constraint-based models (CBM) for:
 
-- Simulation: allows to simulate  steady-state metabolic models, considering different formulations (e.g., GECKO, ETFL) and kinetic models;
+- Simulating single organisms: allows to simulate  steady-state metabolic models, considering different formulations (e.g., GECKO, ETFL) and kinetic models;
+- Evolutionary Computation based strain design optimization by knocking out (KO) or over/under expressing (OU) reactions, genes or enzymes.
 - Omics data integration (eFlux, GIMME, iMAT);
-- Optimization: performs Evolutionary Computation based strain design optimization by knocking out (KO) or over/under expressing (OU) reactions, genes or enzymes.
+- Regulatory Networks integration;
+- Microbial Community Modeling: Community simulation and optimization, SMETANA, SteadyCOM;
 
 MEWPy currently supports [REFRAMED](https://github.com/cdanielmachado/reframed) and [COBRApy](https://opencobra.github.io/cobrapy/) simulation environments. The optimization engine relies on either [inspyred](https://github.com/aarongarrett/inspyred) or [jMetalPy](https://github.com/jMetal/jMetalPy) packages.
 
@@ -42,6 +44,8 @@ MEWPy requires a compatible linear programming solver, with installed Python dep
 - [GLPK](https://www.gnu.org/software/glpk/)
 
 ## Cite
+
+If you use MEWpy in your research, please cite:
 
 Vítor Pereira, Fernando Cruz, Miguel Rocha, MEWpy: a computational strain optimization workbench in Python, Bioinformatics, 2021; [https://doi.org/10.1093/bioinformatics/btab013](https://doi.org/10.1093/bioinformatics/btab013)
 

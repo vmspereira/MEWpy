@@ -1,12 +1,13 @@
 Metadata-Version: 2.1
 Name: mewpy
-Version: 0.1.35
+Version: 0.1.36
 Summary: MEWpy - Metabolic Engineering in Python 
 Home-page: https://github.com/BioSystemsUM/mewpy/
+Home-page: https://github.com/vmspereira/mewpy/
 Author: Vitor Pereira / BiSBII CEB University of Minho
 Author-email: vpereira@ceb.uminho.pt
 License: GPL v3 License
-Project-URL: Bug Tracker, https://github.com/BioSystemsUM/mewpy/issues
+Project-URL: Bug Tracker, https://github.com/vmspereira/mewpy/issues
 Project-URL: Documentation, https://mewpy.readthedocs.io
 Keywords: strain optimization
 Classifier: Programming Language :: Python :: 3
@@ -35,6 +36,7 @@ It offers methods to explore different classes of constraint-based models (CBM) 
 - Optimization: performs Evolutionary Computation based strain design optimization by knocking out (KO) or over/under expressing (OU) reactions, genes, or enzymes.
 - Omics data integration (eFlux, GIMME, iMAT);
 - Regulatory networks integration (rFBA, srFBA)
+- Microbial Communities Modeling
 
 MEWPy currently supports REFRAMED and COBRApy simulation environments. 
 
@@ -54,5 +56,6 @@ Credits and License
 -------------------
 
 Developed at:
--  Centre of Biological Engineering, University of Minho (2019-)
+-  Centre of Biological Engineering, University of Minho (2019-2023)
+-  Mantained by Vítor Pereira (2019-)
 
