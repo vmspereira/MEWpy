@@ -36,6 +36,14 @@ mewpy.optimization.jmetal.problem module
    :undoc-members:
    :show-inheritance:
 
+mewpy.optimization.jmetal.settings module
+-----------------------------------------
+
+.. automodule:: mewpy.optimization.jmetal.settings
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

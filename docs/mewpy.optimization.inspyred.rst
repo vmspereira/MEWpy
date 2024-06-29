@@ -36,6 +36,22 @@ mewpy.optimization.inspyred.problem module
    :undoc-members:
    :show-inheritance:
 
+mewpy.optimization.inspyred.settings module
+-------------------------------------------
+
+.. automodule:: mewpy.optimization.inspyred.settings
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+mewpy.optimization.inspyred.terminator module
+---------------------------------------------
+
+.. automodule:: mewpy.optimization.inspyred.terminator
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

@@ -1,13 +1,45 @@
 mewpy.io package
 ================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   mewpy.io.engines
+
 Submodules
 ----------
 
-mewpy.io.bnet module
---------------------
+mewpy.io.builder module
+-----------------------
 
-.. automodule:: mewpy.io.bnet
+.. automodule:: mewpy.io.builder
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+mewpy.io.director module
+------------------------
+
+.. automodule:: mewpy.io.director
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+mewpy.io.dto module
+-------------------
+
+.. automodule:: mewpy.io.dto
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+mewpy.io.reader module
+----------------------
+
+.. automodule:: mewpy.io.reader
    :members:
    :undoc-members:
    :show-inheritance:
@@ -20,18 +52,10 @@ mewpy.io.sbml module
    :undoc-members:
    :show-inheritance:
 
-mewpy.io.sbml\_qual module
---------------------------
+mewpy.io.writer module
+----------------------
 
-.. automodule:: mewpy.io.sbml_qual
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-mewpy.io.tabular module
------------------------
-
-.. automodule:: mewpy.io.tabular
+.. automodule:: mewpy.io.writer
    :members:
    :undoc-members:
    :show-inheritance:

@@ -20,6 +20,14 @@ mewpy.model.gecko module
    :undoc-members:
    :show-inheritance:
 
+mewpy.model.kinetic module
+--------------------------
+
+.. automodule:: mewpy.model.kinetic
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 mewpy.model.smoment module
 --------------------------
 
