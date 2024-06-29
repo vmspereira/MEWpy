@@ -22,15 +22,20 @@ Author: Vitor Pereira
 from mewpy.solvers import solver_instance
 from mewpy.solvers.solver import VarType
 from mewpy.solvers.solution import Status
-from mewpy.simulation import Environment
+from mewpy.simulation import Environment, SimulationResult, get_simulator
 from mewpy.cobra.medium import minimal_medium
 from mewpy.util.constants import ModelConstants
+from mewpy.com import CommunityModel
 from mewpy.util import AttrDict
 
 from warnings import warn
 from collections import Counter
 from itertools import combinations, chain
 from math import isinf, inf
+import pandas as pd
+
+from typing import Union,List
+
 
 
 def sc_score(community, environment=None, min_growth=0.1, n_solutions=100, verbose=True, abstol=1e-6,
@@ -478,3 +483,48 @@ def minimal_environment(community, aerobic=None, min_mol_weight=False, min_growt
         if r_h2o is not None:
             env[r_h2o] = (-inf, inf)
         return env
+    
+def exchanges(com:CommunityModel,
+              solution:SimulationResult,
+              metabolites:Union[str,List[str]]=None):
+    """_summary_
+
+    Args:
+        com (CommunityModel): _description_
+        solution (SimulationResult): _description_
+        metabolites (Union[str,List[str]], optional): _description_. Defaults to None.
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    sim = get_simulator(solution.model)
+    exchange = sim.get_exchange_reactions()
+    m_r = sim.metabolite_reaction_lookup()
+    
+    if metabolites is None:
+        ext_mets = com.ext_mets
+    elif isinstance(metabolites,str):
+        ext_mets =[metabolites]
+    elif isinstance(metabolites,list):
+        ext_mets =metabolites
+    else:
+        raise ValueError('Metabolites should be a string, a list of strings or None')
+    res = dict()
+    orgs = com.organisms
+    for met in ext_mets:
+        res[met]={k:0.0 for k in orgs}
+        rxns = m_r[met]
+        for rx, st in rxns.items():
+            if rx in exchange:
+                continue
+            org = com.reverse_map[rx][0]
+            v = solution.fluxes[rx]
+            res[met][org]=v
+    df = pd.DataFrame(res).transpose()
+    df.index.name = 'Metabolite'
+    df['Total'] = df.sum(axis=1).round(5)
+    return df
+         
