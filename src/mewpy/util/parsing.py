@@ -112,7 +112,7 @@ latex = {
 }
 
 # Operators precedence used to add parentesis when
-# need as they are removed in the parsing tree
+# needed as they are removed in the parsing tree
 MAX_PRECEDENCE = 10
 latex_precedence = {
     "+": 0,
@@ -365,7 +365,7 @@ class Node(object):
         cpar: str = ")",
         sep: str = " ",
         fsep: str = " , ",
-        replacers={S_AND: "and", S_OR: "or"},
+        replacers=None,
     ) -> str:
         """Infix string representation
 
@@ -380,9 +380,13 @@ class Node(object):
         :return: An infix string representation of the node
         :rtype: str
         """
-
+        
+        rep = {S_AND: "and", S_OR: "or", "^": "**"}
+        if replacers:
+            rep.update(replacers)
+            
         def rval(value):
-            return str(replacers[value]) if value in replacers.keys() else str(value)
+            return str(rep[value]) if value in rep.keys() else str(value)
 
         if self.is_leaf():
             if self.value == EMPTY_LEAF:
@@ -501,12 +505,17 @@ class Syntax:
     @staticmethod
     def replace():
         return {}
+    
+    @staticmethod
+    def sub(op):
+        return op
+    
 
 
 class Arithmetic(Syntax):
     """Defines a basic arithmetic sintax."""
 
-    operators = ["+", "-", "*", "/", "^"]
+    operators = ["+", "-", '**', "*", "/", "^"]
 
     @staticmethod
     def is_operator(op):
@@ -527,6 +536,20 @@ class Arithmetic(Syntax):
         ar = {"+": 2, "-": 2, "*": 2, "/": 2, "^": 2}
         return ar[op]
 
+    @staticmethod
+    def sub(op):
+        if op=='**':
+            return '^'
+        else:
+            return op
+    
+    @staticmethod
+    def rsub(op):
+        if op=='^':
+            return '**'
+        else:
+            return op
+    
 
 class ArithmeticEvaluator:
     @staticmethod
@@ -807,7 +830,7 @@ def tokenize_infix_expression(exp: str,
     _exp = exp.replace("(", " ( ").replace(")", " ) ")
     if rules:
         for op in rules.operators:
-            _exp = _exp.replace(op, " " + op + " ")
+            _exp = _exp.replace(op, " " + rules.sub(op) + " ")
     tokens = _exp.split(" ")
     return list(filter(lambda x: x != "", tokens))
 
