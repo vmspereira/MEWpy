@@ -232,16 +232,19 @@ class KineticReaction(Rule):
                  stoichiometry: dict = {},
                  parameters: dict = {},
                  modifiers: list = [],
-                 reversible: bool = True):
+                 reversible: bool = True,
+                 functions:dict={}):
         """Kinetic reaction rule.
 
         Args:
             r_id (str): Reaction identifier
             law (str): kinetic law
-            stoichiometry (dict): The stoichiometry of the reaction.
-            parameters (dict, optional): local parameters. Defaults to dict().
-            substrates (list, optional): substrates. Defaults to [].
-            products (list, optional): products. Defaults to [].
+            name (str, optional): The name of the reaction. Defaults to None.
+            stoichiometry (dict, optional): The stoichiometry of the reaction. Defaults to {}.
+            parameters (dict, optional): local parameters. Defaults to {}.
+            modifiers (list, optional): modifiers. Defaults to [].
+            reversible (bool, optional): reversability. Defaults to True.
+            functions (dict, optional): function defined in the model. Defaults to {}.
         """
         super(KineticReaction, self).__init__(r_id, law, parameters)
         self.name = name if name else r_id
@@ -250,6 +253,20 @@ class KineticReaction(Rule):
         self.parameter_distributions = {}
         self.reversible = reversible
         self._model = None
+        self.functions = {k:v[1] for k,v in functions.items()}
+
+
+    @property
+    def tree(self):
+        """Parsing tree of the law.
+
+        Returns:
+            Node: Root node of the parsing tree.
+        """
+        if not self._tree:
+            self._tree = build_tree(self.law, Arithmetic)
+            self._tree.replace_nodes(self.functions)
+        return self._tree
 
     @property
     def substrates(self):
@@ -279,7 +296,7 @@ class KineticReaction(Rule):
             raise ValueError(f"The parameter {param} has no associated distribution.")
         return dist.rvs()
 
-    def parse_law(self, map: dict, local=True):
+    def parse_law(self, map: dict, functions=None, local=True):
         """Auxiliary method invoked by the model to build the ODE system.
 
         Args:
@@ -292,6 +309,8 @@ class KineticReaction(Rule):
         r_map = map.copy()
         r_map.update(m)
 
+        self
+        
         return self.replace(r_map, local=local)
 
     def calculate_rate(self, substrates={}, parameters={}):
@@ -367,7 +386,8 @@ class ODEModel:
         # variable parameters
         self.variable_params = OrderedDict()
         self.assignment_rules = OrderedDict()
-
+        self.function_definition = OrderedDict()
+        
         self._func_str = None
         self._constants = None
         self._m_r_lookup = None
@@ -400,6 +420,9 @@ class ODEModel:
                 has invalid compartment {metabolite.compartment}.")
 
         self.metabolites[metabolite.id] = metabolite
+
+    def set_functions(self, functions):
+        self.function_definition = functions
 
     @property
     def reactions(self):
@@ -647,6 +670,43 @@ class ODEModel:
         else:
             df = pd.DataFrame()
         return df
+
+
+    def find_functions(self, pattern=None, sort=False):
+        """A user friendly method to find functions in the model.
+
+        :param pattern: The pattern which can be a regular expression, 
+            defaults to None in which case all entries are listed.
+        :type pattern: str, optional
+        :param sort: if the search results should be sorted, defaults to False
+        :type sort: bool, optional
+        :return: the search results
+        :rtype: pandas dataframe
+        """
+        params = self.function_definition
+        values = list(params.keys())
+        if pattern:
+            import re
+            if isinstance(pattern, list):
+                patt = '|'.join(pattern)
+                re_expr = re.compile(patt)
+            else:
+                re_expr = re.compile(pattern)
+            values = [x for x in values if re_expr.search(x) is not None]
+        if sort:
+            values.sort()
+
+        import pandas as pd
+        data = [(x, ','.join(params[x][0]), str(params[x][1])) for x in values]
+
+        if data:
+            df = pd.DataFrame(data, columns=['Name', 'Arguments','Body'])
+            df = df.set_index(df.columns[0])
+        else:
+            df = pd.DataFrame()
+        return df
+
+
 
     def deriv(self, t, y):
         """
