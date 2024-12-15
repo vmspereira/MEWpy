@@ -27,6 +27,7 @@ from abc import abstractmethod
 from operator import add, sub, mul, truediv, pow
 import typing as T
 from math import *
+from copy import copy
 
 # Boolean operator symbols
 S_AND = "&"
@@ -112,7 +113,7 @@ latex = {
 }
 
 # Operators precedence used to add parentesis when
-# need as they are removed in the parsing tree
+# needed as they are removed in the parsing tree
 MAX_PRECEDENCE = 10
 latex_precedence = {
     "+": 0,
@@ -231,18 +232,18 @@ class Node(object):
         self.tp = tp
 
     def __repr__(self) -> str:
-        return self.__str__()
-
-    # def _repr_latex_(self):
-    #    return "$$ %s $$" % (self.to_latex())
-
-    def __str__(self) -> str:
         if self.is_leaf():
             return str(self.value)
         else:
             return (f"{str(self.value)} "
                     f"( {str(self.left)} ,"
                     f" {str(self.right)} )")
+        
+    # def _repr_latex_(self):
+    #    return "$$ %s $$" % (self.to_latex())
+
+    def __str__(self) -> str:
+        return self.to_infix()
 
     def is_leaf(self) -> bool:
         """
@@ -317,6 +318,7 @@ class Node(object):
         if self.right is not None:
             self.right.print_node(level + 1)
 
+
     def evaluate(self, f_operand=None, f_operator=None):
         """
         Evaluates the expression using the f_operand and 
@@ -359,13 +361,32 @@ class Node(object):
                 self.value, self.left.replace(r_map), self.right.replace(r_map), self.tp
             )
 
+    def replace_node(self,value,node):
+          
+        if  self.value is not None and self.value==value:
+            self.value = node.value
+            self.left = node.left.copy()
+            self.right = node.right.copy()
+            self.tp = node.tp
+        
+        elif not self.is_leaf():
+            self.left.replace_node(value,node)
+            self.right.replace_node(value,node)
+        
+        else:
+            pass
+        
+    def replace_nodes(self,nodes:dict):
+        for k,v in nodes.items():
+            self.replace_node(k,v)     
+
     def to_infix(
         self,
         opar: str = "(",
         cpar: str = ")",
         sep: str = " ",
         fsep: str = " , ",
-        replacers={S_AND: "and", S_OR: "or"},
+        replacers=None,
     ) -> str:
         """Infix string representation
 
@@ -380,23 +401,29 @@ class Node(object):
         :return: An infix string representation of the node
         :rtype: str
         """
-
+        
+        rep = {S_AND: "and", S_OR: "or", "^": "**"}
+        if replacers:
+            rep.update(replacers)
+            
         def rval(value):
-            return str(replacers[value]) if value in replacers.keys() else str(value)
+            return str(rep[value]) if value in rep.keys() else str(value)
 
         if self.is_leaf():
             if self.value == EMPTY_LEAF:
                 return ""
             else:
                 return rval(self.value)
-        elif self.tp == 2:
+        elif self.tp >=2:
+            op = opar if self.tp==2 else ''
+            cp = cpar if self.tp==2 else ''
             return "".join(
                 [
                     rval(self.value),
                     opar,
-                    self.left.to_infix(opar, cpar, sep, fsep),
+                    self.left.to_infix(op, cp, sep, fsep),
                     fsep,
-                    self.right.to_infix(opar, cpar, sep, fsep),
+                    self.right.to_infix(op, cp, sep, fsep),
                     cpar,
                 ]
             )
@@ -467,9 +494,9 @@ class Node(object):
 
     def copy(self):
         if self.is_leaf():
-            return Node(self.value.copy(), None, None)
+            return Node(copy(self.value), None, None)
         else:
-            return Node(self.value.copy(), self.left.copy(), self.right.copy(), self.tp)
+            return Node(copy(self.value), self.left.copy(), self.right.copy(), self.tp)
 
 
 class Syntax:
@@ -501,12 +528,17 @@ class Syntax:
     @staticmethod
     def replace():
         return {}
+    
+    @staticmethod
+    def sub(op):
+        return op
+    
 
 
 class Arithmetic(Syntax):
     """Defines a basic arithmetic sintax."""
 
-    operators = ["+", "-", "*", "/", "^"]
+    operators = ["+", "-", '**', "*", "/", "^"]
 
     @staticmethod
     def is_operator(op):
@@ -527,6 +559,20 @@ class Arithmetic(Syntax):
         ar = {"+": 2, "-": 2, "*": 2, "/": 2, "^": 2}
         return ar[op]
 
+    @staticmethod
+    def sub(op):
+        if op=='**':
+            return '^'
+        else:
+            return op
+    
+    @staticmethod
+    def rsub(op):
+        if op=='^':
+            return '**'
+        else:
+            return op
+    
 
 class ArithmeticEvaluator:
     @staticmethod
@@ -690,6 +736,17 @@ def tokenize_function(exp: str) -> T.List[str]:
     else:
         return tokens
 
+def list2tree(values, rules):
+    if len(values)==0:
+        return Node(EMPTY_LEAF)
+    elif len(values)==1:
+        return build_tree(values[0], rules)
+    else:
+        return Node(',', 
+                    build_tree(values[0], rules),
+                    list2tree(values[1:],rules))
+    
+
 
 # Tree
 def build_tree(exp: str, rules: Syntax) -> Node:
@@ -735,14 +792,18 @@ def build_tree(exp: str, rules: Syntax) -> Node:
             else:
                 if "(" in token:
                     f = tokenize_function(token)
-                    if len(f) == 2:
-                        t = Node(f[0], Node(EMPTY_LEAF), build_tree(f[1], rules), 1)
-                    elif len(f) == 3:
+                    fname = f[0]
+                    params = f[1:]
+                    if len(params) == 1:
+                        t = Node(fname, Node(EMPTY_LEAF), build_tree(params[0], rules), 1)
+                    elif len(params) == 2:
                         t = Node(
-                            f[0], build_tree(f[1], rules), build_tree(f[2], rules), 2
+                            fname, build_tree(params[0], rules), build_tree(params[1], rules), 2
                         )
                     else:
-                        t = Node(token)
+                        t = Node(
+                            fname, build_tree(params[0], rules), list2tree(params[1:],rules) , len(f)-1
+                        )
                 else:
                     t = Node(token)
                 tree_stack.append(t)
@@ -807,7 +868,7 @@ def tokenize_infix_expression(exp: str,
     _exp = exp.replace("(", " ( ").replace(")", " ) ")
     if rules:
         for op in rules.operators:
-            _exp = _exp.replace(op, " " + op + " ")
+            _exp = _exp.replace(op, " " + rules.sub(op) + " ")
     tokens = _exp.split(" ")
     return list(filter(lambda x: x != "", tokens))
 

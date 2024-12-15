@@ -22,8 +22,8 @@ from math import isinf, isnan
 
 from libsbml import AssignmentRule, SBMLReader
 
-from ..model.kinetic import ODEModel, Compartment, Metabolite, KineticReaction, Rule
-
+from mewpy.model.kinetic import ODEModel, Compartment, Metabolite, KineticReaction, Rule
+from mewpy.util.parsing import Node, EMPTY_LEAF
 
 def load_sbml(filename):
     """ Loads an SBML file.
@@ -62,6 +62,7 @@ def load_ODEModel(filename):
     # load_reactions(sbml_model, ode_model)
     _load_concentrations(sbml_model, ode_model)
     _load_global_parameters(sbml_model, ode_model)
+    _load_functions(sbml_model, ode_model)
     _load_ratelaws(sbml_model, ode_model)
     _load_assignment_rules(sbml_model, ode_model)
     return ode_model
@@ -174,7 +175,8 @@ def _load_ratelaws(sbml_model, odemodel):
         law = KineticReaction(reaction.getId(), formula, name=reaction.getName(), 
                               stoichiometry=stoichiometry,
                               parameters=parameters, modifiers=modifiers, 
-                              reversible=reaction.getReversible())
+                              reversible=reaction.getReversible(),
+                              functions = odemodel.function_definition)
         odemodel.set_ratelaw(reaction.getId(), law)
 
 
@@ -183,3 +185,36 @@ def _load_assignment_rules(sbml_model, odemodel):
         if isinstance(rule, AssignmentRule):
             r_id = rule.getVariable()
             odemodel.set_assignment_rule(r_id, Rule(r_id, rule.getFormula()))
+
+
+def travel(node):   
+    if node.getNumChildren():
+        
+        if node.isOperator():
+            name = node.getCharacter()
+        else:
+            name = node.getName()
+            
+        r = travel(node.getRightChild())
+        l = travel(node.getLeftChild())
+        return Node(name,l,r)
+    else:
+        name = node.getName()
+        return Node(name,None,None)
+
+def _load_functions(sbml_model, odemodel):
+    functions = OrderedDict()
+    fd = sbml_model.getListOfFunctionDefinitions()
+    if not fd: 
+        return
+    for function in fd:
+        fname = function.getName()
+        args = []
+        for i in range(function.getNumArguments()):
+            arg = function.getArgument(i).getName()
+            args.append(arg)
+        body = function.getBody()
+        tree = travel(body)
+        functions[fname]=(args,tree)
+        
+    odemodel.set_functions(functions)
