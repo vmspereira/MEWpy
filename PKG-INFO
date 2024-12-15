@@ -21,10 +21,10 @@ Requires-Dist: inspyred
 Requires-Dist: jmetalpy<=1.5.5
 Requires-Dist: reframed
 Requires-Dist: networkx
-Requires-Dist: matplotlib<=3.5.0
+Requires-Dist: matplotlib
 Requires-Dist: joblib
 Requires-Dist: tdqm
-Requires-Dist: httpx<=0.23.0
+Requires-Dist: httpx
 
 MEWpy
 ======

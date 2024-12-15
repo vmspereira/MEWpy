@@ -3,8 +3,8 @@ from setuptools import setup, find_packages
 files = ["model/data/*"]
 
 requirements = ['cobra', 'inspyred', 'jmetalpy<=1.5.5',
-                'reframed', 'networkx', 'matplotlib<=3.5.0',
-                'joblib', 'tdqm', 'httpx<=0.23.0']
+                'reframed', 'networkx', 'matplotlib',
+                'joblib', 'tdqm', 'httpx']
 
 setup_requirements = requirements + ['pytest-runner']
 test_requirements = requirements + ['pytest', 'cplex']
