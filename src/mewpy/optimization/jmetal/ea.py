@@ -91,10 +91,11 @@ class EA(AbstractEA):
         self.ea_problem.reset_initial_population_counter()
         if self.algorithm_name == 'SA':
             print("Running SA")
+            # For SA, set mutation probability to 1.0
             self.mutation.probability = 1.0
             algorithm = SimulatedAnnealing(
                 problem=self.ea_problem,
-                mutation=self.mutation.probability,
+                mutation=self.mutation,
                 termination_criterion=StoppingByEvaluations(max_evaluations=self.max_evaluations)
             )
 
@@ -130,8 +131,10 @@ class EA(AbstractEA):
             f = moea_map[self.algorithm_name]
         else:
             if self.ea_problem.number_of_objectives > 2:
-                self.algorithm_name == 'NSGAIII'
+                self.algorithm_name = 'NSGAIII'
+                f = moea_map['NSGAIII']
             else:
+                self.algorithm_name = 'SPEA2'
                 f = moea_map['SPEA2']
 
         args = {

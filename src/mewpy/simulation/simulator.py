@@ -58,6 +58,7 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
 
     instance = None
     name = f"{model.__class__.__module__}.{model.__class__.__name__}"
+    
     if name in map_model_simulator:
         module_name, class_name = map_model_simulator[name]
         module = __import__(module_name, fromlist=[None])
@@ -85,6 +86,7 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
         except Exception:
             raise RuntimeError("Could not create simulator for the ETFL model")
     else:
+        # Try COBRA models first
         try:
             from cobra.core.model import Model
             if isinstance(model, Model):
@@ -94,6 +96,11 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
                     model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver)
         except ImportError:
             pass
+        except Exception:
+            # Silently continue to try other simulator types
+            pass
+        
+        # Try REFRAMED models if COBRA failed
         if not instance:
             try:
                 from reframed.core.cbmodel import CBModel
@@ -103,6 +110,9 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
                         model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver)
             except ImportError:
                 pass
+            except Exception as e:
+                # Re-raise the exception to help with debugging
+                raise RuntimeError(f"Failed to create simulator for REFRAMED model: {e}")
 
     if not instance:
         raise ValueError(f"The model <{name}> has no defined simulator.")

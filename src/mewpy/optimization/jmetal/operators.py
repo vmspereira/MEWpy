@@ -52,12 +52,12 @@ class ShrinkMutation(Mutation[Solution]):
         :returns: A mutated solution.
 
         """
-        if random.random() <= self.probability and solution.number_of_variables > self.min_size:
+        if random.random() <= self.probability and len(solution.variables) > self.min_size:
             var = copy.copy(solution.variables)
             index = random.randint(0, len(var) - 1)
             del var[index]
             solution.variables = var
-            solution.number_of_variables = len(var)
+            # Note: number_of_variables is not stored in new jmetalpy, length is implicit
         return solution
 
     def get_name(self):
@@ -84,7 +84,7 @@ class GrowMutationKO(Mutation[KOSolution]):
         :returns: A mutated solution.
 
         """
-        if random.random() <= self.probability and solution.number_of_variables < self.max_size:
+        if random.random() <= self.probability and len(solution.variables) < self.max_size:
             mutant = copy.copy(solution.variables)
             idx = random.randint(solution.lower_bound, solution.upper_bound)
             while idx in mutant:
@@ -93,7 +93,7 @@ class GrowMutationKO(Mutation[KOSolution]):
                     idx = solution.lower_bound
             mutant.append(idx)
             solution.variables = mutant
-            solution.number_of_variables = len(mutant)
+            # Note: number_of_variables is not stored in new jmetalpy, length is implicit
         return solution
 
     def get_name(self):
@@ -120,7 +120,7 @@ class GrowMutationOU(Mutation[OUSolution]):
         :returns: A mutated solution.
 
         """
-        if random.random() <= self.probability and solution.number_of_variables < self.max_size:
+        if random.random() <= self.probability and len(solution.variables) < self.max_size:
             mutant = copy.copy(solution.variables)
             idx = random.randint(solution.lower_bound[0], solution.upper_bound[0])
             idxs = [a for (a, b) in mutant]
@@ -131,7 +131,7 @@ class GrowMutationOU(Mutation[OUSolution]):
             lv = random.randint(solution.lower_bound[1], solution.upper_bound[1])
             mutant.append((idx, lv))
             solution.variables = mutant
-            solution.number_of_variables = len(mutant)
+            # Variable count is now implicit from len(solution.variables)
         return solution
 
     def get_name(self):
@@ -157,7 +157,7 @@ class UniformCrossoverKO(Crossover[KOSolution, KOSolution]):
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
         if random.random() <= self.probability and (
-                offspring[0].number_of_variables > 1 or offspring[1].number_of_variables > 1):
+                len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
             mom = set(copy.copy(offspring[0].variables))
             dad = set(copy.copy(offspring[1].variables))
             intersection = mom & dad
@@ -180,9 +180,9 @@ class UniformCrossoverKO(Crossover[KOSolution, KOSolution]):
                 otherElems.pop(elemPosition)
 
             offspring[0].variables = list(child1)
-            offspring[0].number_of_variables = len(child1)
+            # Variable count is now implicit from len(offspring[0].variables)
             offspring[1].variables = list(child2)
-            offspring[1].number_of_variables = len(child2)
+            # Variable count is now implicit from len(offspring[1].variables)
         return offspring
 
     def get_number_of_parents(self) -> int:
@@ -236,7 +236,7 @@ class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
         if random.random() <= self.probability and (
-                offspring[0].number_of_variables > 1 or offspring[1].number_of_variables > 1):
+                len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
             mom = set(copy.copy(offspring[0].variables))
             dad = set(copy.copy(offspring[1].variables))
 
@@ -265,9 +265,9 @@ class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
                             child1.add(elem)
 
             offspring[0].variables = list(child1)
-            offspring[0].number_of_variables = len(child1)
+            # Variable count is now implicit from len(offspring[0].variables)
             offspring[1].variables = list(child2)
-            offspring[1].number_of_variables = len(child2)
+            # Variable count is now implicit from len(offspring[1].variables)
         return offspring
 
     def get_number_of_parents(self) -> int:
@@ -290,7 +290,7 @@ class SingleMutationKO(Mutation[KOSolution]):
 
     def execute(self, solution: Solution) -> Solution:
         n = solution.upper_bound-solution.lower_bound+1
-        if random.random() <= self.probability and solution.number_of_variables < n:
+        if random.random() <= self.probability and len(solution.variables) < n:
             mutant = copy.copy(solution.variables)
             index = random.randint(0, len(mutant) - 1)
             idx = random.randint(solution.lower_bound, solution.upper_bound)
@@ -316,7 +316,7 @@ class SingleMutationOU(Mutation[OUSolution]):
 
     def execute(self, solution: Solution) -> Solution:
         n = solution.upper_bound[0]-solution.lower_bound[0]+1
-        if random.random() <= self.probability and solution.number_of_variables < n:
+        if random.random() <= self.probability and len(solution.variables) < n:
             mutant = copy.copy(solution.variables)
             lix = [i for (i, j) in mutant]
             index = random.randint(0, len(mutant) - 1)
@@ -409,7 +409,7 @@ class UniformCrossover(Crossover[Solution, Solution]):
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
         if random.random() <= self.probability and (
-                offspring[0].number_of_variables > 1 or offspring[1].number_of_variables > 1):
+                len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
             mom = copy.copy(offspring[0].variables)
             dad = copy.copy(offspring[1].variables)
             child1 = []
@@ -423,9 +423,9 @@ class UniformCrossover(Crossover[Solution, Solution]):
                     child2.append(mom[p])
 
             offspring[0].variables = list(child1)
-            offspring[0].number_of_variables = len(child1)
+            # Variable count is now implicit from len(offspring[0].variables)
             offspring[1].variables = list(child2)
-            offspring[1].number_of_variables = len(child2)
+            # Variable count is now implicit from len(offspring[1].variables)
         return offspring
 
     def get_number_of_parents(self) -> int:
@@ -448,7 +448,7 @@ class SingleRealMutation(Mutation[Solution]):
 
     def execute(self, solution: Solution) -> Solution:
         if random.random() <= self.probability:
-            index = random.randint(0, solution.number_of_variables - 1)
+            index = random.randint(0, len(solution.variables) - 1)
             solution.variables[index] = solution.lower_bound[index] + \
                 (solution.upper_bound[index] - solution.lower_bound[index]) * random.random()
         return solution
