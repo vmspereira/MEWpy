@@ -3,7 +3,7 @@ import pandas as pd
 
 class Summary:
     """
-    A summary of a ModelSolution. This object contains the main information of the solution.
+    A summary of a Solution. This object contains the main information of the solution.
     """
     def __init__(self,
                  inputs: pd.DataFrame = None,
@@ -13,7 +13,7 @@ class Summary:
                  metabolic: pd.DataFrame = None,
                  regulatory: pd.DataFrame = None):
         """
-        A summary of a ModelSolution
+        A summary of a Solution
 
         :param inputs: the inputs of the model
         :param outputs: the outputs of the model

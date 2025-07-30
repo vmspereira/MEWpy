@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, List, Dict, Iterable, Union
 import pandas as pd
 
 if TYPE_CHECKING:
-    from .model_solution import ModelSolution
+    from mewpy.solvers.solution import Solution
 
 
 class MultiSolution:
@@ -14,7 +14,7 @@ class MultiSolution:
     This object can be exported into a pandas DataFrame or Summary-like object
     using the to_frame(), to_summary() methods, respectively.
     """
-    def __init__(self, *solutions: 'ModelSolution'):
+    def __init__(self, *solutions: 'Solution'):
         """
         A MultiSolution object is a collection of Solution objects.
         It can be used to compare different simulation methods or to compare the same method with different parameters.
@@ -32,7 +32,7 @@ class MultiSolution:
         self._solutions = _solutions
 
     @property
-    def solutions(self) -> Dict[str, 'ModelSolution']:
+    def solutions(self) -> Dict[str, 'Solution']:
         """
         Returns a dict of Solution objects by the method name
         :return: a dict of Solution objects by the method name
@@ -85,7 +85,7 @@ class DynamicSolution:
     It is similar to the MultiSolution object, but it is used to store the results of a dynamic simulation using the
     time point rather than the method name.
     """
-    def __init__(self, *solutions: 'ModelSolution', time: Iterable = None):
+    def __init__(self, *solutions: 'Solution', time: Iterable = None):
         """
         A DynamicSolution object is a collection of Solution objects.
         It is similar to the MultiSolution object, but it is used to store the results of a dynamic simulation using the
@@ -114,7 +114,7 @@ class DynamicSolution:
         self._time = time
 
     @property
-    def solutions(self) -> Dict[str, 'ModelSolution']:
+    def solutions(self) -> Dict[str, 'Solution']:
         """
         Returns a dict of Solution objects by the time point
         :return: a dict of Solution objects by the time point
@@ -167,7 +167,7 @@ class KOSolution:
     It is similar to the MultiSolution object, but it is used to store the results of a KO simulations.
     """
     def __init__(self,
-                 solutions: Union[List['ModelSolution'], Dict[str, 'ModelSolution']],
+                 solutions: Union[List['Solution'], Dict[str, 'Solution']],
                  kos: List[str] = None):
         """
         A KOSolution object is a collection of Solution objects.
@@ -206,7 +206,7 @@ class KOSolution:
         self._time = kos
 
     @property
-    def solutions(self) -> Dict[str, 'ModelSolution']:
+    def solutions(self) -> Dict[str, 'Solution']:
         """
         Returns a dict of Solution objects by the KO name
         :return: a dict of Solution objects by the KO name

@@ -255,7 +255,27 @@ class OptLangSolver(Solver):
                 if r_id in self.var_ids:
                     lpvar = problem.variables[r_id]
                     old_constraints[r_id] = (lpvar.lb, lpvar.ub)
-                    lpvar.lb, lpvar.ub = lb, ub
+                    # Set bounds safely by always setting the more restrictive bound first
+                    if lb is not None and ub is not None:
+                        if lb <= ub:
+                            # Normal case - set lower bound first if it's not higher than upper
+                            if lpvar.ub is None or lb <= lpvar.ub:
+                                lpvar.lb = lb
+                                lpvar.ub = ub
+                            else:
+                                # Lower bound higher than current upper - set upper first
+                                lpvar.ub = ub
+                                lpvar.lb = lb
+                        else:
+                            # This should not happen but handle gracefully
+                            lpvar.lb = lb
+                            lpvar.ub = ub
+                    else:
+                        # Only one bound being set
+                        if lb is not None:
+                            lpvar.lb = lb
+                        if ub is not None:
+                            lpvar.ub = ub
                 else:
                     warn(f"Constrained variable '{r_id}' not previously declared")
             problem.update()
@@ -297,7 +317,27 @@ class OptLangSolver(Solver):
         if constraints:
             for r_id, (lb, ub) in old_constraints.items():
                 lpvar = problem.variables[r_id]
-                lpvar.lb, lpvar.ub = lb, ub
+                # Restore bounds safely - use the same logic as setting them
+                if lb is not None and ub is not None:
+                    if lb <= ub:
+                        # Normal case - set lower bound first if safe
+                        if lpvar.ub is None or lb <= lpvar.ub:
+                            lpvar.lb = lb
+                            lpvar.ub = ub
+                        else:
+                            # Lower bound higher than current upper - set upper first
+                            lpvar.ub = ub
+                            lpvar.lb = lb
+                    else:
+                        # This should not happen but handle gracefully
+                        lpvar.lb = lb
+                        lpvar.ub = ub
+                else:
+                    # Only one bound being restored
+                    if lb is not None:
+                        lpvar.lb = lb
+                    if ub is not None:
+                        lpvar.ub = ub
             problem.update()
 
         return solution

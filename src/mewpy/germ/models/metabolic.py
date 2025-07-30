@@ -13,6 +13,19 @@ if TYPE_CHECKING:
 
 class MetabolicModel(Model, model_type='metabolic', register=True, constructor=True, checker=True):
     """
+    DEPRECATED: This class is deprecated and maintained only for backwards compatibility.
+    
+    For new code, use the unified factory to create models from external simulators:
+    
+        from mewpy.germ.models.unified_factory import unified_factory
+        model = unified_factory(cobra_model)  # From COBRApy model
+        model = unified_factory('model.xml')  # From file path
+    
+    The unified factory returns SimulatorBasedMetabolicModel instances that provide 
+    the same interface but with better performance through external simulators.
+    
+    ---
+    
     A germ metabolic model consists of a classic Genome-Scale Metabolic (GEM) model,
     containing reactions, metabolites and genes.
 
@@ -51,33 +64,25 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
                  **kwargs):
 
         """
-        A germ metabolic model consists of a classic Genome-Scale Metabolic (GEM) model,
+        DEPRECATED: Direct instantiation of MetabolicModel is deprecated.
+        
+        MetabolicModel now only supports external model integration through COBRApy and reframed.
+        Use the unified factory instead:
+        
+            from mewpy.germ.models.unified_factory import unified_factory
+            model = unified_factory(cobra_model)
+            # or
+            model = unified_factory('path/to/model.xml')
+        
+        For backwards compatibility, this constructor still works but should not be used in new code.
+        
+        A GERM metabolic model consists of a classic Genome-Scale Metabolic (GEM) model,
         containing reactions, metabolites and genes.
 
         GEM models are systems biology tools used to predict the phenotype of an organism or cellular community
         in range of environmental and genetic conditions.
-        To perform phenotype prediction, a metabolic model can be attached to several simulation methods:
-            - FBA
-            - pFBA
-            - FVA
-            - ...
-        Thus, a germ metabolic model can be associated with a given objective function for the analysis of the model.
-
-        The metabolic model can be loaded with compartments, although these can be inferred from the available
-        metabolites.
-
-        A germ metabolic model can hold additional information as follows:
-            - demand reactions
-            - exchange reactions
-            - sink reactions
-            - GPRs
-            - External compartment
-
-        The metabolic model, as with other models, provides a clean interface for manipulation with the add, remove and
-        update methods. One can perform the following operations:
-            - Add reactions, metabolites and genes
-            - Remove reactions, metabolites and genes
-            - Update the objective function
+        To perform phenotype prediction, a metabolic model can be attached to several simulation methods
+        via external simulators (COBRApy, reframed).
 
         :param identifier: identifier, e.g. iMC1010
         :param compartments: a dictionary with additional compartments not encoded in the metabolites
@@ -87,13 +92,21 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         the simulations together with the respective coefficients
         :param reactions: a dictionary with Reaction objects. See variables.Reaction for more info
         """
+        import warnings
+        warnings.warn(
+            "Direct instantiation of MetabolicModel is deprecated. "
+            "Use unified_factory from mewpy.germ.models.unified_factory instead. "
+            "For external models, use: unified_factory(external_model)",
+            DeprecationWarning,
+            stacklevel=2
+        )
         # compartments attribute can be shared across the children, thus name mangling
         self.__compartments = {}
         self._genes = {}
         self._metabolites = {}
         self._objective = {}
         self._reactions = {}
-
+        
         super().__init__(identifier,
                          **kwargs)
 
@@ -244,6 +257,10 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         """
         It sets the objective functions of the model. The key is the `Reaction` object and the value is the respective
         coefficient.
+        
+        Note: MetabolicModel is deprecated. For external models, objective setting is handled by the 
+        SimulatorBasedMetabolicModel wrapper through the external simulator.
+        
         :param value: a dictionary with the objective functions of the model
         :return:
         """
@@ -251,26 +268,21 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
             value = {}
 
         if isinstance(value, str):
-
             value = {self.get(value): 1}
 
         elif hasattr(value, 'types'):
-
             value = {value: 1}
 
         elif isinstance(value, dict):
-
             value = {self.get(var, var): val for var, val in value.items()}
 
         else:
             raise ValueError(f'{value} is not a valid objective')
 
         self._objective = value
-
-        linear_obj = {var.id: coef for var, coef in self._objective.items()}
-
-        for simulator in self.simulators:
-            simulator.set_objective(linear=linear_obj, minimize=False)
+        
+        # Note: Simulator integration removed since MetabolicModel is deprecated
+        # For external models, use SimulatorBasedMetabolicModel which handles objectives through external simulators
 
     @reactions.setter
     @recorder
@@ -487,7 +499,8 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         If comprehensive is True, the variables and their related variables will be added to the model too.
         If history is True, the changes will be recorded in the history.
 
-        This method notifies all simulators with the recent changes.
+        Note: MetabolicModel is deprecated. For external models, use SimulatorBasedMetabolicModel 
+        which handles model changes through the external simulator interface.
 
         :param variables: the variables to be added to the model
         :param comprehensive: if True, the variables and their related variables will be added to the model too
@@ -533,7 +546,8 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         If remove_orphans is True, the variables and their related variables will be removed from the model too.
         If history is True, the changes will be recorded in the history.
 
-        This method notifies all simulators with the recent changes.
+        Note: MetabolicModel is deprecated. For external models, use SimulatorBasedMetabolicModel 
+        which handles model changes through the external simulator interface.
 
         :param variables: the variables to be removed from the model
         :param remove_orphans: if True, the variables and their related variables will be removed from the model too

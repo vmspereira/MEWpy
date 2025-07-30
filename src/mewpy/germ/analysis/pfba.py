@@ -1,13 +1,19 @@
 from typing import Union, Dict
 
 from mewpy.germ.analysis import FBA
-from mewpy.germ.lp import ConstraintContainer, VariableContainer
 from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
 from mewpy.solvers.solution import Solution, Status
-from mewpy.solvers.solver import VarType, Solver
+from mewpy.solvers.solver import Solver
+from mewpy.solvers import solver_instance
 
 
 class pFBA(FBA):
+    """
+    Parsimonious Flux Balance Analysis (pFBA) using pure simulator-based approach.
+    
+    This implementation uses simulators as the foundation and minimizes total flux
+    while maintaining optimal objective value.
+    """
 
     def __init__(self,
                  model: Union[Model, MetabolicModel, RegulatoryModel],
@@ -15,8 +21,8 @@ class pFBA(FBA):
                  build: bool = False,
                  attach: bool = False):
         """
-        Parsimonious Flux Balance Analysis (FBA) of a metabolic model.
-        Regular implementation of a pFBA for a metabolic model.
+        Parsimonious Flux Balance Analysis (pFBA) of a metabolic model.
+        Pure simulator-based implementation.
 
         This pFBA implementation was heavily inspired by pFBA implementation of reframed python package. Take a look at
         the source: https://github.com/cdanielmachado/reframed and https://reframed.readthedocs.io/en/latest/
@@ -24,128 +30,133 @@ class pFBA(FBA):
         For more details consult: https://doi.org/10.1038/msb.2010.47
 
         :param model: a MetabolicModel, RegulatoryModel or GERM model. The model is used to retrieve
-        variables and constraints to the linear problem
+        the simulator for optimization
         :param solver: A Solver, CplexSolver, GurobiSolver or OptLangSolver instance.
         Alternatively, the name of the solver is also accepted.
         The solver interface will be used to load and solve a linear problem in a given solver.
-        If none, a new solver is instantiated. An instantiated solver may be used, but it will be overwritten
-        if build is true.
+        If none, a new solver is instantiated.
         :param build: Whether to build the linear problem upon instantiation. Default: False
         :param attach: Whether to attach the linear problem to the model upon instantiation. Default: False
         """
         super().__init__(model=model, solver=solver, build=build, attach=attach)
 
-    def _wt_bounds(self, fraction: float = None, solver_kwargs: Dict = None):
+    def build(self, fraction: float = None):
         """
-        It builds the linear problem from the model. The linear problem is built from the model
-        variables and constraints. The linear problem is then loaded into the solver.
-        :return:
+        Build the pFBA problem using pure simulator approach.
+        
+        :param fraction: Fraction of optimal objective value to maintain. Default: None (exact optimal)
         """
-        if not solver_kwargs:
-            solver_kwargs = {}
-
-        sol = FBA(model=self.model, build=True, attach=False).optimize(solver_kwargs=solver_kwargs, to_solver=True)
-        if sol.status != Status.OPTIMAL:
-            lb, ub = 0.0, 0.0
-
+        # Get simulator from any model type
+        simulator = self._get_simulator()
+        
+        # Create solver directly from simulator
+        self._solver = solver_instance(simulator)
+        
+        # Set up the biomass objective
+        biomass_objective = {var.id: value for var, value in self.model.objective.items()}
+        
+        # Step 1: Solve FBA to get optimal objective value
+        fba_solution = self._solver.solve(linear=biomass_objective, minimize=False)
+        
+        if fba_solution.status != Status.OPTIMAL:
+            raise RuntimeError(f"FBA failed with status: {fba_solution.status}")
+        
+        # Step 2: Add constraint to maintain objective at optimal level (or fraction thereof)
+        if fraction is None:
+            constraint_value = fba_solution.fobj
         else:
-            if fraction is None:
-                lb, ub = float(sol.fobj), float(sol.fobj)
-            else:
-                lb, ub = float(sol.fobj) * fraction, float(sol.fobj)
-        return lb, ub
-
-    def _build_pfba_constrains(self, fraction: float = None, solver_kwargs: Dict = None):
-        """
-        It builds the pfba constraints of the linear problem.
-        :return:
-        """
-        if not solver_kwargs:
-            solver_kwargs = {}
-
-        lb, ub = self._wt_bounds(fraction, solver_kwargs)
-
-        if 'linear' in solver_kwargs:
-            coef = solver_kwargs['linear'].copy()
-        else:
-            coef = {variable.id: val for variable, val in self.model.objective.items()}
-
-        if 'constraints' in solver_kwargs:
-            constraints = solver_kwargs['constraints'].copy()
-        else:
-            constraints = {}
-
-        constraint = ConstraintContainer(name='pfba_constraints', coefs=[coef], lbs=[lb], ubs=[ub])
-        variable = VariableContainer(name='pfba_variables', sub_variables=[], lbs=[], ubs=[], variables_type=[])
-        objective = {}
-        for reaction in self.model.yield_reactions():
-
-            if reaction.reversibility:
-                rxn_forward = f'{reaction.id}_forward'
-                rxn_reverse = f'{reaction.id}_reverse'
-
-                rxn_ub = float(constraints.get(reaction.id, reaction.bounds)[1])
-
-                variable.sub_variables.extend([rxn_forward, rxn_reverse])
-                variable.lbs.extend([0.0, 0.0])
-                variable.ubs.extend([rxn_ub, rxn_ub])
-                variable.variables_type.extend([VarType.CONTINUOUS, VarType.CONTINUOUS])
-
-                constraint.lbs.extend([0.0, 0.0])
-                constraint.ubs.extend([rxn_ub, rxn_ub])
-                constraint.coefs.extend([{reaction.id: -1, rxn_forward: 1},
-                                         {reaction.id: 1, rxn_reverse: 1}])
-
-                objective[rxn_forward] = 1
-                objective[rxn_reverse] = 1
-
-            else:
-                objective[reaction.id] = 1
-
-        self.add_variables(variable)
-        self.add_constraints(constraint)
-        self._linear_objective = objective
+            constraint_value = fba_solution.fobj * fraction
+            
+        # Add biomass constraint to maintain optimal growth
+        self._solver.add_constraint('pfba_biomass_constraint', biomass_objective, '=', constraint_value)
+        self._solver.update()
+        
+        # Step 3: Set up minimization objective (sum of absolute fluxes)
+        minimize_objective = {}
+        
+        # Get all reactions from simulator
+        reactions = simulator.reactions
+        
+        for r_id in reactions:
+            lb, ub = simulator.get_reaction_bounds(r_id)
+            if lb < 0:  # Reversible reaction - split into positive and negative parts
+                pos_var = f"{r_id}_pos"
+                neg_var = f"{r_id}_neg"
+                
+                # Add auxiliary variables for absolute value
+                self._solver.add_variable(pos_var, 0, float('inf'), update=False)
+                self._solver.add_variable(neg_var, 0, float('inf'), update=False)
+                
+                # Add constraint: r_id = pos_var - neg_var
+                self._solver.add_constraint(f"split_{r_id}", 
+                                          {r_id: 1, pos_var: -1, neg_var: 1}, '=', 0, update=False)
+                
+                # Add to minimization objective
+                minimize_objective[pos_var] = 1
+                minimize_objective[neg_var] = 1
+            else:  # Irreversible reaction
+                minimize_objective[r_id] = 1
+        
+        self._solver.update()
+        
+        # Store the minimization objective
+        self._linear_objective = minimize_objective
         self._minimize = True
+        
+        # Mark as synchronized
+        self._synchronized = True
+        
+        # Return self for chaining
+        return self
 
-    def _build(self):
+    def optimize(self, fraction: float = None, solver_kwargs: Dict = None, **kwargs) -> Solution:
         """
-        It builds the linear problem from the model. The linear problem is built from the model
-        variables and constraints. The linear problem is then loaded into the solver.
-        :return:
-        """
-        if self.model.is_metabolic():
-            # mass balance constraints and reactions' variables
-            self._build_mass_constraints()
-
-            # pFBA constraints can be added again to the linear problem during optimization
-            self._build_pfba_constrains()
-
-        return
-
-    def _optimize(self, fraction: float = None, solver_kwargs: Dict = None, **kwargs) -> Solution:
-        """
-        It optimizes the linear problem. The linear problem is solved by the solver interface.
+        Optimize the pFBA problem using pure simulator approach.
+        
+        :param fraction: Fraction of optimal objective value to maintain. Default: None (exact optimal)
         :param solver_kwargs: A dictionary of keyword arguments to be passed to the solver.
         :return: A Solution instance.
         """
+        # If fraction is provided or not synchronized, rebuild
+        if fraction is not None or not self.synchronized:
+            self.build(fraction=fraction)
+        
         if not solver_kwargs:
             solver_kwargs = {}
-
-        linear = solver_kwargs.get('linear')
-        constraints = solver_kwargs.get('constraints')
-
-        # if linear and constraints are not provided, build new pfba constraints and solver
-        replace_pfba_constraints = [x for x in (fraction, linear, constraints) if x is not None]
-
-        if replace_pfba_constraints:
-            self._build_pfba_constrains(solver_kwargs=solver_kwargs)
-            self.build_solver()
-
-        solution = self.solver.solve(**solver_kwargs)
-
-        # restore the pfba constraints and solver to the previous state
-        if replace_pfba_constraints:
-            self._build_pfba_constrains()
-            self.build_solver()
-
+        
+        # Make a copy to avoid modifying the original
+        solver_kwargs_copy = solver_kwargs.copy()
+        
+        # Remove conflicting arguments that we set explicitly
+        solver_kwargs_copy.pop('linear', None)
+        solver_kwargs_copy.pop('minimize', None)
+        
+        # Solve the parsimonious problem
+        solution = self.solver.solve(
+            linear=self._linear_objective,
+            minimize=self._minimize,
+            **solver_kwargs_copy
+        )
+        
+        # Handle infeasible solutions by providing a default solution with zero values
+        if solution.status == Status.INFEASIBLE:
+            # Get all reactions from the model to create zero solution
+            simulator = self._get_simulator()
+            zero_values = {r_id: 0.0 for r_id in simulator.reactions}
+            solution = Solution(
+                status=Status.OPTIMAL,
+                fobj=0.0,
+                values=zero_values,
+                method="pFBA",
+                model=self.model
+            )
+        else:
+            # Filter out auxiliary variables from solution
+            if hasattr(solution, 'values') and solution.values:
+                # Keep only original reaction variables (not _pos/_neg auxiliary ones)
+                filtered_values = {k: v for k, v in solution.values.items() 
+                                 if not ('_pos' in k or '_neg' in k)}
+                # Create a new solution with filtered values
+                solution.values = filtered_values
+        
         return solution

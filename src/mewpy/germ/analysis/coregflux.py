@@ -7,7 +7,7 @@ from mewpy.germ.analysis import FBA
 from mewpy.germ.analysis.analysis_utils import biomass_yield_to_rate, \
     CoRegMetabolite, CoRegBiomass, metabolites_constraints, gene_state_constraints, system_state_update, \
     build_metabolites, build_biomass, CoRegResult
-from mewpy.germ.solution import ModelSolution, DynamicSolution
+from mewpy.germ.solution import DynamicSolution
 from mewpy.germ.variables import Gene, Target
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
@@ -24,7 +24,9 @@ def _run_and_decode(lp, additional_constraints=None, solver_kwargs=None):
     if additional_constraints:
         solver_kwargs['constraints'] = {**solver_kwargs.get('constraints', {}), **additional_constraints}
 
-    solution = lp.solver.solve(**solver_kwargs)
+    solution = lp.solver.solve(linear=lp._linear_objective, 
+                               minimize=lp._minimize, 
+                               **solver_kwargs)
 
     if not solution.values:
         return {rxn: 0 for rxn in lp.model.reactions}, 0
@@ -32,23 +34,23 @@ def _run_and_decode(lp, additional_constraints=None, solver_kwargs=None):
     return solution.values, solution.fobj
 
 
-def result_to_solution(result: CoRegResult, model: 'Model', to_solver: bool = False) -> Union[ModelSolution, Solution]:
+def result_to_solution(result: CoRegResult, model: 'Model', to_solver: bool = False) -> Solution:
     """
-    It converts a CoRegResult object to a ModelSolution object.
+    It converts a CoRegResult object to a Solution object.
 
     :param result: the CoRegResult object
     :param model: the model
     :param to_solver: if True, it returns a Solution object
-    :return: the ModelSolution object
+    :return: the Solution object
     """
     if to_solver:
         return Solution(status=Status.OPTIMAL, fobj=result.objective_value, values=result.values)
 
-    solution = ModelSolution(method='CoRegFlux',
-                             x=result.values,
-                             objective_value=result.objective_value,
-                             status='optimal',
-                             model=model)
+    solution = Solution(objective_value=result.objective_value,
+                        values=result.values,
+                        status=Status.OPTIMAL,
+                        method='CoRegFlux',
+                        model=model)
 
     solution.metabolites = {key: met.concentration for key, met in result.metabolites.items()}
     solution.biomass = result.biomass.biomass_yield
@@ -197,7 +199,7 @@ class CoRegFlux(FBA):
                                time_step: float = 1,
                                soft_plus: float = 0,
                                tolerance: float = ModelConstants.TOLERANCE,
-                               scale: bool = False) -> Union[ModelSolution, Solution]:
+                               scale: bool = False) -> Solution:
 
         result = self.next_state(solver_kwargs=solver_kwargs,
                                  state=initial_state,
@@ -218,7 +220,7 @@ class CoRegFlux(FBA):
                   time_steps: Sequence[float] = None,
                   soft_plus: float = 0,
                   tolerance: float = ModelConstants.TOLERANCE,
-                  scale: bool = False) -> Union[DynamicSolution, ModelSolution, Solution, List[Solution]]:
+                  scale: bool = False) -> Union[DynamicSolution, Solution, List[Solution]]:
         """
         CoRegFlux optimization method.
         It supports steady state and dynamic optimization.
@@ -231,7 +233,7 @@ class CoRegFlux(FBA):
         :param soft_plus: the soft plus parameter to use for the gene state update
         :param tolerance: the tolerance to use for the gene state update
         :param scale: whether to scale the gene state update
-        :return: a ModelSolution instance if dynamic is False,
+        :return: a Solution instance if dynamic is False,
         a DynamicSolution instance otherwise (if to_solver is False)
         """
         if len(initial_state) == 1:
@@ -264,7 +266,7 @@ class CoRegFlux(FBA):
                  time_steps: Sequence[float] = None,
                  soft_plus: float = 0,
                  tolerance: float = ModelConstants.TOLERANCE,
-                 scale: bool = False) -> Union[DynamicSolution, ModelSolution, Solution, List[Solution]]:
+                 scale: bool = False) -> Union[DynamicSolution, Solution, List[Solution]]:
         """
         CoRegFlux optimization method.
         It supports steady state and dynamic optimization.
@@ -278,7 +280,7 @@ class CoRegFlux(FBA):
         :param soft_plus: the soft plus parameter to use for the gene state update
         :param tolerance: the tolerance to use for the gene state update
         :param scale: whether to scale the gene state update
-        :return: a ModelSolution instance if dynamic is False,
+        :return: a Solution instance if dynamic is False,
         a DynamicSolution instance otherwise (if to_solver is False)
         """
         if not solver_kwargs:

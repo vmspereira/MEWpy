@@ -3,7 +3,7 @@ from typing import Union, Dict, TYPE_CHECKING, Any, Sequence, Tuple
 import pandas as pd
 
 from mewpy.germ.analysis import FBA
-from mewpy.germ.solution import ModelSolution, KOSolution
+from mewpy.germ.solution import KOSolution
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
 from mewpy.util.constants import ModelConstants
@@ -52,6 +52,7 @@ class PROM(FBA):
         :param attach: If True, the linear problem will be attached to the model.
         """
         super().__init__(model=model, solver=solver, build=build, attach=attach)
+        self.method = "PROM"  # Override method name for PROM
 
     def _build(self):
         """
@@ -213,6 +214,8 @@ class PROM(FBA):
                 prom_constraints[reaction.id] = (rxn_lb, rxn_ub)
 
         solution = self.solver.solve(**{**solver_kwargs,
+                                        'linear': self._linear_objective,
+                                        'minimize': self._minimize,
                                         'get_values': True,
                                         'constraints': {**solver_constrains, **prom_constraints}})
 
@@ -220,17 +223,19 @@ class PROM(FBA):
             return solution
 
         minimize = solver_kwargs.get('minimize', self._minimize)
-        return ModelSolution.from_solver(method=self.method, solution=solution, model=self.model,
+        return Solution.from_solver(method=self.method, solution=solution, model=self.model,
                                          minimize=minimize)
 
     def _optimize(self,
                   initial_state: Dict[Tuple[str, str], float] = None,
                   regulators: Sequence[Union['Gene', 'Regulator']] = None,
                   to_solver: bool = False,
-                  solver_kwargs: Dict[str, Any] = None) -> Union[Dict[str, Solution], Dict[str, ModelSolution]]:
+                  solver_kwargs: Dict[str, Any] = None) -> Union[Dict[str, Solution], Dict[str, Solution]]:
         # wild-type reference
         solver_kwargs['get_values'] = True
-        reference = self.solver.solve(**solver_kwargs)
+        reference = self.solver.solve(linear=self._linear_objective, 
+                                      minimize=self._minimize, 
+                                      **solver_kwargs)
         if reference.status != Status.OPTIMAL:
             raise RuntimeError('The solver did not find an optimal solution for the wild-type conditions.')
         reference = reference.values.copy()
@@ -240,12 +245,14 @@ class PROM(FBA):
 
         # a single regulator knockout
         if len(regulators) == 1:
-            return self._optimize_ko(probabilities=initial_state,
-                                     regulator=regulators[0],
-                                     reference=reference,
-                                     max_rates=max_rates,
-                                     to_solver=to_solver,
-                                     solver_kwargs=solver_kwargs)
+            ko_solution = self._optimize_ko(probabilities=initial_state,
+                                            regulator=regulators[0],
+                                            reference=reference,
+                                            max_rates=max_rates,
+                                            to_solver=to_solver,
+                                            solver_kwargs=solver_kwargs)
+            # Return as dictionary to be compatible with KOSolution
+            return {regulators[0].id: ko_solution}
 
         # multiple regulator knockouts
         kos = {}
@@ -274,7 +281,7 @@ class PROM(FBA):
         the interactions between the regulators and the targets.
         :param regulators: list of regulators to be knocked out. If None, all regulators are knocked out.
         :param to_solver: Whether to return the solution as a SolverSolution instance. Default: False.
-        Otherwise, a ModelSolution is returned.
+        Otherwise, a Solution is returned.
         :param solver_kwargs: Solver parameters to be set temporarily.
             - linear: A dictionary of linear coefficients to be set temporarily. The keys are the variable names
             and the values are the coefficients. Default: None
