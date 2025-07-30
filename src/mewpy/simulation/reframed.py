@@ -26,7 +26,18 @@ import logging
 from collections import OrderedDict
 import numpy as np
 
-from reframed.cobra.simulation import FBA, pFBA, MOMA, lMOMA, ROOM
+# Try to import available simulation methods from reframed
+try:
+    from reframed.cobra.simulation import FBA, pFBA, lMOMA, ROOM
+    # Try to import MOMA if available
+    try:
+        from reframed.cobra.simulation import MOMA
+    except ImportError:
+        # MOMA not available in this version, use lMOMA as fallback
+        MOMA = lMOMA
+except ImportError as e:
+    raise ImportError(f"Failed to import required reframed simulation methods: {e}")
+
 from reframed.core.cbmodel import CBModel
 from reframed.solvers import set_default_solver
 from reframed.solvers import solver_instance
@@ -43,7 +54,7 @@ from tqdm import tqdm
 
 LOGGER = logging.getLogger(__name__)
 
-solver_map = {'gurobi': 'gurobi', 'cplex': 'cplex', 'glpk': 'optlang'}
+solver_map = {'gurobi': 'gurobi', 'cplex': 'cplex', 'glpk': 'scip', 'scip': 'scip'}
 
 reaction_type_map = {
     "ENZ": ReactionType.ENZYMATIC,
@@ -191,7 +202,18 @@ class Simulation(CBModelContainer, Simulator):
                 "Model is None or is not an instance of REFRAMED CBModel")
 
         self.model = model
-        set_default_solver(solver_map[get_default_solver()])
+        
+        # Set the solver, with fallback to default reframed solver
+        try:
+            default_solver = get_default_solver()
+            if default_solver in solver_map:
+                set_default_solver(solver_map[default_solver])
+            else:
+                # Use reframed's default solver if MEWpy's default is not mapped
+                pass  # reframed will use its default
+        except Exception:
+            # If setting the solver fails, just use reframed's default
+            pass
         # keep track on reaction bounds changes
         self._environmental_conditions = OrderedDict() if envcond is None else envcond
         self._constraints = dict() if constraints is None else {

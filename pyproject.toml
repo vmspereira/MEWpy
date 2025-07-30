@@ -1,5 +1,108 @@
 [build-system]
-# These are the assumed default build requirements from pip:
-# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ["setuptools>=43.0.0", "wheel"]
+requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "mewpy"
+version = "1.0.0"
+description = "MEWpy - Metabolic Engineering in Python"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = [
+    {name = "Vitor Pereira", email = "vmspereira@gmail.com"},
+    {name = "BiSBII CEB University of Minho"},
+]
+maintainers = [
+    {name = "Vitor Pereira", email = "vmspereira@gmail.com"},
+]
+keywords = [
+    "metabolism",
+    "biology", 
+    "constraint-based",
+    "optimization",
+    "flux-balance analysis",
+    "strain optimization"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20,<1.24",
+    "cobra>=0.26.0,<0.27.0",
+    "reframed",
+    "inspyred",
+    "jmetalpy>=1.5.0",
+    "networkx",
+    "matplotlib>=3.5.0,<4.0.0",
+    "tqdm",
+    "joblib",
+    "httpx>=0.23.0,<0.24.0",
+    "pandas>=1.0,<2.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=6.0",
+    "pytest-runner",
+    "cplex",
+    "tox",
+]
+dev = [
+    "pytest>=6.0",
+    "pytest-runner", 
+    "cplex",
+    "tox",
+    "flake8",
+    "black",
+    "isort",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+
+[project.urls]
+Homepage = "https://github.com/BioSystemsUM/mewpy/"
+Repository = "https://github.com/vmspereira/mewpy/"
+Development = "https://github.com/vmspereira/MEWpy"
+Documentation = "https://mewpy.readthedocs.io"
+Issues = "https://github.com/vmspereira/mewpy/issues"
+
+[tool.setuptools]
+zip-safe = true
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mewpy = ["model/data/*"]
+"*" = ["*.xml", "*.csv", "*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.flake8]
+max-line-length = 120
+exclude = ["__init__.py", "docs"]
+
+[tool.black]
+line-length = 120
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 120

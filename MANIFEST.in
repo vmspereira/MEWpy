@@ -1,8 +1,20 @@
 include README.md
 include LICENSE
+include requirements.txt
+include pyproject.toml
 
+# Include package data
 graft src/mewpy/model/data
+recursive-include src/mewpy *.xml *.csv *.txt
+
+# Include documentation
+recursive-include docs *.rst conf.py Makefile make.bat *.jpg *.png *.gif *.md
+
+# Include examples
+recursive-include examples *.ipynb *.py *.md *.csv
+graft examples/models
+
+# Exclude compiled Python files
 recursive-exclude * __pycache__
-recursive-exclude * *.py[co] 
-include mewpy/model/data/*
-recursive-include docs *.rst conf.py Makefile make.bat *.jpg *.png *.gif
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store

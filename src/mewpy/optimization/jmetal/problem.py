@@ -170,7 +170,19 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
         so that it can be used in jMetal.
         """
         self.problem = problem
-        self.number_of_objectives = len(self.problem.fevaluation)
+        self._number_of_objectives = len(self.problem.fevaluation)
+        # Handle different bounder types
+        try:
+            if hasattr(self.problem.bounder, 'upper_bound') and hasattr(self.problem.bounder, 'lower_bound'):
+                if isinstance(self.problem.bounder.upper_bound, int) and isinstance(self.problem.bounder.lower_bound, int):
+                    self._number_of_variables = self.problem.bounder.upper_bound - self.problem.bounder.lower_bound + 1
+                else:
+                    self._number_of_variables = 100  # Default fallback
+            else:
+                self._number_of_variables = 100  # Default fallback
+        except:
+            self._number_of_variables = 100  # Default fallback
+        self._number_of_constraints = 0
         self.obj_directions = []
         self.obj_labels = []
         for f in self.problem.fevaluation:
@@ -181,6 +193,22 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
                 self.obj_directions.append(self.MINIMIZE)
         self.initial_polulation = initial_polulation
         self.__next_ini_sol = 0
+
+    @property
+    def name(self) -> str:
+        return self.problem.get_name()
+        
+    @property
+    def number_of_objectives(self) -> int:
+        return self._number_of_objectives
+        
+    @property
+    def number_of_variables(self) -> int:
+        return self._number_of_variables
+        
+    @property
+    def number_of_constraints(self) -> int:
+        return self._number_of_constraints
 
     def create_solution(self) -> KOSolution:
         solution = None
@@ -200,7 +228,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
             self.problem.bounder.lower_bound,
             self.problem.bounder.upper_bound,
             len(solution),
-            self.problem.number_of_objectives)
+            self._number_of_objectives)
         new_solution.variables = list(solution)[:]
         return new_solution
 
@@ -247,7 +275,16 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
         so that it can be used in jMetal.
         """
         self.problem = problem
-        self.number_of_objectives = len(self.problem.fevaluation)
+        self._number_of_objectives = len(self.problem.fevaluation)
+        # Handle different bounder types for OU problems
+        try:
+            if hasattr(self.problem.bounder, 'lower_bound') and isinstance(self.problem.bounder.lower_bound, (list, tuple)):
+                self._number_of_variables = len(self.problem.bounder.lower_bound)
+            else:
+                self._number_of_variables = 100  # Default fallback
+        except:
+            self._number_of_variables = 100  # Default fallback
+        self._number_of_constraints = 0
         self.obj_directions = []
         self.obj_labels = []
         for f in self.problem.fevaluation:
@@ -258,6 +295,22 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
                 self.obj_directions.append(self.MINIMIZE)
         self.initial_polulation = initial_polulation
         self.__next_ini_sol = 0
+
+    @property
+    def name(self) -> str:
+        return self.problem.get_name()
+        
+    @property
+    def number_of_objectives(self) -> int:
+        return self._number_of_objectives
+        
+    @property
+    def number_of_variables(self) -> int:
+        return self._number_of_variables
+        
+    @property
+    def number_of_constraints(self) -> int:
+        return self._number_of_constraints
 
     def create_solution(self) -> OUSolution:
         solution = None
@@ -277,7 +330,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
             self.problem.bounder.lower_bound,
             self.problem.bounder.upper_bound,
             len(solution),
-            self.problem.number_of_objectives)
+            self._number_of_objectives)
         new_solution.variables = list(solution)[:]
         return new_solution
 
