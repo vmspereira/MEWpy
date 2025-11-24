@@ -9,19 +9,29 @@ class MEWPYSolvers(Singleton):
     def build(self):
         try:
             from .gurobi_solver import GurobiSolver
-            self._mewpy_solvers['gurobi'] = GurobiSolver
+
+            self._mewpy_solvers["gurobi"] = GurobiSolver
         except ImportError:
             pass
 
         try:
             from .cplex_solver import CplexSolver
-            self._mewpy_solvers['cplex'] = CplexSolver
+
+            self._mewpy_solvers["cplex"] = CplexSolver
         except ImportError:
             pass
 
         try:
             from .optlang_solver import OptLangSolver
-            self._mewpy_solvers['optlang'] = OptLangSolver
+
+            self._mewpy_solvers["optlang"] = OptLangSolver
+        except ImportError:
+            pass
+
+        try:
+            from .pyscipopt_solver import PySCIPOptSolver
+
+            self._mewpy_solvers["pyscipopt"] = PySCIPOptSolver
         except ImportError:
             pass
 
@@ -39,19 +49,22 @@ class MEWPYODESolvers(Singleton):
     def build(self):
         try:
             from .scikits_solver import ScikitsODESolver
-            self._mewpy_ode_solvers['scikits'] = ScikitsODESolver
+
+            self._mewpy_ode_solvers["scikits"] = ScikitsODESolver
         except ImportError:
             pass
 
         try:
             from .scipy_solver import ScipySolver
-            self._mewpy_ode_solvers['scipy'] = ScipySolver
+
+            self._mewpy_ode_solvers["scipy"] = ScipySolver
         except ImportError:
             pass
 
         try:
             from .odespy_solver import ODESpySolver
-            self._mewpy_ode_solvers['odespy'] = ODESpySolver
+
+            self._mewpy_ode_solvers["odespy"] = ODESpySolver
         except ImportError:
             pass
 
@@ -63,7 +76,3 @@ class MEWPYODESolvers(Singleton):
 
 __MEWPY_solvers__ = MEWPYSolvers().get_solvers()
 __MEWPY_ode_solvers__ = MEWPYODESolvers().get_solvers()
-
-
-
-
