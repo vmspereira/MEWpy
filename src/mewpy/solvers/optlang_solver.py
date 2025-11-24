@@ -30,16 +30,16 @@ from warnings import warn
 
 
 status_mapping = {
-    'optimal': Status.OPTIMAL,
-    'unbounded': Status.UNBOUNDED,
-    'infeasible': Status.INFEASIBLE,
-    'infeasible_or_unbounded': Status.INF_OR_UNB,
-    'suboptimal': Status.SUBOPTIMAL,
+    "optimal": Status.OPTIMAL,
+    "unbounded": Status.UNBOUNDED,
+    "infeasible": Status.INFEASIBLE,
+    "infeasible_or_unbounded": Status.INF_OR_UNB,
+    "suboptimal": Status.SUBOPTIMAL,
 }
 
 
 class OptLangSolver(Solver):
-    """ Implements the gurobi solver interface. """
+    """Implements the gurobi solver interface."""
 
     def __init__(self, model=None):
         Solver.__init__(self)
@@ -47,9 +47,9 @@ class OptLangSolver(Solver):
 
         self.parameter_mapping = {
             Parameter.TIME_LIMIT: self.problem.configuration.timeout,
-            #Parameter.FEASIBILITY_TOL: self.problem.configuration.tolerances.feasibility,
+            # Parameter.FEASIBILITY_TOL: self.problem.configuration.tolerances.feasibility,
             # Parameter.OPTIMALITY_TOL: self.problem.configuration.tolerances.optimality,
-            #Parameter.INT_FEASIBILITY_TOL: self.problem.configuration.tolerances.integrality,
+            # Parameter.INT_FEASIBILITY_TOL: self.problem.configuration.tolerances.integrality,
         }
 
         self.set_parameters(default_parameters)
@@ -59,7 +59,7 @@ class OptLangSolver(Solver):
             self.build_problem(model)
 
     def add_variable(self, var_id, lb=-inf, ub=inf, vartype=VarType.CONTINUOUS, update=True):
-        """ Add a variable to the current problem.
+        """Add a variable to the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -96,8 +96,8 @@ class OptLangSolver(Solver):
         if ub:
             var.ub = ub
 
-    def add_constraint(self, constr_id, lhs, sense='=', rhs=0, update=True):
-        """ Add a constraint to the current problem.
+    def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
+        """Add a constraint to the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -110,11 +110,11 @@ class OptLangSolver(Solver):
         if constr_id in self.constr_ids:
             self.problem.remove(constr_id)
 
-        if sense == '=':
+        if sense == "=":
             constr = Constraint(Zero, lb=rhs, ub=rhs, name=constr_id)
-        elif sense == '>':
+        elif sense == ">":
             constr = Constraint(Zero, lb=rhs, name=constr_id)
-        elif sense == '<':
+        elif sense == "<":
             constr = Constraint(Zero, ub=rhs, name=constr_id)
         else:
             raise RuntimeError(f"Invalid constraint direction: {sense}")
@@ -129,7 +129,7 @@ class OptLangSolver(Solver):
             self.problem.update()
 
     def remove_variable(self, var_id):
-        """ Remove a variable from the current problem.
+        """Remove a variable from the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -137,7 +137,7 @@ class OptLangSolver(Solver):
         self.remove_variables([var_id])
 
     def remove_variables(self, var_ids):
-        """ Remove variables from the current problem.
+        """Remove variables from the current problem.
 
         Arguments:
             var_ids (list): variable identifiers
@@ -149,7 +149,7 @@ class OptLangSolver(Solver):
                 self.var_ids.remove(var_id)
 
     def remove_constraint(self, constr_id):
-        """ Remove a constraint from the current problem.
+        """Remove a constraint from the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -157,7 +157,7 @@ class OptLangSolver(Solver):
         self.remove_constraints([constr_id])
 
     def remove_constraints(self, constr_ids):
-        """ Remove constraints from the current problem.
+        """Remove constraints from the current problem.
 
         Arguments:
             constr_ids (list): constraint identifiers
@@ -169,7 +169,7 @@ class OptLangSolver(Solver):
                 self.constr_ids.remove(constr_id)
 
     def set_objective(self, linear=None, quadratic=None, minimize=True):
-        """ Set a predefined objective for this problem.
+        """Set a predefined objective for this problem.
 
         Args:
             linear (dict): linear coefficients (optional)
@@ -201,7 +201,7 @@ class OptLangSolver(Solver):
                     elif val != 0:
                         objective[self.problem.variables[r_id]] = val
 
-            self.problem.objective = Objective(Zero, direction=('min' if minimize else 'max'), sloppy=True)
+            self.problem.objective = Objective(Zero, direction=("min" if minimize else "max"), sloppy=True)
             self.problem.objective.set_linear_coefficients(objective)
         else:
             objective = []
@@ -221,11 +221,22 @@ class OptLangSolver(Solver):
                     objective.append(val * self.problem.variables[r_id1] * self.problem.variables[r_id2])
 
             objective_expr = add(objective)
-            self.problem.objective = Objective(objective_expr, direction=('min' if minimize else 'max'), sloppy=True)
+            self.problem.objective = Objective(objective_expr, direction=("min" if minimize else "max"), sloppy=True)
 
-    def solve(self, linear=None, quadratic=None, minimize=None, model=None, constraints=None, get_values=True,
-              shadow_prices=False, reduced_costs=False, pool_size=0, pool_gap=None):
-        """ Solve the optimization problem.
+    def solve(
+        self,
+        linear=None,
+        quadratic=None,
+        minimize=None,
+        model=None,
+        constraints=None,
+        get_values=True,
+        shadow_prices=False,
+        reduced_costs=False,
+        pool_size=0,
+        pool_gap=None,
+    ):
+        """Solve the optimization problem.
 
         Arguments:
             linear (str or dict): linear coefficients (or a single variable to optimize)
@@ -255,27 +266,19 @@ class OptLangSolver(Solver):
                 if r_id in self.var_ids:
                     lpvar = problem.variables[r_id]
                     old_constraints[r_id] = (lpvar.lb, lpvar.ub)
-                    # Set bounds safely by always setting the more restrictive bound first
-                    if lb is not None and ub is not None:
-                        if lb <= ub:
-                            # Normal case - set lower bound first if it's not higher than upper
-                            if lpvar.ub is None or lb <= lpvar.ub:
-                                lpvar.lb = lb
-                                lpvar.ub = ub
-                            else:
-                                # Lower bound higher than current upper - set upper first
-                                lpvar.ub = ub
-                                lpvar.lb = lb
-                        else:
-                            # This should not happen but handle gracefully
-                            lpvar.lb = lb
-                            lpvar.ub = ub
+                    # Set bounds in safe order to avoid lb > ub validation errors
+                    if lb > lpvar.ub:
+                        # New lb is larger than current ub, set ub first
+                        lpvar.ub = ub
+                        lpvar.lb = lb
+                    elif ub < lpvar.lb:
+                        # New ub is smaller than current lb, set lb first
+                        lpvar.lb = lb
+                        lpvar.ub = ub
                     else:
-                        # Only one bound being set
-                        if lb is not None:
-                            lpvar.lb = lb
-                        if ub is not None:
-                            lpvar.ub = ub
+                        # Safe to set in normal order
+                        lpvar.lb = lb
+                        lpvar.ub = ub
                 else:
                     warn(f"Constrained variable '{r_id}' not previously declared")
             problem.update()
@@ -317,33 +320,25 @@ class OptLangSolver(Solver):
         if constraints:
             for r_id, (lb, ub) in old_constraints.items():
                 lpvar = problem.variables[r_id]
-                # Restore bounds safely - use the same logic as setting them
-                if lb is not None and ub is not None:
-                    if lb <= ub:
-                        # Normal case - set lower bound first if safe
-                        if lpvar.ub is None or lb <= lpvar.ub:
-                            lpvar.lb = lb
-                            lpvar.ub = ub
-                        else:
-                            # Lower bound higher than current upper - set upper first
-                            lpvar.ub = ub
-                            lpvar.lb = lb
-                    else:
-                        # This should not happen but handle gracefully
-                        lpvar.lb = lb
-                        lpvar.ub = ub
+                # Set bounds in safe order to avoid lb > ub validation errors
+                if lb > lpvar.ub:
+                    # Restoring lb is larger than current ub, set ub first
+                    lpvar.ub = ub
+                    lpvar.lb = lb
+                elif ub < lpvar.lb:
+                    # Restoring ub is smaller than current lb, set lb first
+                    lpvar.lb = lb
+                    lpvar.ub = ub
                 else:
-                    # Only one bound being restored
-                    if lb is not None:
-                        lpvar.lb = lb
-                    if ub is not None:
-                        lpvar.ub = ub
+                    # Safe to set in normal order
+                    lpvar.lb = lb
+                    lpvar.ub = ub
             problem.update()
 
         return solution
 
     def set_parameter(self, parameter, value):
-        """ Set a parameter value for this optimization problem
+        """Set a parameter value for this optimization problem
 
         Arguments:
             parameter (Parameter): parameter type
@@ -352,11 +347,11 @@ class OptLangSolver(Solver):
 
         if parameter in self.parameter_mapping:
             self.parameter_mapping[parameter] = value
-        #else:
+        # else:
         #    raise RuntimeError('Parameter unknown (or not yet supported).')
 
     def set_logging(self, enabled=False):
-        """ Enable or disable log output:
+        """Enable or disable log output:
 
         Arguments:
             enabled (bool): turn logging on (default: False)
@@ -365,7 +360,7 @@ class OptLangSolver(Solver):
         self.problem.configuration.verbosity = 3 if enabled else 0
 
     def write_to_file(self, filename):
-        """ Write problem to file:
+        """Write problem to file:
 
         Arguments:
             filename (str): file path

@@ -37,25 +37,32 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "numpy>=1.20,<2.0",
-    "cobra>=0.29.0",
+    "numpy>=1.26.0",
+    "cobra",
     "reframed",
     "inspyred",
     "jmetalpy>=1.5.0",
     "networkx",
-    "matplotlib>=3.5.0,<4.0.0",
+    "matplotlib",
     "tqdm",
     "joblib",
-    "httpx==0.24.0",
-    "pandas>=1.0",
+    "httpx",
+    "pandas",
 ]
 
 [project.optional-dependencies]
+scip = [
+    "pyscipopt>=5.0.0",
+]
+solvers = [
+    "pyscipopt>=5.0.0",
+]
 test = [
     "pytest>=6.0",
     "pytest-runner",
     "cplex",
     "tox",
+    "pyscipopt>=5.0.0",
 ]
 dev = [
     "pytest>=6.0",
