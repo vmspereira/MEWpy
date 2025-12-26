@@ -3,10 +3,15 @@ Example: Using RegulatoryExtension Factory Methods
 
 This script demonstrates the convenient factory methods for creating
 RegulatoryExtension models from files or existing models.
+
+Note: By default, factory methods use 'reframed' as it is more lightweight
+than COBRApy. You can explicitly use 'cobra' by passing flavor='cobra'.
 """
 
 print("=" * 80)
 print("REGULATORYEXTENSION FACTORY METHODS EXAMPLE")
+print("=" * 80)
+print("Note: Uses reframed by default (lightweight)")
 print("=" * 80)
 
 # =============================================================================
@@ -24,8 +29,9 @@ model_path = examples_dir / 'models' / 'germ' / 'e_coli_core.xml'
 regulatory_path = examples_dir / 'models' / 'germ' / 'e_coli_core_trn.csv'
 
 model_metabolic_only = RegulatoryExtension.from_sbml(
-    str(model_path),
-    flavor='cobra'  # or 'reframed'
+    str(model_path)
+    # Uses reframed by default (lightweight)
+    # Can specify flavor='cobra' if needed
 )
 
 print(f"Created metabolic-only model:")
@@ -34,13 +40,14 @@ print(f"  - Reactions: {len(model_metabolic_only.reactions)}")
 print(f"  - Genes: {len(model_metabolic_only.genes)}")
 print(f"  - Has regulatory network: {model_metabolic_only.has_regulatory_network()}")
 
-# Load with regulatory network
+# Load with regulatory network (uses reframed by default)
 model_integrated = RegulatoryExtension.from_sbml(
     str(model_path),
     str(regulatory_path),
     regulatory_format='csv',
-    flavor='cobra',
     sep=','  # Additional CSV parameters passed to reader
+    # flavor='reframed' is the default (lightweight)
+    # Use flavor='cobra' if you specifically need COBRApy
 )
 
 print(f"\nCreated integrated model:")
@@ -85,17 +92,20 @@ from mewpy.germ.analysis import FBA, RFBA, SRFBA
 # FBA on metabolic-only model
 fba = FBA(model_metabolic_only)
 fba_solution = fba.optimize()
-print(f"FBA (metabolic only): {fba_solution.objective_value:.6f}")
+fba_obj = fba_solution.objective_value if fba_solution.objective_value is not None else fba_solution.fobj
+print(f"FBA (metabolic only): {fba_obj:.6f}")
 
 # RFBA on integrated model
 rfba = RFBA(model_integrated)
 rfba_solution = rfba.optimize()
-print(f"RFBA (with regulation): {rfba_solution.objective_value:.6f}")
+rfba_obj = rfba_solution.objective_value if rfba_solution.objective_value is not None else rfba_solution.fobj
+print(f"RFBA (with regulation): {rfba_obj:.6f}")
 
 # SRFBA on integrated model
 srfba = SRFBA(model_integrated)
 srfba_solution = srfba.optimize()
-print(f"SRFBA (steady-state): {srfba_solution.objective_value:.6f}")
+srfba_obj = srfba_solution.objective_value if srfba_solution.objective_value is not None else srfba_solution.fobj
+print(f"SRFBA (steady-state): {srfba_obj:.6f}")
 
 # =============================================================================
 # Comparison with Traditional Method
@@ -113,11 +123,12 @@ regulatory_reader = Reader(Engines.BooleanRegulatoryCSV,
                            sep=',')
 traditional_model = read_model(metabolic_reader, regulatory_reader)
 
-# Factory method (one line)
+# Factory method (one line) - uses reframed by default
 factory_model = RegulatoryExtension.from_sbml(
     str(model_path),
     str(regulatory_path),
     sep=','
+    # Uses reframed by default (lightweight)
 )
 
 print(f"Traditional method - Type: {type(traditional_model).__name__}")
@@ -173,7 +184,8 @@ Factory methods provide a convenient way to create RegulatoryExtension models:
 
 ✓ from_sbml() - Load from SBML + optional CSV regulatory network
   - Simplest method for most use cases
-  - Supports both 'cobra' and 'reframed' flavors
+  - Uses 'reframed' by default (lightweight)
+  - Supports both 'reframed' (default) and 'cobra' flavors
 
 ✓ from_model() - Wrap existing COBRApy/reframed model
   - Useful when you already have a model object
@@ -185,6 +197,7 @@ Factory methods provide a convenient way to create RegulatoryExtension models:
 Benefits:
 - Less boilerplate code (1-2 lines instead of 5-6)
 - Clear, readable API
+- Lightweight by default (reframed preferred)
 - Flexible arguments for different file formats
 - Works seamlessly with all analysis methods
 
@@ -194,8 +207,11 @@ Compare:
   regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, 'reg.csv', sep=',')
   legacy_model = read_model(metabolic_reader, regulatory_reader)
 
-  # New way (1 line)
+  # New way (1 line, uses reframed by default)
   model = RegulatoryExtension.from_sbml('model.xml', 'reg.csv', sep=',')
+
+  # Or explicitly use COBRApy if needed
+  model = RegulatoryExtension.from_sbml('model.xml', 'reg.csv', sep=',', flavor='cobra')
 """)
 
 print("=" * 80)

@@ -86,7 +86,7 @@ class RegulatoryExtension:
                   metabolic_path: str,
                   regulatory_path: str = None,
                   regulatory_format: str = 'csv',
-                  flavor: str = 'cobra',
+                  flavor: str = 'reframed',
                   identifier: str = None,
                   **regulatory_kwargs) -> 'RegulatoryExtension':
         """
@@ -97,14 +97,15 @@ class RegulatoryExtension:
         :param metabolic_path: Path to SBML metabolic model file
         :param regulatory_path: Optional path to regulatory network file
         :param regulatory_format: Format of regulatory file ('csv', 'sbml', 'json'). Default: 'csv'
-        :param flavor: Metabolic model library ('cobra' or 'reframed'). Default: 'cobra'
+        :param flavor: Metabolic model library ('reframed' or 'cobra'). Default: 'reframed'
+                       reframed is preferred as it is more lightweight than COBRApy.
         :param identifier: Optional identifier for the model
         :param regulatory_kwargs: Additional arguments for regulatory network reader
                                    (e.g., sep=',', id_col=0, rule_col=2 for CSV)
         :return: RegulatoryExtension instance
 
         Example:
-            >>> # Load metabolic model only
+            >>> # Load metabolic model only (uses reframed by default)
             >>> model = RegulatoryExtension.from_sbml('ecoli_core.xml')
             >>>
             >>> # Load with regulatory network from CSV
@@ -117,6 +118,9 @@ class RegulatoryExtension:
             ...     rule_col=2
             ... )
             >>>
+            >>> # Use COBRApy instead if needed
+            >>> model = RegulatoryExtension.from_sbml('ecoli_core.xml', flavor='cobra')
+            >>>
             >>> # Use in analysis
             >>> from mewpy.germ.analysis import RFBA
             >>> rfba = RFBA(model)
@@ -124,15 +128,15 @@ class RegulatoryExtension:
         """
         from mewpy.simulation import get_simulator
 
-        # Load metabolic model
-        if flavor == 'cobra':
-            import cobra
-            metabolic_model = cobra.io.read_sbml_model(metabolic_path)
-        elif flavor == 'reframed':
+        # Load metabolic model (prefer reframed - more lightweight)
+        if flavor == 'reframed':
             from reframed.io.sbml import load_cbmodel
             metabolic_model = load_cbmodel(metabolic_path)
+        elif flavor == 'cobra':
+            import cobra
+            metabolic_model = cobra.io.read_sbml_model(metabolic_path)
         else:
-            raise ValueError(f"Unknown flavor: {flavor}. Use 'cobra' or 'reframed'")
+            raise ValueError(f"Unknown flavor: {flavor}. Use 'reframed' (default, lightweight) or 'cobra'")
 
         # Create simulator
         simulator = get_simulator(metabolic_model)

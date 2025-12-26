@@ -25,12 +25,13 @@ The following simulation methods are available in **`mewpy.germ.analysis`** modu
 
 ## Architecture Overview
 
-MEWpy's GERM module uses a clean architecture that integrates regulatory networks with external metabolic models (COBRApy or reframed). This design provides:
+MEWpy's GERM module uses a clean architecture that integrates regulatory networks with external metabolic models (reframed or COBRApy). This design provides:
 
-- **No data duplication**: Metabolic data stays in external simulators (COBRApy/reframed)
+- **No data duplication**: Metabolic data stays in external simulators (reframed/COBRApy)
 - **Clean separation**: GERM handles regulatory logic only
-- **Flexibility**: Works with any COBRApy or reframed model
+- **Flexibility**: Works with any reframed or COBRApy model
 - **Performance**: Simplified code paths, no synchronization overhead
+- **Lightweight**: Uses reframed by default (more lightweight than COBRApy)
 
 ### Model Types
 
@@ -54,7 +55,7 @@ For advanced use cases, use factory methods to create models easily:
 ```python
 from mewpy.germ.models import RegulatoryExtension
 
-# Load metabolic model only
+# Load metabolic model only (uses reframed by default - lightweight)
 model = RegulatoryExtension.from_sbml('ecoli_core.xml')
 
 # Load with regulatory network from CSV
@@ -63,6 +64,9 @@ model = RegulatoryExtension.from_sbml(
     'ecoli_core_trn.csv',
     sep=','
 )
+
+# Use COBRApy instead if needed
+model = RegulatoryExtension.from_sbml('ecoli_core.xml', flavor='cobra')
 ```
 
 **Option B: From COBRApy/reframed model**
