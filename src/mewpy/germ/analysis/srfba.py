@@ -6,6 +6,7 @@ No backwards compatibility with legacy GERM models.
 """
 from typing import Union, Dict, TYPE_CHECKING
 from warnings import warn
+import logging
 
 from mewpy.util.constants import ModelConstants
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
@@ -16,6 +17,9 @@ from mewpy.solvers.solver import VarType
 
 if TYPE_CHECKING:
     from mewpy.germ.variables import Interaction
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 
 class SRFBA(_RegulatoryAnalysisBase):
@@ -156,10 +160,13 @@ class SRFBA(_RegulatoryAnalysisBase):
         # Add constraints for the GPR expression if it's properly parsed
         try:
             self._linearize_expression(boolean_variable, gpr.symbolic)
-        except Exception:
-            # If linearization fails, just skip this constraint
+        except Exception as e:
+            # If linearization fails, skip this constraint but log warning
             # The reaction will still work with just the flux bounds
-            pass
+            logger.warning(
+                f"Failed to linearize GPR for reaction '{rxn_id}': {e}. "
+                f"Reaction will be constrained by flux bounds only."
+            )
 
     def _add_interaction_constraint(self, interaction: 'Interaction'):
         """
@@ -190,9 +197,12 @@ class SRFBA(_RegulatoryAnalysisBase):
 
             # Add constraints for the regulatory expression
             self._linearize_expression(target_id, symbolic)
-        except Exception:
-            # If constraint building fails for this interaction, skip it
-            pass
+        except Exception as e:
+            # If constraint building fails for this interaction, skip it but log warning
+            logger.warning(
+                f"Failed to build constraint for interaction targeting '{interaction.target.id}': {e}. "
+                f"This regulatory interaction will be skipped."
+            )
 
     def _linearize_expression(self, boolean_variable: str, symbolic):
         """

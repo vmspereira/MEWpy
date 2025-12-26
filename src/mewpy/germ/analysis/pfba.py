@@ -144,33 +144,13 @@ class pFBA(FBA):
             minimize=self._minimize,
             **solver_kwargs_copy
         )
-        
-        # Handle infeasible solutions by providing a default solution with zero values
-        if solution.status == Status.INFEASIBLE:
-            # Get all reactions from the model to create zero solution
-            if hasattr(self.model, 'simulator'):
-                simulator = self.model.simulator
-            else:
-                from mewpy.simulation import get_simulator
-                try:
-                    simulator = get_simulator(self.model)
-                except:
-                    simulator = self.model
-            zero_values = {r_id: 0.0 for r_id in simulator.reactions}
-            solution = Solution(
-                status=Status.OPTIMAL,
-                fobj=0.0,
-                values=zero_values,
-                method="pFBA",
-                model=self.model
-            )
-        else:
-            # Filter out auxiliary variables from solution
-            if hasattr(solution, 'values') and solution.values:
-                # Keep only original reaction variables (not _pos/_neg auxiliary ones)
-                filtered_values = {k: v for k, v in solution.values.items() 
-                                 if not ('_pos' in k or '_neg' in k)}
-                # Create a new solution with filtered values
-                solution.values = filtered_values
-        
+
+        # Filter out auxiliary variables from solution if present
+        if hasattr(solution, 'values') and solution.values:
+            # Keep only original reaction variables (not _pos/_neg auxiliary ones)
+            filtered_values = {k: v for k, v in solution.values.items()
+                             if not ('_pos' in k or '_neg' in k)}
+            # Create a new solution with filtered values
+            solution.values = filtered_values
+
         return solution

@@ -276,12 +276,29 @@ class RFBA(_RegulatoryAnalysisBase):
         """
         Update regulatory state based on FBA solution.
 
-        This examines reaction fluxes and metabolite concentrations
-        to determine new regulator states.
+        **IMPORTANT HEURISTIC:** The original RFBA paper (Covert et al. 2004) does not
+        specify exact rules for updating regulator states in dynamic simulations. This
+        implementation uses a simple heuristic:
+
+        - If regulator is a reaction: active (1.0) if |flux| > tolerance, inactive (0.0) otherwise
+        - If regulator is a metabolite: state unchanged (concentration-based updates not implemented)
+
+        This heuristic may not match all biological systems. For custom state update logic,
+        consider implementing a custom analysis class that overrides this method.
 
         :param current_state: Current regulatory state
-        :param solution: FBA solution
+        :param solution: FBA solution from current iteration
         :return: Updated regulatory state
+
+        **Algorithm:**
+        1. For each regulator in current state:
+           - If regulator is a reaction: check if flux > tolerance
+           - If regulator is a metabolite: keep current state (no update)
+        2. Return updated state dictionary
+
+        **Note:** This is a heuristic approximation. For more accurate dynamic regulation,
+        users should implement custom state update functions based on their specific model
+        and experimental data.
         """
         new_state = current_state.copy()
 
@@ -290,9 +307,7 @@ class RFBA(_RegulatoryAnalysisBase):
             return new_state
 
         # Update regulator states based on solution
-        # Note: This is model-specific logic that may need customization
-        # For now, we use a simple approach based on flux values
-
+        # HEURISTIC: Regulator active if corresponding reaction has non-zero flux
         for reg_id in new_state.keys():
             # Check if regulator is a reaction or metabolite
             if reg_id in self.model.reactions:
@@ -301,8 +316,8 @@ class RFBA(_RegulatoryAnalysisBase):
                 new_state[reg_id] = 1.0 if abs(flux) > ModelConstants.TOLERANCE else 0.0
 
             elif reg_id in self.model.metabolites:
-                # Regulator is a metabolite - could use concentration if available
-                # For now, keep current state
+                # Regulator is a metabolite - concentration-based updates not implemented
+                # Keep current state unchanged
                 pass
 
         return new_state
