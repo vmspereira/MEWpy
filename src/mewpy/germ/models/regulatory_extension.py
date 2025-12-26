@@ -524,7 +524,7 @@ class RegulatoryExtension:
         for interaction in self._interactions.values():
             yield interaction
 
-    def yield_reactions(self) -> Generator:
+    def yield_reactions(self) -> Generator[str, None, None]:
         """
         Yield reactions from simulator (for legacy compatibility).
 
@@ -535,7 +535,7 @@ class RegulatoryExtension:
         for rxn_id in self.reactions:
             yield rxn_id
 
-    def yield_metabolites(self) -> Generator:
+    def yield_metabolites(self) -> Generator[str, None, None]:
         """
         Yield metabolites from simulator (for legacy compatibility).
 
@@ -545,7 +545,7 @@ class RegulatoryExtension:
         for met_id in self.metabolites:
             yield met_id
 
-    def yield_genes(self) -> Generator:
+    def yield_genes(self) -> Generator[str, None, None]:
         """
         Yield genes from simulator (for legacy compatibility).
 

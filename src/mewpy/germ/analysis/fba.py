@@ -48,6 +48,8 @@ class _RegulatoryAnalysisBase:
         :param solver: A Solver instance or solver name. If None, a new solver is instantiated.
         :param build: Whether to build the problem upon instantiation. Default: False
         :param attach: Whether to attach the problem to the model upon instantiation. Default: False
+                       **Note:** This parameter is kept for backwards compatibility but is not used.
+                       In the new architecture, analysis methods do not attach to models via observer pattern.
         """
         self.model = model
         self.solver_name = solver
@@ -60,9 +62,9 @@ class _RegulatoryAnalysisBase:
         if build:
             self.build()
 
-        if attach:
-            # TODO: Implement attach functionality if needed
-            pass
+        # attach parameter is kept for backwards compatibility but is unused
+        # In the new architecture with RegulatoryExtension, analysis methods do not
+        # attach to models via observer pattern - they access data on-demand
 
     # Backwards compatibility helpers (work with both RegulatoryExtension and legacy models)
     def _has_regulatory_network(self) -> bool:
