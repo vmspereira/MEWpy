@@ -373,7 +373,7 @@ class CplexSolver(Solver):
                         get_values = list(get_values)
                         values = dict(zip(get_values, problem.solution.get_values(get_values)))
                     except Exception:
-                        values = dict(zip(self.var_ids, problem.solution.get_values()))
+                        values = dict(zip(self.var_ids, problem.solution.get_values(self.var_ids)))
 
                 if shadow_prices:
                     s_prices = dict(zip(self.constr_ids, problem.solution.get_dual_values(self.constr_ids)))
