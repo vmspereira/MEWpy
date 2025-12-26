@@ -78,6 +78,190 @@ class RegulatoryExtension:
             self._load_regulatory_network(regulatory_network)
 
     # =========================================================================
+    # Factory Methods
+    # =========================================================================
+
+    @classmethod
+    def from_sbml(cls,
+                  metabolic_path: str,
+                  regulatory_path: str = None,
+                  regulatory_format: str = 'csv',
+                  flavor: str = 'cobra',
+                  identifier: str = None,
+                  **regulatory_kwargs) -> 'RegulatoryExtension':
+        """
+        Create RegulatoryExtension from SBML metabolic model and optional regulatory network.
+
+        This is the most convenient way to create an integrated model from files.
+
+        :param metabolic_path: Path to SBML metabolic model file
+        :param regulatory_path: Optional path to regulatory network file
+        :param regulatory_format: Format of regulatory file ('csv', 'sbml', 'json'). Default: 'csv'
+        :param flavor: Metabolic model library ('cobra' or 'reframed'). Default: 'cobra'
+        :param identifier: Optional identifier for the model
+        :param regulatory_kwargs: Additional arguments for regulatory network reader
+                                   (e.g., sep=',', id_col=0, rule_col=2 for CSV)
+        :return: RegulatoryExtension instance
+
+        Example:
+            >>> # Load metabolic model only
+            >>> model = RegulatoryExtension.from_sbml('ecoli_core.xml')
+            >>>
+            >>> # Load with regulatory network from CSV
+            >>> model = RegulatoryExtension.from_sbml(
+            ...     'ecoli_core.xml',
+            ...     'ecoli_core_trn.csv',
+            ...     regulatory_format='csv',
+            ...     sep=',',
+            ...     id_col=0,
+            ...     rule_col=2
+            ... )
+            >>>
+            >>> # Use in analysis
+            >>> from mewpy.germ.analysis import RFBA
+            >>> rfba = RFBA(model)
+            >>> solution = rfba.optimize()
+        """
+        from mewpy.simulation import get_simulator
+
+        # Load metabolic model
+        if flavor == 'cobra':
+            import cobra
+            metabolic_model = cobra.io.read_sbml_model(metabolic_path)
+        elif flavor == 'reframed':
+            from reframed.io.sbml import load_cbmodel
+            metabolic_model = load_cbmodel(metabolic_path)
+        else:
+            raise ValueError(f"Unknown flavor: {flavor}. Use 'cobra' or 'reframed'")
+
+        # Create simulator
+        simulator = get_simulator(metabolic_model)
+
+        # Load regulatory network if provided
+        regulatory_network = None
+        if regulatory_path:
+            regulatory_network = cls._load_regulatory_from_file(
+                regulatory_path,
+                regulatory_format,
+                **regulatory_kwargs
+            )
+
+        return cls(simulator, regulatory_network, identifier)
+
+    @classmethod
+    def from_model(cls,
+                   metabolic_model,
+                   regulatory_path: str = None,
+                   regulatory_format: str = 'csv',
+                   identifier: str = None,
+                   **regulatory_kwargs) -> 'RegulatoryExtension':
+        """
+        Create RegulatoryExtension from COBRApy/reframed model and optional regulatory network.
+
+        :param metabolic_model: COBRApy Model or reframed CBModel instance
+        :param regulatory_path: Optional path to regulatory network file
+        :param regulatory_format: Format of regulatory file ('csv', 'sbml', 'json'). Default: 'csv'
+        :param identifier: Optional identifier for the model
+        :param regulatory_kwargs: Additional arguments for regulatory network reader
+        :return: RegulatoryExtension instance
+
+        Example:
+            >>> import cobra
+            >>> cobra_model = cobra.io.read_sbml_model('ecoli_core.xml')
+            >>>
+            >>> # Create with regulatory network
+            >>> model = RegulatoryExtension.from_model(
+            ...     cobra_model,
+            ...     'ecoli_core_trn.csv',
+            ...     sep=','
+            ... )
+        """
+        from mewpy.simulation import get_simulator
+
+        # Create simulator from model
+        simulator = get_simulator(metabolic_model)
+
+        # Load regulatory network if provided
+        regulatory_network = None
+        if regulatory_path:
+            regulatory_network = cls._load_regulatory_from_file(
+                regulatory_path,
+                regulatory_format,
+                **regulatory_kwargs
+            )
+
+        return cls(simulator, regulatory_network, identifier)
+
+    @classmethod
+    def from_json(cls,
+                  json_path: str,
+                  identifier: str = None) -> 'RegulatoryExtension':
+        """
+        Create RegulatoryExtension from JSON file containing both metabolic and regulatory data.
+
+        :param json_path: Path to JSON file
+        :param identifier: Optional identifier for the model
+        :return: RegulatoryExtension instance
+
+        Example:
+            >>> model = RegulatoryExtension.from_json('integrated_model.json')
+        """
+        from mewpy.io import Reader, Engines
+
+        # Use existing JSON reader
+        reader = Reader(Engines.JSON, json_path)
+        from mewpy.io import read_model
+
+        # Read model using existing infrastructure
+        integrated_model = read_model(reader, warnings=False)
+
+        # Extract simulator and regulatory network
+        from mewpy.simulation import get_simulator
+        simulator = get_simulator(integrated_model)
+
+        # Create RegulatoryExtension with regulatory components
+        from mewpy.germ.models.regulatory import RegulatoryModel
+        regulatory_network = RegulatoryModel(
+            identifier='regulatory',
+            interactions=integrated_model.interactions if hasattr(integrated_model, 'interactions') else {},
+            regulators=integrated_model.regulators if hasattr(integrated_model, 'regulators') else {},
+            targets=integrated_model.targets if hasattr(integrated_model, 'targets') else {}
+        )
+
+        return cls(simulator, regulatory_network, identifier)
+
+    @staticmethod
+    def _load_regulatory_from_file(file_path: str,
+                                    file_format: str,
+                                    **kwargs):
+        """
+        Load regulatory network from file.
+
+        :param file_path: Path to regulatory network file
+        :param file_format: File format ('csv', 'sbml', 'json')
+        :param kwargs: Additional arguments for the reader
+        :return: RegulatoryModel instance
+        """
+        from mewpy.io import Reader, Engines, read_model
+
+        # Determine engine based on format
+        if file_format.lower() == 'csv':
+            # Default to BooleanRegulatoryCSV
+            engine = Engines.BooleanRegulatoryCSV
+        elif file_format.lower() == 'sbml':
+            engine = Engines.RegulatorySBML
+        elif file_format.lower() == 'json':
+            engine = Engines.JSON
+        else:
+            raise ValueError(f"Unknown regulatory format: {file_format}. Use 'csv', 'sbml', or 'json'")
+
+        # Create reader and load model
+        reader = Reader(engine, file_path, **kwargs)
+        regulatory_model = read_model(reader, warnings=False)
+
+        return regulatory_model
+
+    # =========================================================================
     # Properties
     # =========================================================================
 

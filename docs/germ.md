@@ -48,19 +48,50 @@ model = read_model(gem_reader, trn_reader)  # Returns integrated model
 ```
 
 #### 2. RegulatoryExtension (Clean Architecture)
-For advanced use cases, wrap external simulators directly:
+For advanced use cases, use factory methods to create models easily:
 
+**Option A: Load from files (simplest)**
+```python
+from mewpy.germ.models import RegulatoryExtension
+
+# Load metabolic model only
+model = RegulatoryExtension.from_sbml('ecoli_core.xml')
+
+# Load with regulatory network from CSV
+model = RegulatoryExtension.from_sbml(
+    'ecoli_core.xml',
+    'ecoli_core_trn.csv',
+    sep=','
+)
+```
+
+**Option B: From COBRApy/reframed model**
+```python
+import cobra
+from mewpy.germ.models import RegulatoryExtension
+
+cobra_model = cobra.io.read_sbml_model('ecoli_core.xml')
+model = RegulatoryExtension.from_model(
+    cobra_model,
+    'ecoli_core_trn.csv',
+    sep=','
+)
+```
+
+**Option C: Manual construction (for full control)**
 ```python
 import cobra
 from mewpy.simulation import get_simulator
-from mewpy.germ.models import RegulatoryExtension, RegulatoryModel
+from mewpy.germ.models import RegulatoryExtension
+from mewpy.io import Reader, Engines, read_model
 
-# Load metabolic model from COBRApy
+# Load metabolic model
 cobra_model = cobra.io.read_sbml_model('model.xml')
 simulator = get_simulator(cobra_model)
 
 # Load regulatory network
-regulatory = RegulatoryModel(...)
+regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, 'regulatory.csv', sep=',')
+regulatory = read_model(regulatory_reader, warnings=False)
 
 # Create integrated model
 model = RegulatoryExtension(simulator, regulatory)
