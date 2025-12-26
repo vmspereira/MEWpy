@@ -97,7 +97,7 @@ def _trim_metabolite_prefix(sim, met_id: str) -> str:
     Returns:
         Trimmed metabolite ID (first part after prefix)
     """
-    return met_id[len(sim._m_prefix):].split("_")[0]
+    return met_id[len(sim._m_prefix) :].split("_")[0]
 
 
 def sc_score(
@@ -107,7 +107,7 @@ def sc_score(
     n_solutions: int = DEFAULT_N_SOLUTIONS,
     verbose: bool = True,
     abstol: float = DEFAULT_ABS_TOL,
-    use_pool: bool = True
+    use_pool: bool = True,
 ) -> Optional[Dict[str, Optional[Dict[str, float]]]]:
     """
     Calculate frequency of community species dependency on each other
@@ -311,9 +311,7 @@ def mu_score(
 
 
 def mp_score(
-    community: CommunityModel,
-    environment: Optional[Environment] = None,
-    abstol: float = 1e-6
+    community: CommunityModel, environment: Optional[Environment] = None, abstol: float = 1e-6
 ) -> Dict[str, Dict[str, int]]:
     """
     Discover metabolites which species can produce in community

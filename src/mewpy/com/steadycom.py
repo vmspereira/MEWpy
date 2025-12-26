@@ -184,7 +184,7 @@ def build_problem(community, growth=1, bigM=None):
             "This could lead to incorrect abundance predictions or infeasibility. "
             "Consider using a larger value or automatic calculation (bigM=None).",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
     elif bigM > 1e7:
         warn(
@@ -192,7 +192,7 @@ def build_problem(community, growth=1, bigM=None):
             "This could lead to inaccurate solutions. "
             "Consider using a smaller value or automatic calculation (bigM=None).",
             UserWarning,
-            stacklevel=2
+            stacklevel=2,
         )
 
     solver = solver_instance()
@@ -262,8 +262,17 @@ def build_problem(community, growth=1, bigM=None):
     return solver
 
 
-def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30,
-                  abs_tol=1e-6, rel_tol=1e-4, constraints=None, raise_on_fail=False):
+def binary_search(
+    solver,
+    objective,
+    obj_frac=1,
+    minimize=False,
+    max_iters=30,
+    abs_tol=1e-6,
+    rel_tol=1e-4,
+    constraints=None,
+    raise_on_fail=False,
+):
     """
     Binary search to find maximum community growth rate.
 
@@ -322,8 +331,10 @@ def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30,
 
     # Check if we found any feasible solution
     if last_feasible == 0:
-        raise ValueError("Community has no viable growth rate (all attempts infeasible). "
-                         "Check that organisms can grow and have compatible metabolic capabilities.")
+        raise ValueError(
+            "Community has no viable growth rate (all attempts infeasible). "
+            "Check that organisms can grow and have compatible metabolic capabilities."
+        )
 
     # Final solve at optimal growth rate
     if feasible:
@@ -334,11 +345,13 @@ def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30,
 
     # Handle non-convergence
     if not converged:
-        msg = (f"Binary search did not converge in {max_iters} iterations. "
-               f"Last feasible growth: {last_feasible:.6f}, "
-               f"difference: {abs(diff):.2e}, "
-               f"relative difference: {abs(diff)/last_feasible if last_feasible > 0 else 'N/A'}. "
-               f"Consider increasing max_iters or adjusting tolerance.")
+        msg = (
+            f"Binary search did not converge in {max_iters} iterations. "
+            f"Last feasible growth: {last_feasible:.6f}, "
+            f"difference: {abs(diff):.2e}, "
+            f"relative difference: {abs(diff)/last_feasible if last_feasible > 0 else 'N/A'}. "
+            f"Consider increasing max_iters or adjusting tolerance."
+        )
         if raise_on_fail:
             raise RuntimeError(msg)
         else:

@@ -116,7 +116,7 @@ class CommunityModel:
                 "This parameter will be removed in a future version. "
                 "Set balance_exchange=False to suppress this warning.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
 
         if len(self.model_ids) < len(models):
@@ -184,7 +184,7 @@ class CommunityModel:
                 "balance_exchange=True is deprecated and may violate conservation of mass. "
                 "This parameter will be removed in a future version.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
         self._balance_exchange = value
         if value:
@@ -220,8 +220,9 @@ class CommunityModel:
         # Validate organism IDs
         invalid_orgs = set(abundances.keys()) - set(self.organisms.keys())
         if invalid_orgs:
-            raise ValueError(f"Unknown organism IDs: {invalid_orgs}. "
-                             f"Valid organisms are: {set(self.organisms.keys())}")
+            raise ValueError(
+                f"Unknown organism IDs: {invalid_orgs}. " f"Valid organisms are: {set(self.organisms.keys())}"
+            )
         if any([x < 0 for x in abundances.values()]):
             raise ValueError("All abundance value need to be non negative.")
         if sum(list(abundances.values())) == 0:
