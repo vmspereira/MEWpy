@@ -19,17 +19,20 @@
 Problems targeting modifications of reaction fluxes. The modifications are
 implemented changing the reaction bounds.
 
-Author: Vitor Pereira 
+Author: Vitor Pereira
 ##############################################################################
 """
+from typing import TYPE_CHECKING, List, Union
+
 import numpy as np
-from .problem import AbstractKOProblem, AbstractOUProblem
+
 from ..simulation import SStatus
-from typing import Union, TYPE_CHECKING, List
+from .problem import AbstractKOProblem, AbstractOUProblem
 
 if TYPE_CHECKING:
     from cobra.core import Model
     from reframed.core.cbmodel import CBModel
+
     from mewpy.optimization.evaluation import EvaluationFunction
 
 
@@ -52,12 +55,8 @@ class RKOProblem(AbstractKOProblem):
 
     """
 
-    def __init__(self,
-                 model: Union["Model", "CBModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
-        super(RKOProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
+    def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
+        super(RKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
     def _build_target_list(self):
         """Default modification target builder.
@@ -96,12 +95,8 @@ class ROUProblem(AbstractOUProblem):
     :param boolean twostep: If deletions should be applied before identifiying reference flux values.
     """
 
-    def __init__(self,
-                 model: Union["Model", "CBModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
-        super(ROUProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
+    def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
+        super(ROUProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
     def _build_target_list(self):
         print("Building modification target list.")
@@ -124,7 +119,7 @@ class ROUProblem(AbstractOUProblem):
         if self.twostep:
             try:
                 deletions = {rxn: 0 for rxn, lv in candidate.items() if lv == 0}
-                sr = self.simulator.simulate(constraints=deletions, method='pFBA')
+                sr = self.simulator.simulate(constraints=deletions, method="pFBA")
                 if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                     reference = sr.fluxes
             except Exception as e:
@@ -165,15 +160,10 @@ class MediumProblem(AbstractOUProblem):
 
     """
 
-    def __init__(self,
-                 model: Union["Model", "CBModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
-        super(MediumProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
-        self.levels = kwargs.get('levels', np.linspace(0, 10, 101))
-        self.candidate_max_size = kwargs.get(
-            'candidate_max_size', len(self.target_list))
+    def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
+        super(MediumProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
+        self.levels = kwargs.get("levels", np.linspace(0, 10, 101))
+        self.candidate_max_size = kwargs.get("candidate_max_size", len(self.target_list))
         self.simulator._allow_env_changes = True
 
     def _build_target_list(self):
@@ -190,6 +180,7 @@ class MediumProblem(AbstractOUProblem):
         """
         constraints = dict()
         from mewpy.util.constants import ModelConstants
+
         for rxn in self.target_list:
             if rxn in candidate.keys():
                 lv = candidate[rxn]

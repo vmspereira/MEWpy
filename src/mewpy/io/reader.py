@@ -1,14 +1,16 @@
 from pathlib import Path
-from typing import Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Type, Union
 
 from .builder import Builder
 from .engines import Engines
 
 if TYPE_CHECKING:
-    from mewpy.io.engines.engine import Engine
     from io import TextIOWrapper
+
     from cobra import Model as Cobra_Model
     from reframed import CBModel as Reframed_Model
+
+    from mewpy.io.engines.engine import Engine
 
 
 class Reader(Builder):
@@ -31,21 +33,23 @@ class Reader(Builder):
     For reading files in stages, multiple readers must be created and the director must be used to merge all the
     readers into a single model
     """
-    def __init__(self,
-                 engine: Union[Type['Engine'], Engines],
-                 io: Union[str, Path, 'TextIOWrapper', 'Cobra_Model', 'Reframed_Model'],
-                 sep: str = ',',
-                 id_col: int = 0,
-                 target_col: int = 0,
-                 regulator_col: int = 1,
-                 rule_col: int = 1,
-                 co_activating_col: int = 1,
-                 co_repressing_col: int = 2,
-                 aliases_cols: Union[int, tuple, list] = None,
-                 header: Union[None, int] = None,
-                 filter_nan: bool = False,
-                 config: dict = None):
 
+    def __init__(
+        self,
+        engine: Union[Type["Engine"], Engines],
+        io: Union[str, Path, "TextIOWrapper", "Cobra_Model", "Reframed_Model"],
+        sep: str = ",",
+        id_col: int = 0,
+        target_col: int = 0,
+        regulator_col: int = 1,
+        rule_col: int = 1,
+        co_activating_col: int = 1,
+        co_repressing_col: int = 2,
+        aliases_cols: Union[int, tuple, list] = None,
+        header: Union[None, int] = None,
+        filter_nan: bool = False,
+        config: dict = None,
+    ):
         """
         Read a given file type (or model type) into a GERM model (metabolic, regulatory, regulatory-metabolic).
 
@@ -71,10 +75,10 @@ class Reader(Builder):
         :param config: dictionary with additional configurations
         """
         if not engine:
-            raise ValueError('Nothing to read. Please provide an engine')
+            raise ValueError("Nothing to read. Please provide an engine")
 
         if not io:
-            raise ValueError('Nothing to read. Please provide a path, file handler or model')
+            raise ValueError("Nothing to read. Please provide a path, file handler or model")
 
         if isinstance(io, Path):
             io = str(io)
@@ -86,7 +90,7 @@ class Reader(Builder):
             engine = Engines.get(old_engine)
 
             if engine is None:
-                raise ValueError(f'{old_engine} is not supported. See available engines at {Engines}')
+                raise ValueError(f"{old_engine} is not supported. See available engines at {Engines}")
 
         engine = engine.value
 
@@ -96,15 +100,17 @@ class Reader(Builder):
         if not config:
             config = {}
 
-        params_config = dict(sep=sep,
-                             id_col=id_col,
-                             target_col=target_col,
-                             rule_col=rule_col,
-                             co_activating_col=co_activating_col,
-                             co_repressing_col=co_repressing_col,
-                             aliases_cols=aliases_cols,
-                             header=header,
-                             filter_nan=filter_nan)
+        params_config = dict(
+            sep=sep,
+            id_col=id_col,
+            target_col=target_col,
+            rule_col=rule_col,
+            co_activating_col=co_activating_col,
+            co_repressing_col=co_repressing_col,
+            aliases_cols=aliases_cols,
+            header=header,
+            filter_nan=filter_nan,
+        )
 
         config.update(params_config)
 

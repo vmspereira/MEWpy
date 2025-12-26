@@ -21,35 +21,35 @@ Author: Vitor Pereira
 Contributors: Mariana Pereira
 ##############################################################################
 """
-from mewpy.model.kinetic import ODEModel
-from mewpy.solvers import KineticConfigurations
-from mewpy.simulation import get_simulator, Simulator
-from mewpy.simulation.kinetic import KineticSimulation
-from mewpy.solvers import solver_instance
-from mewpy.util.utilities import AttrDict
-from math import inf
-from collections import OrderedDict
-import warnings
-from warnings import warn
-import pandas as pd
-import numpy as np
-from numpy.random import normal
 import itertools
+import warnings
+from collections import OrderedDict
+from math import inf
+from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+from warnings import warn
+
+import numpy as np
+import pandas as pd
+from numpy.random import normal
 from tqdm import tqdm
 
-from typing import Tuple, Dict, Union, List, TYPE_CHECKING
+from mewpy.model.kinetic import ODEModel
+from mewpy.simulation import Simulator, get_simulator
+from mewpy.simulation.kinetic import KineticSimulation
+from mewpy.solvers import KineticConfigurations, solver_instance
+from mewpy.util.utilities import AttrDict
 
 if TYPE_CHECKING:
     from cobra import Model
     from reframed import CBModel
 
 
-warnings.filterwarnings('ignore', 'Timeout')
+warnings.filterwarnings("ignore", "Timeout")
 
 
 def _partial_lMOMA(model, reactions: dict, biomass: str, constraints=None):
     """
-    Run a (linear version of) Minimization Of Metabolic Adjustment (lMOMA) 
+    Run a (linear version of) Minimization Of Metabolic Adjustment (lMOMA)
     simulation using fluxes from the Kinetic Simulation:
 
     :param model: a COBRAPY or REFRAMED model, or an instance of Simulator
@@ -75,30 +75,30 @@ def _partial_lMOMA(model, reactions: dict, biomass: str, constraints=None):
     bio_ref = simul.simulate({biomass: 1}, constraints=constraints, slim=True)
 
     for r_id in _reactions.keys():
-        d_pos, d_neg = r_id + '_d+', r_id + '_d-'
+        d_pos, d_neg = r_id + "_d+", r_id + "_d-"
         solver.add_variable(d_pos, 0, inf, update=False)
         solver.add_variable(d_neg, 0, inf, update=False)
         solver.update()
 
-    bio_plus = biomass + '_d+'
-    bio_minus = biomass + '_d-'
+    bio_plus = biomass + "_d+"
+    bio_minus = biomass + "_d-"
     solver.add_variable(bio_plus, 0, inf, update=False)
     solver.add_variable(bio_minus, 0, inf, update=False)
     solver.update()
 
     for r_id in _reactions.keys():
-        d_pos, d_neg = r_id + '_d+', r_id + '_d-'
-        solver.add_constraint('c' + d_pos, {r_id: -1, d_pos: 1}, '>', -_reactions[r_id], update=False)
-        solver.add_constraint('c' + d_neg, {r_id: 1, d_neg: 1}, '>', _reactions[r_id], update=False)
+        d_pos, d_neg = r_id + "_d+", r_id + "_d-"
+        solver.add_constraint("c" + d_pos, {r_id: -1, d_pos: 1}, ">", -_reactions[r_id], update=False)
+        solver.add_constraint("c" + d_neg, {r_id: 1, d_neg: 1}, ">", _reactions[r_id], update=False)
         solver.update()
 
-    solver.add_constraint('c' + bio_plus, {biomass: -1, bio_plus: 1}, '>', -bio_ref, update=False)
-    solver.add_constraint('c' + bio_minus, {biomass: 1, bio_minus: 1}, '>', bio_ref, update=False)
+    solver.add_constraint("c" + bio_plus, {biomass: -1, bio_plus: 1}, ">", -bio_ref, update=False)
+    solver.add_constraint("c" + bio_minus, {biomass: 1, bio_minus: 1}, ">", bio_ref, update=False)
     solver.update()
 
     objective = dict()
     for r_id in _reactions.keys():
-        d_pos, d_neg = r_id + '_d+', r_id + '_d-'
+        d_pos, d_neg = r_id + "_d+", r_id + "_d-"
         objective[d_pos] = 1
         objective[d_neg] = 1
 
@@ -114,21 +114,23 @@ def sample(vmaxs: Dict[str, float], sigma: float = 0.1):
     k = vmaxs.keys()
     f = np.exp(normal(0, sigma, len(vmaxs)))
     v = np.array(list(vmaxs.values()))
-    r = list(v*f)
+    r = list(v * f)
     return dict(zip(k, r))
 
 
 class HybridSimulation:
 
-    def __init__(self,
-                 kmodel: ODEModel,
-                 cbmodel: Union[Simulator, "Model", "CBModel"],
-                 gDW: float = 564.0,
-                 D: float = 0.278e-4,
-                 envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
-                 mapping: Dict[str, Tuple[str, int]] = dict(),
-                 t_points: List[Union[float, int]] = [0, 1e9],
-                 timeout: int = KineticConfigurations.SOLVER_TIMEOUT):
+    def __init__(
+        self,
+        kmodel: ODEModel,
+        cbmodel: Union[Simulator, "Model", "CBModel"],
+        gDW: float = 564.0,
+        D: float = 0.278e-4,
+        envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
+        mapping: Dict[str, Tuple[str, int]] = dict(),
+        t_points: List[Union[float, int]] = [0, 1e9],
+        timeout: int = KineticConfigurations.SOLVER_TIMEOUT,
+    ):
         """_summary_
 
         :param kmodel: The kinetic model
@@ -149,7 +151,7 @@ class HybridSimulation:
         """
 
         if not isinstance(kmodel, ODEModel):
-            raise ValueError('model is not an instance of ODEModel.')
+            raise ValueError("model is not an instance of ODEModel.")
 
         if not isinstance(cbmodel, Simulator):
             self.sim = get_simulator(cbmodel, envcond=envcond)
@@ -194,7 +196,7 @@ class HybridSimulation:
         return True
 
     def unit_conv(self, value):
-        return value*self.D*3600/self.gDW
+        return value * self.D * 3600 / self.gDW
 
     def mapping_conversion(self, fluxes):
         """
@@ -209,11 +211,11 @@ class HybridSimulation:
         for k, value in fluxes.items():
             if k in mapping.keys():
                 v = mapping[k]
-                flxs[v[0]] = self.unit_conv(v[1]*value)
+                flxs[v[0]] = self.unit_conv(v[1] * value)
         if len(flxs) != 0:
             return flxs
         else:
-            raise warn('Mapping not done properly, please redo mapping')
+            raise warn("Mapping not done properly, please redo mapping")
 
     def mapping_bounds(self, lbs, ubs):
         """
@@ -230,13 +232,13 @@ class HybridSimulation:
         for k, value in lbs.items():
             if k in mapping.keys():
                 v = mapping[k]
-                a = self.unit_conv(v[1]*value)
-                b = self.unit_conv(v[1]*ubs[k])
+                a = self.unit_conv(v[1] * value)
+                b = self.unit_conv(v[1] * ubs[k])
                 flxs[v[0]] = (a, b) if a < b else (b, a)
         if len(flxs) != 0:
             return flxs
         else:
-            raise warn('Mapping not done properly, please redo mapping')
+            raise warn("Mapping not done properly, please redo mapping")
 
     def nsamples(self, vmaxs, n=1, sigma=0.1):
         """
@@ -260,13 +262,9 @@ class HybridSimulation:
         df.dropna()
         return df
 
-    def simulate(self, objective=None,
-                 initcond=None,
-                 parameters=None,
-                 constraints=None,
-                 amplitude=None,
-                 method='pFBA',
-                 **kwargs):
+    def simulate(
+        self, objective=None, initcond=None, parameters=None, constraints=None, amplitude=None, method="pFBA", **kwargs
+    ):
         """
         This method performs a phenotype simulation hibridizing a kinetic and a constraint-based model.
 
@@ -280,7 +278,7 @@ class HybridSimulation:
         :type constraints: dict, optional
         :param amplitude: the amplitude range centered in the flux value. Default None, in which case
             partial lMOMA is applied
-        :type amplitude: float 
+        :type amplitude: float
         :param method: the phenotype simulation method
         :type method: str. Default 'pFBA'
         :returns: Returns the solution of the hibridization.
@@ -303,8 +301,8 @@ class HybridSimulation:
                 c = dict()
                 for k, v in _fluxes.items():
                     a, _ = self.sim.get_reaction_bounds(k)
-                    lb = v-amplitude/2
-                    ub = v+amplitude/2
+                    lb = v - amplitude / 2
+                    ub = v + amplitude / 2
                     if a < 0:
                         c[k] = (lb, ub)
                     else:
@@ -319,7 +317,7 @@ class HybridSimulation:
                 c = {k: s.values[k] for k in _fluxes.keys()}
             constraints.update(c)
         else:
-            raise ValueError('Could not mapp reactions.')
+            raise ValueError("Could not mapp reactions.")
 
         if objective:
             solution = self.sim.simulate(objective=objective, method=method, constraints=constraints, **kwargs)
@@ -327,19 +325,12 @@ class HybridSimulation:
             solution = self.sim.simulate(method=method, constraints=constraints, **kwargs)
         return solution
 
-    def simulate_distribution(self,
-                              df,
-                              q1=0.1,
-                              q2=0.9,
-                              objective=None,
-                              method='pFBA',
-                              constraints=None,
-                              **kwargs):
+    def simulate_distribution(self, df, q1=0.1, q2=0.9, objective=None, method="pFBA", constraints=None, **kwargs):
         """
-        Runs a pFBA on the steady-state model with fluxes constrained to ranges 
-        between the q1-th and q2-th percentile of fluxes distributions sampled 
+        Runs a pFBA on the steady-state model with fluxes constrained to ranges
+        between the q1-th and q2-th percentile of fluxes distributions sampled
         from the kinetic model.
-        The kinetic flux distributions are provided as panda dataframes.     
+        The kinetic flux distributions are provided as panda dataframes.
 
         :param df: _description_
         :type df: _type_
@@ -405,7 +396,7 @@ class Map(AttrDict):
         return list(set(p1).intersection(set(p2)))
 
     def intersections(self):
-        """ 
+        """
         Identifies kinetic reactions that use
         a same enzyme.
         """
@@ -442,6 +433,7 @@ def read_map(jsonfile: str):
         }
     """
     import json
+
     with open(jsonfile) as f:
         mapp = json.load(f)
     m = dict()
@@ -452,6 +444,7 @@ def read_map(jsonfile: str):
 
 def hasNaN(values):
     import math
+
     for x in values:
         if math.isnan(x):
             return True
@@ -460,16 +453,18 @@ def hasNaN(values):
 
 class HybridGeckoSimulation:
 
-    def __init__(self,
-                 kmodel: ODEModel,
-                 cbmodel: Union[Simulator, "Model", "CBModel"],
-                 gDW: float = 564.0,
-                 D: float = 0.278e-4,
-                 envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
-                 enzyme_mapping: Map = None,
-                 protein_prefix: str = 'R_draw_prot_',
-                 t_points: List[Union[float, int]] = [0, 1e9],
-                 timeout: int = KineticConfigurations.SOLVER_TIMEOUT):
+    def __init__(
+        self,
+        kmodel: ODEModel,
+        cbmodel: Union[Simulator, "Model", "CBModel"],
+        gDW: float = 564.0,
+        D: float = 0.278e-4,
+        envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
+        enzyme_mapping: Map = None,
+        protein_prefix: str = "R_draw_prot_",
+        t_points: List[Union[float, int]] = [0, 1e9],
+        timeout: int = KineticConfigurations.SOLVER_TIMEOUT,
+    ):
         """
         Hybrid Gecko Simulation.
 
@@ -478,18 +473,18 @@ class HybridGeckoSimulation:
         :param (float) gDW: the cell volume. Default E. coli from [1].
         :param (dict) envcond: the medium definition.
         :param (Map) enzyme_mapping: An instance of Map.
-        :param (str) protein_prefix: the draw protein pseudo reaction prefix, 
+        :param (str) protein_prefix: the draw protein pseudo reaction prefix,
                e.g. for protein XXXXX 'R_draw_prot_XXXXX'.
         :param (array like) t_points: the integrative time points or span. Default [0, 1e9].
-        :param (int) timeout: The integration timeout. If timeout=0, no timeout is applied.     
+        :param (int) timeout: The integration timeout. If timeout=0, no timeout is applied.
 
 
-        [1] Chassagnole et. al, Dynamic Modeling of Central Carbon Metabolism of Escherichia 
-        coli,(2002). DOI: 10.1002/bit.10288  
+        [1] Chassagnole et. al, Dynamic Modeling of Central Carbon Metabolism of Escherichia
+        coli,(2002). DOI: 10.1002/bit.10288
         """
 
         if not isinstance(kmodel, ODEModel):
-            raise ValueError('model is not an instance of ODEModel.')
+            raise ValueError("model is not an instance of ODEModel.")
 
         if not isinstance(cbmodel, Simulator):
             self.sim = get_simulator(cbmodel, envcond=envcond)
@@ -505,18 +500,21 @@ class HybridGeckoSimulation:
         self.timeout = timeout
 
     def unit_conv(self, value):
-        return value*self.D*3600/self.gDW
+        return value * self.D * 3600 / self.gDW
 
-    def simulate(self, objective=None,
-                 initcond=None,
-                 parameters=None,
-                 constraints=None,
-                 method='pFBA',
-                 apply_lb=True,
-                 lb_tolerance=0.05,
-                 **kwargs):
+    def simulate(
+        self,
+        objective=None,
+        initcond=None,
+        parameters=None,
+        constraints=None,
+        method="pFBA",
+        apply_lb=True,
+        lb_tolerance=0.05,
+        **kwargs,
+    ):
         """
-        Runs a hybrid simulation on GECKO models by defining enzymatic 
+        Runs a hybrid simulation on GECKO models by defining enzymatic
         constraints that limit enzyme usage in function of vmax, fluxes and kcat values.
 
         :param objective: the optimization objective.
@@ -529,12 +527,12 @@ class HybridGeckoSimulation:
         :type method: str. Default 'pFBA'
         :param maximize: The optimization direction (True: maximize, False:minimize).
         :type maximize: bool. Default True.
-        :param apply_lb: If the lb of pseudo draw reactions are to be constrained using 
+        :param apply_lb: If the lb of pseudo draw reactions are to be constrained using
             the kinetic flux rate values.
         :type apply_lb: bool. Default True.
-        :param lb_tolerance: A tolerance for the lb, ie, the lb is set to the value obtained 
+        :param lb_tolerance: A tolerance for the lb, ie, the lb is set to the value obtained
             from the kinetic flux rate less the tolerance (or 0 if negative).
-        :type lb_tolerance: float. Default 0.05.         
+        :type lb_tolerance: float. Default 0.05.
         :returns: Returns the solution of the hibridization.
         """
 
@@ -553,7 +551,7 @@ class HybridGeckoSimulation:
             if fluxes[krxn] > 0:
                 sense = mapper.sense
             else:
-                sense = -1*mapper.sense
+                sense = -1 * mapper.sense
 
             # A same enzyme may have different kcats
             # for each sense
@@ -573,7 +571,7 @@ class HybridGeckoSimulation:
                     #    gDW:   gDW/L
                     max_enzyme_usage = vmax_value * 3600 * self.D / (kcat * self.gDW)
                     if apply_lb:
-                        min_enzyme_usage = max(0, abs(flux) * 3600 * self.D / (kcat * self.gDW)-lb_tolerance)
+                        min_enzyme_usage = max(0, abs(flux) * 3600 * self.D / (kcat * self.gDW) - lb_tolerance)
                     else:
                         min_enzyme_usage = 0
                     draw_p = f"{self.protein_prefix}{protein}"
@@ -583,23 +581,16 @@ class HybridGeckoSimulation:
                     # the minimum usage of all reactions.
                     if draw_p in enzymatic_constraints:
                         lb, ub = enzymatic_constraints[draw_p]
-                        enzymatic_constraints[draw_p] = (min(min_enzyme_usage, lb),
-                                                         ub+max_enzyme_usage)
+                        enzymatic_constraints[draw_p] = (min(min_enzyme_usage, lb), ub + max_enzyme_usage)
 
                     else:
-                        enzymatic_constraints[draw_p] = (min_enzyme_usage,
-                                                         max_enzyme_usage)
+                        enzymatic_constraints[draw_p] = (min_enzyme_usage, max_enzyme_usage)
         if constraints is None:
             constraints = dict()
         constraints.update(enzymatic_constraints)
         if objective:
-            solution = self.sim.simulate(objective=objective,
-                                         method=method,
-                                         constraints=constraints,
-                                         **kwargs)
+            solution = self.sim.simulate(objective=objective, method=method, constraints=constraints, **kwargs)
         else:
-            solution = self.sim.simulate(method=method,
-                                         constraints=constraints,
-                                         **kwargs)
+            solution = self.sim.simulate(method=method, constraints=constraints, **kwargs)
 
         return solution

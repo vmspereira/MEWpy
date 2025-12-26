@@ -1,15 +1,16 @@
-from typing import Any, TYPE_CHECKING, Union, Generator, Dict, List, Tuple, Set
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Set, Tuple, Union
 
-from .model import Model
-from mewpy.util.history import recorder
 from mewpy.germ.models.serialization import serialize
+from mewpy.util.history import recorder
 from mewpy.util.utilities import generator
 
+from .model import Model
+
 if TYPE_CHECKING:
-    from mewpy.germ.variables import Interaction, Regulator, Target, Metabolite, Reaction
+    from mewpy.germ.variables import Interaction, Metabolite, Reaction, Regulator, Target
 
 
-class RegulatoryModel(Model, model_type='regulatory', register=True, constructor=True, checker=True):
+class RegulatoryModel(Model, model_type="regulatory", register=True, constructor=True, checker=True):
     """
     A germ regulatory model can represent a Transcriptional Regulatory Network (TRN), containing
     interactions between regulators and targets.
@@ -32,14 +33,16 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         - Remove an interaction, regulator or target
         - Update the compartments of the model
     """
-    def __init__(self,
-                 identifier: Any,
-                 compartments: Dict[str, str] = None,
-                 interactions: Dict[str, 'Interaction'] = None,
-                 regulators: Dict[str, 'Regulator'] = None,
-                 targets: Dict[str, 'Target'] = None,
-                 **kwargs):
 
+    def __init__(
+        self,
+        identifier: Any,
+        compartments: Dict[str, str] = None,
+        interactions: Dict[str, "Interaction"] = None,
+        regulators: Dict[str, "Regulator"] = None,
+        targets: Dict[str, "Target"] = None,
+        **kwargs,
+    ):
         """
         A germ regulatory model can represent a Transcriptional Regulatory Network (TRN), containing
         interactions between regulators and targets.
@@ -74,8 +77,7 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         self._regulators = {}
         self._targets = {}
 
-        super().__init__(identifier,
-                         **kwargs)
+        super().__init__(identifier, **kwargs)
 
         # the setters will handle adding and removing variables to the correct containers
         self.compartments = compartments
@@ -86,7 +88,7 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
     # -----------------------------------------------------------------------------
     # Model type manager
     # -----------------------------------------------------------------------------
-    @serialize('types', None)
+    @serialize("types", None)
     @property
     def types(self):
         """
@@ -103,9 +105,9 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
     # Static attributes
     # -----------------------------------------------------------------------------
 
-    @serialize('interactions', 'interactions', '_interactions')
+    @serialize("interactions", "interactions", "_interactions")
     @property
-    def interactions(self) -> Dict[str, 'Interaction']:
+    def interactions(self) -> Dict[str, "Interaction"]:
         """
         It returns a dictionary with the interactions of the model. The keys are the identifiers of the interactions
         and the values are the `Interaction` objects. To retrieve an iterator with the interactions, use the
@@ -116,9 +118,9 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         """
         return self._interactions.copy()
 
-    @serialize('regulators', 'regulators', '_regulators')
+    @serialize("regulators", "regulators", "_regulators")
     @property
-    def regulators(self) -> Dict[str, 'Regulator']:
+    def regulators(self) -> Dict[str, "Regulator"]:
         """
         It returns a dictionary with the regulators of the model. The keys are the identifiers of the regulators
         and the values are the `Regulator` objects. To retrieve an iterator with the regulators, use the
@@ -129,9 +131,9 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         """
         return self._regulators.copy()
 
-    @serialize('targets', 'targets', '_targets')
+    @serialize("targets", "targets", "_targets")
     @property
-    def targets(self) -> Dict[str, 'Target']:
+    def targets(self) -> Dict[str, "Target"]:
         """
         It returns a dictionary with the targets of the model. The keys are the identifiers of the targets
         and the values are the `Target` objects. To retrieve an iterator with the targets, use the
@@ -152,9 +154,11 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         To update the compartments container set new `compartments`.
         :return: a dictionary with the compartments of the model
         """
-        compartments = {regulator.compartment: self.__compartments.get(regulator.compartment, '')
-                        for regulator in self.yield_regulators()
-                        if regulator.is_metabolite() and regulator.compartment is not None}
+        compartments = {
+            regulator.compartment: self.__compartments.get(regulator.compartment, "")
+            for regulator in self.yield_regulators()
+            if regulator.is_metabolite() and regulator.compartment is not None
+        }
 
         compartments.update(self.__compartments)
 
@@ -181,7 +185,7 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
 
     @interactions.setter
     @recorder
-    def interactions(self, value: Dict[str, 'Interaction']):
+    def interactions(self, value: Dict[str, "Interaction"]):
         """
         It sets the interactions of the model. The keys are the identifiers of the interactions
         and the values are the `Interaction` objects.
@@ -197,7 +201,7 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
 
     @regulators.setter
     @recorder
-    def regulators(self, value: Dict[str, 'Regulator']):
+    def regulators(self, value: Dict[str, "Regulator"]):
         """
         It sets the regulators of the model. The keys are the identifiers of the regulators
         and the values are the `Regulator` objects.
@@ -212,7 +216,7 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
 
     @targets.setter
     @recorder
-    def targets(self, value: Dict[str, 'Target']):
+    def targets(self, value: Dict[str, "Target"]):
         """
         It sets the targets of the model. The keys are the identifiers of the targets
         and the values are the `Target` objects.
@@ -229,77 +233,74 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
     # Dynamic attributes
     # -----------------------------------------------------------------------------
     @property
-    def environmental_stimuli(self) -> Dict[str, 'Regulator']:
+    def environmental_stimuli(self) -> Dict[str, "Regulator"]:
         """
         It returns a dictionary with the environmental stimuli of the model. The keys are the identifiers of the
         environmental stimuli and the values are the `Regulator` objects. To retrieve an iterator with the environmental
         stimuli, use the `yield_environmental_stimuli` method.
         :return: a dictionary with the environmental stimuli of the model
         """
-        return {reg_id: regulator for reg_id, regulator in self.regulators.items()
-                if regulator.environmental_stimulus}
+        return {reg_id: regulator for reg_id, regulator in self.regulators.items() if regulator.environmental_stimulus}
 
     @property
-    def regulatory_reactions(self) -> Dict[str, 'Regulator']:
+    def regulatory_reactions(self) -> Dict[str, "Regulator"]:
         """
         It returns a dictionary with the regulatory reactions of the model. The keys are the identifiers of the
         regulatory reactions and the values are the `Regulator` objects. To retrieve an iterator with the regulatory
         reactions, use the `yield_regulatory_reactions` method.
         :return: a dictionary with the regulatory reactions of the model
         """
-        return {reg_id: regulator for reg_id, regulator in self.regulators.items()
-                if regulator.is_reaction()}
+        return {reg_id: regulator for reg_id, regulator in self.regulators.items() if regulator.is_reaction()}
 
     @property
-    def regulatory_metabolites(self) -> Dict[str, 'Regulator']:
+    def regulatory_metabolites(self) -> Dict[str, "Regulator"]:
         """
         It returns a dictionary with the regulatory metabolites of the model. The keys are the identifiers of the
         regulatory metabolites and the values are the `Regulator` objects. To retrieve an iterator with the regulatory
         metabolites, use the `yield_regulatory_metabolites` method.
         :return: a dictionary with the regulatory metabolites of the model
         """
-        return {reg_id: regulator for reg_id, regulator in self.regulators.items()
-                if regulator.is_metabolite()}
+        return {reg_id: regulator for reg_id, regulator in self.regulators.items() if regulator.is_metabolite()}
 
     # -----------------------------------------------------------------------------
     # Generators
     # -----------------------------------------------------------------------------
-    def yield_environmental_stimuli(self) -> Generator['Regulator', None, None]:
+    def yield_environmental_stimuli(self) -> Generator["Regulator", None, None]:
         """
         It returns an iterator with the environmental stimuli of the model.
         :return: a generator with the environmental stimuli of the model
         """
         return generator(self.environmental_stimuli)
 
-    def yield_regulatory_reactions(self) -> Generator['Regulator', None, None]:
+    def yield_regulatory_reactions(self) -> Generator["Regulator", None, None]:
         """
         It returns an iterator with the regulatory reactions of the model.
         :return: a generator with the regulatory reactions of the model
         """
         return generator(self.regulatory_reactions)
 
-    def yield_regulatory_metabolites(self) -> Generator['Regulator', None, None]:
+    def yield_regulatory_metabolites(self) -> Generator["Regulator", None, None]:
         """
         It returns an iterator with the regulatory metabolites of the model.
         :return: a generator with the regulatory metabolites of the model
         """
         return generator(self.regulatory_metabolites)
 
-    def yield_interactions(self) -> Generator['Interaction', None, None]:
+    def yield_interactions(self) -> Generator["Interaction", None, None]:
         """
         It returns an iterator with the interactions of the model.
         :return: a generator with the interactions of the model
         """
         return generator(self._interactions)
 
-    def yield_regulators(self) -> Generator[Union['Regulator', 'Metabolite', 'Reaction'], None, None]:
+    def yield_regulators(self) -> Generator[Union["Regulator", "Metabolite", "Reaction"], None, None]:
         """
         It returns an iterator with the regulators of the model.
         :return: a generator with the regulators of the model
         """
         return generator(self._regulators)
 
-    def yield_targets(self) -> Generator['Target', None, None]:
+    def yield_targets(self) -> Generator["Target", None, None]:
         """
         It returns an iterator with the targets of the model.
         :return: a generator with the targets of the model
@@ -309,7 +310,7 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
     # -----------------------------------------------------------------------------
     # Operations/Manipulations
     # -----------------------------------------------------------------------------
-    def get(self, identifier: Any, default=None) -> Union['Interaction', 'Regulator', 'Target']:
+    def get(self, identifier: Any, default=None) -> Union["Interaction", "Regulator", "Target"]:
         """
         It returns the object with the given identifier. If the object is not found, it returns the default value.
         For regulatory models, the identifier can be a gene, an interaction or a regulator.
@@ -329,10 +330,9 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         else:
             return super(RegulatoryModel, self).get(identifier=identifier, default=default)
 
-    def add(self,
-            *variables: Union['Interaction', 'Regulator', 'Target'],
-            comprehensive: bool = True,
-            history: bool = True):
+    def add(
+        self, *variables: Union["Interaction", "Regulator", "Target"], comprehensive: bool = True, history: bool = True
+    ):
         """
         It adds the given variables to the model.
         This method accepts a single variable or a list of variables to be added to specific containers in the model.
@@ -351,33 +351,35 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         :param history: if True, the changes will be recorded in the history
         :return:
         """
-        if self.is_a('regulatory'):
+        if self.is_a("regulatory"):
 
             for variable in variables:
 
-                if 'target' in variable.types:
-                    self._add_variable_to_container(variable, '_targets')
+                if "target" in variable.types:
+                    self._add_variable_to_container(variable, "_targets")
 
-                if 'regulator' in variable.types:
-                    self._add_variable_to_container(variable, '_regulators')
+                if "regulator" in variable.types:
+                    self._add_variable_to_container(variable, "_regulators")
 
-                if 'interaction' in variable.types:
+                if "interaction" in variable.types:
                     if comprehensive:
 
                         if variable.target is not None:
-                            self._add_variable_to_container(variable.target, '_targets')
+                            self._add_variable_to_container(variable.target, "_targets")
 
                         for regulator in variable.yield_regulators():
-                            self._add_variable_to_container(regulator, '_regulators')
+                            self._add_variable_to_container(regulator, "_regulators")
 
-                    self._add_variable_to_container(variable, '_interactions')
+                    self._add_variable_to_container(variable, "_interactions")
 
         return super(RegulatoryModel, self).add(*variables, comprehensive=comprehensive, history=history)
 
-    def remove(self,
-               *variables: Union['Interaction', 'Regulator', 'Target'],
-               remove_orphans: bool = False,
-               history: bool = True):
+    def remove(
+        self,
+        *variables: Union["Interaction", "Regulator", "Target"],
+        remove_orphans: bool = False,
+        history: bool = True,
+    ):
         """
         It removes the given variables from the model.
         This method accepts a single variable or a list of variables to be removed from specific containers
@@ -397,42 +399,46 @@ class RegulatoryModel(Model, model_type='regulatory', register=True, constructor
         :param history: if True, the changes will be recorded in the history
         :return:
         """
-        if self.is_a('regulatory'):
+        if self.is_a("regulatory"):
 
             interactions = set()
 
             for variable in variables:
 
-                if 'target' in variable.types:
-                    self._remove_variable_from_container(variable, '_targets')
+                if "target" in variable.types:
+                    self._remove_variable_from_container(variable, "_targets")
 
-                if 'regulator' in variable.types:
-                    self._remove_variable_from_container(variable, '_regulators')
+                if "regulator" in variable.types:
+                    self._remove_variable_from_container(variable, "_regulators")
 
-                if 'interaction' in variable.types:
-                    self._remove_variable_from_container(variable, '_interactions')
+                if "interaction" in variable.types:
+                    self._remove_variable_from_container(variable, "_interactions")
                     interactions.add(variable)
 
             if remove_orphans:
                 for interaction in interactions:
                     if interaction.target:
-                        self._remove_variable_from_container(interaction.target, '_targets')
+                        self._remove_variable_from_container(interaction.target, "_targets")
 
-                orphan_regulators = self._get_orphans(to_remove=interactions,
-                                                      first_container='regulators',
-                                                      second_container='interactions')
+                orphan_regulators = self._get_orphans(
+                    to_remove=interactions, first_container="regulators", second_container="interactions"
+                )
 
                 for regulator in orphan_regulators:
-                    self._remove_variable_from_container(regulator, '_regulators')
+                    self._remove_variable_from_container(regulator, "_regulators")
 
         return super(RegulatoryModel, self).remove(*variables, remove_orphans=remove_orphans, history=history)
 
-    def update(self,
-               compartments: Dict[str, str] = None,
-               variables: Union[List[Union['Interaction', 'Regulator', 'Target']],
-                                Tuple[Union['Interaction', 'Regulator', 'Target']],
-                                Set[Union['Interaction', 'Regulator', 'Target']]] = None,
-               **kwargs):
+    def update(
+        self,
+        compartments: Dict[str, str] = None,
+        variables: Union[
+            List[Union["Interaction", "Regulator", "Target"]],
+            Tuple[Union["Interaction", "Regulator", "Target"]],
+            Set[Union["Interaction", "Regulator", "Target"]],
+        ] = None,
+        **kwargs,
+    ):
         """
         It updates the model with relevant information, namely the compartments and the variables.
 

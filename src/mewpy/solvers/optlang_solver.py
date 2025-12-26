@@ -21,13 +21,14 @@ Adapted by Vitor Pereira from Daniel Machado's REFRAMED
 https://github.com/cdanielmachado/reframed
 ##############################################################################
 """
-from optlang import Model, Variable, Constraint, Objective
-from optlang.symbolics import Zero, add
-from .solver import Solver, VarType, Parameter, default_parameters
-from .solution import Solution, Status
 from math import inf
 from warnings import warn
 
+from optlang import Constraint, Model, Objective, Variable
+from optlang.symbolics import Zero, add
+
+from .solution import Solution, Status
+from .solver import Parameter, Solver, VarType, default_parameters
 
 status_mapping = {
     "optimal": Status.OPTIMAL,

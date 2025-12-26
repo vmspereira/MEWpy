@@ -21,11 +21,12 @@ Author: Vitor Pereira
 ##############################################################################
 """
 import numpy as np
+
 from mewpy.simulation import get_simulator
 
 
 def flux_envelope(model, r_x, r_y, steps=10, constraints=None, x_range=None, tolerance=0):
-    """ Calculate the flux envelope for a pair of reactions.
+    """Calculate the flux envelope for a pair of reactions.
         Adapted from REFRAMED to be compatible both with REFRAMED and COBRApy.
 
 
@@ -43,8 +44,7 @@ def flux_envelope(model, r_x, r_y, steps=10, constraints=None, x_range=None, tol
     try:
         simul = get_simulator(model)
     except Exception:
-        raise ValueError(
-            'The model should be an instance of model or simulator')
+        raise ValueError("The model should be an instance of model or simulator")
 
     obj_frac = 0
     # if r_x in simul.get_objective():
@@ -75,10 +75,23 @@ def flux_envelope(model, r_x, r_y, steps=10, constraints=None, x_range=None, tol
     return xvals, ymins, ymaxs
 
 
-def plot_flux_envelope(model, r_x, r_y, steps=10, substrate=None, constraints=None,
-                       label_x=None, label_y=None, flip_x=False, flip_y=False,
-                       plot_kwargs=None, fill_kwargs=None, ax=None, x_range=None):
-    """ Plots the flux envelope for a pair of reactions.
+def plot_flux_envelope(
+    model,
+    r_x,
+    r_y,
+    steps=10,
+    substrate=None,
+    constraints=None,
+    label_x=None,
+    label_y=None,
+    flip_x=False,
+    flip_y=False,
+    plot_kwargs=None,
+    fill_kwargs=None,
+    ax=None,
+    x_range=None,
+):
+    """Plots the flux envelope for a pair of reactions.
         Adapted from REFRAMED.
 
     :param model: The model or simulator.
@@ -106,8 +119,7 @@ def plot_flux_envelope(model, r_x, r_y, steps=10, substrate=None, constraints=No
     try:
         simul = get_simulator(model)
     except Exception:
-        raise ValueError(
-            'model should be an instance of model or simulator')
+        raise ValueError("model should be an instance of model or simulator")
 
     offset = 0.03
 
@@ -115,10 +127,10 @@ def plot_flux_envelope(model, r_x, r_y, steps=10, substrate=None, constraints=No
         _, ax = plt.subplots()
 
     if not plot_kwargs:
-        plot_kwargs = {'color': 'k'}
+        plot_kwargs = {"color": "k"}
 
     if not fill_kwargs:
-        fill_kwargs = {'color': 'k', 'alpha': 0.1}
+        fill_kwargs = {"color": "k", "alpha": 0.1}
 
     xvals, ymins, ymaxs = flux_envelope(model, r_x, r_y, steps, constraints, x_range=x_range)
 

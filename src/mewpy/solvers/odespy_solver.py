@@ -20,9 +20,10 @@ Interface for odespy ODE Solver
 Author: Vitor Pereira
 ##############################################################################
 """
-from .ode import ODEMethod, SolverConfigurations, ODESolver
 import numpy as np
 import odespy
+
+from .ode import ODEMethod, ODESolver, SolverConfigurations
 
 methods = {
     ODEMethod.LSODA: odespy.Lsoda,
@@ -38,7 +39,7 @@ methods = {
     ODEMethod.Vode: odespy.Vode,
     ODEMethod.Radau: odespy.Radau5,
     ODEMethod.AdamsBashMoulton2: odespy.AdamsBashMoulton2,
-    ODEMethod.AdamsBashforth2: odespy.AdamsBashforth2
+    ODEMethod.AdamsBashforth2: odespy.AdamsBashforth2,
 }
 
 
@@ -52,7 +53,7 @@ class ODESpySolver(ODESolver):
         if method in methods.keys():
             self.method = method
         else:
-            raise ValueError(f'Method {method} is unavailable.')
+            raise ValueError(f"Method {method} is unavailable.")
 
         self.initial_condition = None
 
@@ -63,15 +64,16 @@ class ODESpySolver(ODESolver):
         """
         Solves the ODE
         """
+
         def f(u, t):
             return self.func(t, u)
 
         try:
             if self.method == ODEMethod.AdamsBashforth2:
-                solver = methods[self.method](f, method='bdf')
+                solver = methods[self.method](f, method="bdf")
             else:
                 solver = methods[self.method](f)
-            
+
             # update default parameters
             time_points = t_points
             solver.atol = SolverConfigurations.ABSOLUTE_TOL
@@ -82,4 +84,4 @@ class ODESpySolver(ODESolver):
             return C, t, y
         except Exception as e:
             print(e)
-            raise(Exception)
+            raise (Exception)

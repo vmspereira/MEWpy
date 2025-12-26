@@ -11,35 +11,37 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-from .simulation import get_simulator 
+from .simulation import get_simulator
 
-__author__ = 'Vitor Pereira (2019-) and CEB University of Minho (2019-2023)'
-__email__ = 'vpereira@ceb.uminho.pt'
-__version__ = '1.0.0'
-
+__author__ = "Vitor Pereira (2019-) and CEB University of Minho (2019-2023)"
+__email__ = "vpereira@ceb.uminho.pt"
+__version__ = "1.0.0"
 
 
 def info():
-    
-    print('MEWpy version:',__version__)
-    print('Author:',__author__)
-    print('Contact:',__email__,'\n')
+
+    print("MEWpy version:", __version__)
+    print("Author:", __author__)
+    print("Contact:", __email__, "\n")
 
     from .simulation import __MEWPY_sim_solvers__, get_default_solver
-    print('Available LP solvers:',' '.join(__MEWPY_sim_solvers__))
-    print('Default LP solver:',get_default_solver(),'\n')
-    
+
+    print("Available LP solvers:", " ".join(__MEWPY_sim_solvers__))
+    print("Default LP solver:", get_default_solver(), "\n")
+
     from .solvers import __MEWPY_ode_solvers__, get_default_ode_solver
-    print('Available ODE solvers:',' '.join(list(__MEWPY_ode_solvers__.keys())))
-    print('Default ODE solver:', get_default_ode_solver(),'\n')
-    
-    from mewpy.util.utilities import get_all_subclasses
+
+    print("Available ODE solvers:", " ".join(list(__MEWPY_ode_solvers__.keys())))
+    print("Default ODE solver:", get_default_ode_solver(), "\n")
+
     from mewpy.problems.problem import AbstractProblem
+    from mewpy.util.utilities import get_all_subclasses
+
     c = get_all_subclasses(AbstractProblem)
-    print('Optimization Problems:',' '.join(sorted([x.__name__ for x in c])),'\n')
-    
-    from mewpy.optimization import engines, get_default_engine, get_available_algorithms
-    print('Available EA engines:',' '.join(list(engines.keys())))
-    print('Default EA engine:', get_default_engine())
-    print('Available EAs:', ' '.join(sorted(get_available_algorithms())),'\n')
-    
+    print("Optimization Problems:", " ".join(sorted([x.__name__ for x in c])), "\n")
+
+    from mewpy.optimization import engines, get_available_algorithms, get_default_engine
+
+    print("Available EA engines:", " ".join(list(engines.keys())))
+    print("Default EA engine:", get_default_engine())
+    print("Available EAs:", " ".join(sorted(get_available_algorithms())), "\n")

@@ -1,6 +1,6 @@
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Union
 from functools import partial, wraps
+from typing import TYPE_CHECKING, Union
 
 import pandas as pd
 
@@ -19,12 +19,12 @@ class HistoryManager:
         self._redo_able_commands = []
 
     def __str__(self):
-        return f'History: {len(self._undo_able_commands)} undos and {len(self._redo_able_commands)} redos'
+        return f"History: {len(self._undo_able_commands)} undos and {len(self._redo_able_commands)} redos"
 
     @property
     def history(self):
 
-        return pd.DataFrame(data=self._history, columns=['method', 'args', 'kwargs', 'object'])
+        return pd.DataFrame(data=self._history, columns=["method", "args", "kwargs", "object"])
 
     @property
     def undo_able_commands(self):
@@ -66,14 +66,16 @@ class HistoryManager:
 
         return self.queue_command(*args, **kwargs)
 
-    def queue_command(self,
-                      undo_func: Callable,
-                      func: Callable,
-                      undo_args: tuple = None,
-                      undo_kwargs: dict = None,
-                      args: tuple = None,
-                      kwargs: dict = None,
-                      obj: 'Model' = None) -> None:
+    def queue_command(
+        self,
+        undo_func: Callable,
+        func: Callable,
+        undo_args: tuple = None,
+        undo_kwargs: dict = None,
+        args: tuple = None,
+        kwargs: dict = None,
+        obj: "Model" = None,
+    ) -> None:
 
         if not undo_args:
             undo_args = ()
@@ -97,7 +99,7 @@ class HistoryManager:
 def recorder(func: Callable):
 
     @wraps(func)
-    def wrapper(self: Union['Model', 'Variable'], value):
+    def wrapper(self: Union["Model", "Variable"], value):
 
         history = self.history
 
@@ -105,10 +107,7 @@ def recorder(func: Callable):
 
         if old_value != value:
 
-            history.queue_command(undo_func=func,
-                                  undo_args=(self, old_value),
-                                  func=func,
-                                  args=(self, value))
+            history.queue_command(undo_func=func, undo_args=(self, old_value), func=func, args=(self, value))
 
         func(self, value)
 

@@ -11,12 +11,13 @@ Or use COBRApy/reframed FBA implementations directly:
     solution = cobra_model.optimize()  # COBRApy
     solution = reframed_model.optimize()  # reframed
 """
-from typing import Union, Dict
+
+from typing import Dict, Union
 
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
+from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import Solution
 from mewpy.solvers.solver import Solver
-from mewpy.solvers import solver_instance
 
 
 class _RegulatoryAnalysisBase:
@@ -36,11 +37,13 @@ class _RegulatoryAnalysisBase:
     Subclasses: RFBA, SRFBA, PROM, CoRegFlux
     """
 
-    def __init__(self,
-                 model: RegulatoryExtension,
-                 solver: Union[str, Solver, None] = None,
-                 build: bool = False,
-                 attach: bool = False):
+    def __init__(
+        self,
+        model: RegulatoryExtension,
+        solver: Union[str, Solver, None] = None,
+        build: bool = False,
+        attach: bool = False,
+    ):
         """
         Initialize regulatory analysis base.
 
@@ -69,10 +72,10 @@ class _RegulatoryAnalysisBase:
     # Backwards compatibility helpers (work with both RegulatoryExtension and legacy models)
     def _has_regulatory_network(self) -> bool:
         """Check if model has a regulatory network (works with both model types)."""
-        if hasattr(self.model, 'has_regulatory_network'):
+        if hasattr(self.model, "has_regulatory_network"):
             return self.model.has_regulatory_network()
         # Legacy model - check for interactions
-        return hasattr(self.model, 'interactions') and len(self.model.interactions) > 0
+        return hasattr(self.model, "interactions") and len(self.model.interactions) > 0
 
     def _get_interactions(self):
         """
@@ -80,7 +83,7 @@ class _RegulatoryAnalysisBase:
 
         Yields just the Interaction objects, unpacking tuples from RegulatoryExtension.
         """
-        if hasattr(self.model, 'yield_interactions'):
+        if hasattr(self.model, "yield_interactions"):
             # RegulatoryExtension yields (id, interaction) tuples - unpack to get just interaction
             for item in self.model.yield_interactions():
                 if isinstance(item, tuple) and len(item) == 2:
@@ -90,13 +93,13 @@ class _RegulatoryAnalysisBase:
                     # Legacy format: just interaction (shouldn't happen with RegulatoryExtension)
                     yield item
         # Legacy model - dict.values() yields just interaction objects
-        elif hasattr(self.model, 'interactions'):
+        elif hasattr(self.model, "interactions"):
             for interaction in self.model.interactions.values():
                 yield interaction
 
     def _get_regulators(self):
         """Get regulators (works with both model types)."""
-        if hasattr(self.model, 'yield_regulators'):
+        if hasattr(self.model, "yield_regulators"):
             # RegulatoryExtension yields (id, regulator) tuples
             # Legacy models yield single Regulator objects
             # We need to normalize to always return (id, regulator) tuples
@@ -108,7 +111,7 @@ class _RegulatoryAnalysisBase:
                     # Single Regulator object (legacy model) - wrap in tuple with ID
                     yield (item.id, item)
         # Legacy model without yield_regulators (shouldn't happen but handle it)
-        elif hasattr(self.model, 'regulators'):
+        elif hasattr(self.model, "regulators"):
             regulators = self.model.regulators
             # Check if it's a dict
             if isinstance(regulators, dict):
@@ -119,33 +122,42 @@ class _RegulatoryAnalysisBase:
 
     def _get_gpr(self, rxn_id):
         """Get GPR expression (works with both model types)."""
-        if hasattr(self.model, 'get_parsed_gpr'):
+        if hasattr(self.model, "get_parsed_gpr"):
             return self.model.get_parsed_gpr(rxn_id)
         # Legacy model - get reaction and parse GPR
-        from mewpy.germ.algebra import parse_expression, Expression, Symbol
-        if hasattr(self.model, 'reactions') and rxn_id in self.model.reactions:
+        from mewpy.germ.algebra import Expression, Symbol, parse_expression
+
+        if hasattr(self.model, "reactions") and rxn_id in self.model.reactions:
             rxn = self.model.reactions[rxn_id]
-            if hasattr(rxn, 'gpr'):
+            if hasattr(rxn, "gpr"):
                 return rxn.gpr
         # No GPR available
-        return Expression(Symbol('true'), {})
+        return Expression(Symbol("true"), {})
 
     def _get_reaction(self, rxn_id):
         """Get reaction data (works with both model types)."""
-        if hasattr(self.model, 'get_reaction'):
+        if hasattr(self.model, "get_reaction"):
             # RegulatoryExtension - returns dict
             return self.model.get_reaction(rxn_id)
         # Legacy model - reactions is a dict of Reaction objects
-        if hasattr(self.model, 'reactions') and rxn_id in self.model.reactions:
+        if hasattr(self.model, "reactions") and rxn_id in self.model.reactions:
             rxn = self.model.reactions[rxn_id]
             # Convert Reaction object to dict format
             return {
-                'id': rxn.id,
-                'lb': rxn.lower_bound if hasattr(rxn, 'lower_bound') else rxn.bounds[0] if hasattr(rxn, 'bounds') else -1000,
-                'ub': rxn.upper_bound if hasattr(rxn, 'upper_bound') else rxn.bounds[1] if hasattr(rxn, 'bounds') else 1000,
-                'gpr': str(rxn.gpr) if hasattr(rxn, 'gpr') else ''
+                "id": rxn.id,
+                "lb": (
+                    rxn.lower_bound
+                    if hasattr(rxn, "lower_bound")
+                    else rxn.bounds[0] if hasattr(rxn, "bounds") else -1000
+                ),
+                "ub": (
+                    rxn.upper_bound
+                    if hasattr(rxn, "upper_bound")
+                    else rxn.bounds[1] if hasattr(rxn, "bounds") else 1000
+                ),
+                "gpr": str(rxn.gpr) if hasattr(rxn, "gpr") else "",
             }
-        return {'id': rxn_id, 'lb': -1000, 'ub': 1000, 'gpr': ''}
+        return {"id": rxn_id, "lb": -1000, "ub": 1000, "gpr": ""}
 
     def build(self):
         """
@@ -155,13 +167,14 @@ class _RegulatoryAnalysisBase:
         Subclasses should call super().build() and then add their specific constraints.
         """
         # Get simulator - support both RegulatoryExtension and legacy models
-        if hasattr(self.model, 'simulator'):
+        if hasattr(self.model, "simulator"):
             # RegulatoryExtension
             simulator = self.model.simulator
         else:
             # Legacy model or direct simulator
             # Try to get a simulator from it
             from mewpy.simulation import get_simulator
+
             try:
                 simulator = get_simulator(self.model)
             except:
@@ -172,13 +185,13 @@ class _RegulatoryAnalysisBase:
         self._solver = solver_instance(simulator)
 
         # Set up objective
-        if hasattr(self.model, 'objective'):
+        if hasattr(self.model, "objective"):
             objective = self.model.objective
             # Handle different objective formats
             if isinstance(objective, dict):
                 # Already a dict - check if keys are objects or strings
                 first_key = next(iter(objective.keys())) if objective else None
-                if first_key and hasattr(first_key, 'id'):
+                if first_key and hasattr(first_key, "id"):
                     # Keys are objects (legacy), convert to string keys
                     self._linear_objective = {var.id: value for var, value in objective.items()}
                 else:
@@ -230,15 +243,11 @@ class _RegulatoryAnalysisBase:
         solver_kwargs_copy = solver_kwargs.copy()
 
         # Remove conflicting arguments that we set explicitly
-        solver_kwargs_copy.pop('linear', None)
-        solver_kwargs_copy.pop('minimize', None)
+        solver_kwargs_copy.pop("linear", None)
+        solver_kwargs_copy.pop("minimize", None)
 
         # Solve using simulator
-        solution = self.solver.solve(
-            linear=self._linear_objective,
-            minimize=self._minimize,
-            **solver_kwargs_copy
-        )
+        solution = self.solver.solve(linear=self._linear_objective, minimize=self._minimize, **solver_kwargs_copy)
 
         # Set the method attribute for compatibility
         solution._method = self.method

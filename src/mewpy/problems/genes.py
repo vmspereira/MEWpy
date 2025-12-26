@@ -15,24 +15,27 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Problems targeting modifications of genes expression. The algorithms evaluate 
+Problems targeting modifications of genes expression. The algorithms evaluate
 the GPRs as boolean (KO) and aritmetic (OU) expression. This last uses the same
-approach employed in omics integration by substituting the logical operators 
+approach employed in omics integration by substituting the logical operators
 (AND,OR) by min and sum|max functions.
 
 
-Author: Vitor Pereira 
+Author: Vitor Pereira
 ##############################################################################
 """
 import logging
-from .problem import AbstractKOProblem, AbstractOUProblem
-from mewpy.util.parsing import GeneEvaluator, build_tree, Boolean
+from typing import TYPE_CHECKING, Dict, List, Union
+
 from mewpy.simulation import SStatus
-from typing import Union, TYPE_CHECKING, List, Dict
+from mewpy.util.parsing import Boolean, GeneEvaluator, build_tree
+
+from .problem import AbstractKOProblem, AbstractOUProblem
 
 if TYPE_CHECKING:
     from cobra.core import Model
     from reframed.core.cbmodel import CBModel
+
     from mewpy.optimization.evaluation import EvaluationFunction
 
 logger = logging.getLogger(__name__)
@@ -57,12 +60,8 @@ class GKOProblem(AbstractKOProblem):
 
     """
 
-    def __init__(self,
-                 model: Union["Model", "CBModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
-        super(GKOProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
+    def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
+        super(GKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
     def _build_target_list(self):
         print("Building modification target list.")
@@ -82,8 +81,7 @@ class GKOProblem(AbstractKOProblem):
         genes = list(candidate.keys())
         active_genes = set(self.simulator.genes) - set(genes)
         active_reactions = self.simulator.evaluate_gprs(active_genes)
-        inactive_reactions = set(
-            self.simulator.reactions) - set(active_reactions)
+        inactive_reactions = set(self.simulator.reactions) - set(active_reactions)
         gr_constraints = {rxn: 0 for rxn in inactive_reactions}
         return gr_constraints
 
@@ -108,19 +106,15 @@ class GOUProblem(AbstractOUProblem):
     :param list levels: Over/under expression levels (Default EAConstants.LEVELS).
     :param boolean twostep: If deletions should be applied before identifiying reference flux values.
     :param dict partial_solution: A partial solution to be appended to any other solution
-    
+
     Note:  Operators that can not be pickled may be defined by a string e.g. 'lambda x,y: (x+y)/2'.
 
     """
 
-    def __init__(self,
-                 model: Union["Model", "CBModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
-        super(GOUProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
+    def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
+        super(GOUProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
         # operators to replace 'and'/'or'. By default min/max
-        self._temp_op = kwargs.get('operators', None)
+        self._temp_op = kwargs.get("operators", None)
         self._operators = None
 
     def _build_target_list(self):
@@ -171,7 +165,7 @@ class GOUProblem(AbstractOUProblem):
                 active_reactions = self.simulator.evaluate_gprs(active_genes)
                 inactive_reactions = set(self.simulator.reactions) - set(active_reactions)
                 gr_constraints = {rxn: 0 for rxn in inactive_reactions}
-                sr = self.simulator.simulate(constraints=gr_constraints, method='pFBA')
+                sr = self.simulator.simulate(constraints=gr_constraints, method="pFBA")
                 if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                     reference = sr.fluxes
             except Exception as e:
@@ -179,8 +173,7 @@ class GOUProblem(AbstractOUProblem):
         # operators check
         self.__op()
         # evaluate gpr
-        evaluator = GeneEvaluator(
-            genes, self._operators[0], self._operators[1])
+        evaluator = GeneEvaluator(genes, self._operators[0], self._operators[1])
         for rxn_id in self.simulator.reactions:
             gpr = self.simulator.get_gpr(rxn_id)
             if gpr:
@@ -199,7 +192,6 @@ class GOUProblem(AbstractOUProblem):
                 elif lv < 0:
                     raise ValueError("All UO levels should be positive")
                 else:
-                    gr_constraints.update(
-                        self.reaction_constraints(rxn_id, lv, reference))
+                    gr_constraints.update(self.reaction_constraints(rxn_id, lv, reference))
 
         return gr_constraints

@@ -15,46 +15,47 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Community evaluators 
+Community evaluators
 
 Author: Vitor Pereira
 ##############################################################################
 """
+from mewpy.cobra.com.analysis import *
+
 from .evaluator import PhenotypeEvaluationFunction
-from mewpy.cobra.com.analysis import * 
+
 
 class Interaction(PhenotypeEvaluationFunction):
-    
+
     def __init__(self, community, environment, maximize=True, worst_fitness=0):
         super().__init__(maximize, worst_fitness)
         self.community = community
         self.environment = environment
-        
+
     def get_fitness(self, simul_results, candidate, **kwargs):
-        constraints = kwargs.get('constraints',None)
+        constraints = kwargs.get("constraints", None)
         if constraints is None:
             return self.worst_fitness
-       
-        # Identify modifications by organism 
-        mutations = {org_id:dict() for org_id in self.community.organisms}
-        for k,v in constraints.items():
-            org_id, original_id =self.community.reverse_map[k]
-            mutations[org_id][original_id]=v
-        
+
+        # Identify modifications by organism
+        mutations = {org_id: dict() for org_id in self.community.organisms}
+        for k, v in constraints.items():
+            org_id, original_id = self.community.reverse_map[k]
+            mutations[org_id][original_id] = v
+
         # Apply the modifications
         community = self.community.copy()
         for org_id, org_mutations in mutations.items():
             sim_org = community.organism[org_id]
-            for k,v in org_mutations.items():
-                lb, ub = v if isinstance(v,tuple) else v,v 
-                sim_org.set_reaction_bounds(k,lb,ub)
-                
-        sc_scores = sc_score(community, environment=self.environment)        
-        mu_scores = mu_score(community, environment=self.environment)
-        mp_scores = mp_score(community, environment=self.environment)
-        mro_scores = mro_score(community, environment=self.environment)
-        #TODO: combine all the scores in one single value
+            for k, v in org_mutations.items():
+                lb, ub = v if isinstance(v, tuple) else v, v
+                sim_org.set_reaction_bounds(k, lb, ub)
+
+        sc_scores = sc_score(community, environment=self.environment)  # noqa: F841
+        mu_scores = mu_score(community, environment=self.environment)  # noqa: F841
+        mp_scores = mp_score(community, environment=self.environment)  # noqa: F841
+        mro_scores = mro_score(community, environment=self.environment)  # noqa: F841
+        # TODO: combine all the scores in one single value
         score = 0
-        
+
         return score
-         

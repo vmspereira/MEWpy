@@ -1,24 +1,25 @@
-from typing import Union, Dict, Tuple, List, TYPE_CHECKING, Optional
-
 import logging
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
-
-from . import SimulationMethod, SStatus
-from .simulation import Simulator, SimulationResult, ModelContainer
-from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
-from mewpy.germ.variables import Reaction
-from mewpy.util.constants import ModelConstants
-from mewpy.util.utilities import Dispatcher, AttrDict
-from mewpy.germ.analysis import FBA, pFBA, fva
-from mewpy.solvers.solution import Solution, Status
 from tqdm import tqdm
 
+from mewpy.germ.analysis import FBA, fva, pFBA
+from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+from mewpy.germ.variables import Reaction
+from mewpy.solvers.solution import Solution, Status
+from mewpy.util.constants import ModelConstants
+from mewpy.util.utilities import AttrDict, Dispatcher
+
+from . import SimulationMethod, SStatus
+from .simulation import ModelContainer, SimulationResult, Simulator
+
 if TYPE_CHECKING:
-    from mewpy.solvers.solver import Solver
     from mewpy.solvers.cplex_solver import CplexSolver
     from mewpy.solvers.gurobi_solver import GurobiSolver
     from mewpy.solvers.optlang_solver import OptLangSolver
+    from mewpy.solvers.solver import Solver
 
 LOGGER = logging.getLogger(__name__)
 
@@ -85,8 +86,11 @@ class GERMModel(ModelContainer):
         Returns the medium
         :return: a dictionary of exchange reaction identifiers and lower bounds
         """
-        return {rxn.id: rxn.lower_bound for rxn in self.model.yield_exchanges()
-                if rxn.lower_bound < ModelConstants.TOLERANCE}
+        return {
+            rxn.id: rxn.lower_bound
+            for rxn in self.model.yield_exchanges()
+            if rxn.lower_bound < ModelConstants.TOLERANCE
+        }
 
     # -----------------------------------------------------------------------------
     # Metabolic dynamic attributes
@@ -113,12 +117,12 @@ class GERMModel(ModelContainer):
             reaction = self.model.get(r_id)
             if reaction:
                 reaction = {
-                    'id': reaction.id,
-                    'name': reaction.name,
-                    'lower_bound': reaction.lower_bound,
-                    'upper_bound': reaction.upper_bound,
-                    'stoichiometry': {met.id: c for met, c in reaction.stoichiometry.items()},
-                    'gpr': reaction.gene_protein_reaction_rule,
+                    "id": reaction.id,
+                    "name": reaction.name,
+                    "lower_bound": reaction.lower_bound,
+                    "upper_bound": reaction.upper_bound,
+                    "stoichiometry": {met.id: c for met, c in reaction.stoichiometry.items()},
+                    "gpr": reaction.gene_protein_reaction_rule,
                 }
                 return AttrDict(reaction)
         return AttrDict()
@@ -132,9 +136,7 @@ class GERMModel(ModelContainer):
         if self.model.is_metabolic():
             gene = self.model.get(g_id)
             if gene:
-                gene = {'id': gene.id,
-                        'name': gene.name,
-                        'reactions': list(gene.reactions.keys())}
+                gene = {"id": gene.id, "name": gene.name, "reactions": list(gene.reactions.keys())}
                 return AttrDict(gene)
         return AttrDict()
 
@@ -147,9 +149,7 @@ class GERMModel(ModelContainer):
         if self.model.is_metabolic():
             compartment = self.model.compartments.get(c_id)
             if compartment:
-                compartment = {'id': c_id,
-                               'name': compartment,
-                               'external': c_id == self.model.external_compartment}
+                compartment = {"id": c_id, "name": compartment, "external": c_id == self.model.external_compartment}
                 return AttrDict(compartment)
         return AttrDict()
 
@@ -265,12 +265,14 @@ class GERMModel(ModelContainer):
 class Simulation(GERMModel, Simulator):
     dispatcher = Dispatcher()
 
-    def __init__(self,
-                 model: Union[Model, MetabolicModel, RegulatoryModel],
-                 envcond: Dict[str, Tuple[Union[int, float], Union[int, float]]] = None,
-                 constraints: Dict[str, Tuple[Union[int, float], Union[int, float]]] = None,
-                 reference: Dict[str, Union[int, float]] = None,
-                 reset_solver=ModelConstants.RESET_SOLVER):
+    def __init__(
+        self,
+        model: Union[Model, MetabolicModel, RegulatoryModel],
+        envcond: Dict[str, Tuple[Union[int, float], Union[int, float]]] = None,
+        constraints: Dict[str, Tuple[Union[int, float], Union[int, float]]] = None,
+        reference: Dict[str, Union[int, float]] = None,
+        reset_solver=ModelConstants.RESET_SOLVER,
+    ):
         """
         It supports simulation of a MetabolicModel, RegulatoryModel or GERM model.
         Additional environmental conditions and constraints can be set using this interface.
@@ -319,7 +321,7 @@ class Simulation(GERMModel, Simulator):
             Status.INFEASIBLE: SStatus.INFEASIBLE,
             Status.INF_OR_UNB: SStatus.INF_OR_UNB,
             Status.UNKNOWN: SStatus.UNKNOWN,
-            Status.SUBOPTIMAL: SStatus.SUBOPTIMAL
+            Status.SUBOPTIMAL: SStatus.SUBOPTIMAL,
         }
 
     # -----------------------------------------------------------------------------
@@ -377,8 +379,9 @@ class Simulation(GERMModel, Simulator):
 
             if res:
 
-                if (res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth) \
-                        or res.status == SStatus.INFEASIBLE:
+                if (
+                    res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth
+                ) or res.status == SStatus.INFEASIBLE:
                     self._essential_reactions.append(rxn)
 
         return self._essential_reactions
@@ -428,8 +431,9 @@ class Simulation(GERMModel, Simulator):
                 values[gene.id] = gene_coefficient
                 continue
 
-            if (res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth) \
-                    or res.status == SStatus.INFEASIBLE:
+            if (
+                res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth
+            ) or res.status == SStatus.INFEASIBLE:
                 self._essential_genes.append(gene)
 
             values[gene.id] = gene_coefficient
@@ -446,11 +450,9 @@ class Simulation(GERMModel, Simulator):
         if not self.model.is_metabolic():
             return []
 
-        values = {gene.id: 1.0 if gene.id in active_genes else 0.0
-                  for gene in self.model.yield_genes()}
+        values = {gene.id: 1.0 if gene.id in active_genes else 0.0 for gene in self.model.yield_genes()}
 
-        return [rxn.id for rxn in self.model.yield_reactions()
-                if rxn.gpr.is_none or rxn.gpr.evaluate(values=values)]
+        return [rxn.id for rxn in self.model.yield_reactions() if rxn.gpr.is_none or rxn.gpr.evaluate(values=values)]
 
     def add_reaction(self, reaction: Reaction, replace: bool = True, comprehensive: bool = True):
         """
@@ -490,8 +492,7 @@ class Simulation(GERMModel, Simulator):
         if not self.model.is_metabolic():
             return []
 
-        return [rxn.id for rxn in self.model.yield_exchanges()
-                if rxn.reversibility or rxn.lower_bound < 0]
+        return [rxn.id for rxn in self.model.yield_exchanges() if rxn.reversibility or rxn.lower_bound < 0]
 
     def get_transport_reactions(self) -> List[str]:
         """
@@ -503,8 +504,7 @@ class Simulation(GERMModel, Simulator):
 
         ext = self.model.external_compartment
 
-        return [rxn.id for rxn in self.model.yield_reactions()
-                if ext in rxn.compartments and len(rxn.compartments) > 1]
+        return [rxn.id for rxn in self.model.yield_reactions() if ext in rxn.compartments and len(rxn.compartments) > 1]
 
     def get_transport_genes(self) -> List[str]:
         """
@@ -610,8 +610,7 @@ class Simulation(GERMModel, Simulator):
         """
         lb, ub = self.find_bounds()
 
-        return [rxn.id for rxn in self.model.yield_reactions()
-                if rxn.lower_bound <= lb and rxn.upper_bound >= ub]
+        return [rxn.id for rxn in self.model.yield_reactions() if rxn.lower_bound <= lb and rxn.upper_bound >= ub]
 
     # -----------------------------------------------------------------------------
     # Simulation
@@ -620,11 +619,11 @@ class Simulation(GERMModel, Simulator):
     def _fba(self, model, objective, minimize, constraints, *args, **kwargs):
         # Check if this is a SimulatorBasedMetabolicModel - if so, delegate to external simulator
         from mewpy.germ.models.simulator_model import SimulatorBasedMetabolicModel
-        
+
         if isinstance(model, SimulatorBasedMetabolicModel):
             # Delegate to external simulator for better performance and accuracy
             external_sim = model.simulator
-            
+
             # Convert GERM constraints to simulator format
             sim_constraints = {}
             if constraints:
@@ -633,33 +632,26 @@ class Simulation(GERMModel, Simulator):
                         sim_constraints[rxn_id] = bounds
                     else:
                         sim_constraints[rxn_id] = (bounds, bounds)
-            
+
             # Convert GERM objective to simulator format
             sim_objective = {}
             if objective:
                 for rxn_id, coeff in objective.items():
                     sim_objective[rxn_id] = coeff
-            
+
             # Use external simulator
-            result = external_sim.simulate(
-                objective=sim_objective,
-                maximize=not minimize,
-                constraints=sim_constraints
-            )
-            
+            result = external_sim.simulate(objective=sim_objective, maximize=not minimize, constraints=sim_constraints)
+
             # Convert result to GERM Solution format
             from mewpy.solvers.solution import Solution, Status
+
             # Convert SStatus back to solver Status for proper mapping
             solver_status = Status[result.status.name]
-            return Solution(
-                status=solver_status,
-                fobj=result.objective_value,
-                values=result.fluxes
-            )
-        
+            return Solution(status=solver_status, fobj=result.objective_value, values=result.fluxes)
+
         # Fallback to native GERM FBA for regulatory models or pure metabolic models
         fba = FBA(model).build()
-        solver_kwargs = {'linear': objective, 'minimize': minimize, 'constraints': constraints}
+        solver_kwargs = {"linear": objective, "minimize": minimize, "constraints": constraints}
         sol = fba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
         return sol
 
@@ -667,11 +659,11 @@ class Simulation(GERMModel, Simulator):
     def _pfba(self, model, objective, minimize, constraints, *args, **kwargs):
         # Check if this is a SimulatorBasedMetabolicModel - if so, delegate to external simulator
         from mewpy.germ.models.simulator_model import SimulatorBasedMetabolicModel
-        
+
         if isinstance(model, SimulatorBasedMetabolicModel):
             # Delegate to external simulator for pFBA
             external_sim = model.simulator
-            
+
             # Convert constraints and objective as above
             sim_constraints = {}
             if constraints:
@@ -680,64 +672,61 @@ class Simulation(GERMModel, Simulator):
                         sim_constraints[rxn_id] = bounds
                     else:
                         sim_constraints[rxn_id] = (bounds, bounds)
-            
+
             sim_objective = {}
             if objective:
                 for rxn_id, coeff in objective.items():
                     sim_objective[rxn_id] = coeff
-            
+
             # Use external simulator with pFBA method
             from mewpy.simulation import SimulationMethod as ExtSimMethod
+
             result = external_sim.simulate(
-                objective=sim_objective,
-                method=ExtSimMethod.pFBA,
-                maximize=not minimize,
-                constraints=sim_constraints
+                objective=sim_objective, method=ExtSimMethod.pFBA, maximize=not minimize, constraints=sim_constraints
             )
-            
+
             # Convert result to GERM Solution format
             from mewpy.solvers.solution import Solution, Status
+
             # Convert SStatus back to solver Status for proper mapping
             solver_status = Status[result.status.name]
-            return Solution(
-                status=solver_status,
-                fobj=result.objective_value,
-                values=result.fluxes
-            )
-        
+            return Solution(status=solver_status, fobj=result.objective_value, values=result.fluxes)
+
         # Fallback to native GERM pFBA for regulatory models or pure metabolic models
         pfba = pFBA(model).build()
-        solver_kwargs = {'linear': objective, 'minimize': minimize, 'constraints': constraints}
+        solver_kwargs = {"linear": objective, "minimize": minimize, "constraints": constraints}
         sol = pfba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
         return sol
 
     @dispatcher.register(SimulationMethod.MOMA)
     def _moma(self, *args, **kwargs):
 
-        raise NotImplementedError('MOMA is not currently available with GERM models')
+        raise NotImplementedError("MOMA is not currently available with GERM models")
 
     @dispatcher.register(SimulationMethod.lMOMA)
     def _lmoma(self, *args, **kwargs):
 
-        raise NotImplementedError('lMOMA is not currently available with GERM models')
+        raise NotImplementedError("lMOMA is not currently available with GERM models")
 
     @dispatcher.register(SimulationMethod.ROOM)
     def _romm(self, *args, **kwargs):
 
-        raise NotImplementedError('ROOM is not currently available with GERM models')
+        raise NotImplementedError("ROOM is not currently available with GERM models")
 
     @dispatcher.register(SimulationMethod.NONE)
     def _none(self, *args, **kwargs):
         return Solution()
 
-    def simulate(self,
-                 objective: Dict[str, Union[int, float]] = None,
-                 method: SimulationMethod = SimulationMethod.FBA,
-                 maximize: bool = True,
-                 constraints: Union[Dict[str, float], Dict[str, Tuple[float, float]]] = None,
-                 reference: Dict[str, Union[int, float]] = None,
-                 scalefactor: float = None,
-                 solver: Union['Solver', 'CplexSolver', 'GurobiSolver', 'OptLangSolver'] = None) -> SimulationResult:
+    def simulate(
+        self,
+        objective: Dict[str, Union[int, float]] = None,
+        method: SimulationMethod = SimulationMethod.FBA,
+        maximize: bool = True,
+        constraints: Union[Dict[str, float], Dict[str, Tuple[float, float]]] = None,
+        reference: Dict[str, Union[int, float]] = None,
+        scalefactor: float = None,
+        solver: Union["Solver", "CplexSolver", "GurobiSolver", "OptLangSolver"] = None,
+    ) -> SimulationResult:
         """
         Simulates a phenotype for a given objective and set of constraints using the specified method.
         Reference wild-type conditions are also accepted
@@ -764,32 +753,34 @@ class Simulation(GERMModel, Simulator):
 
         simulation_constraints = {**constraints, **self.constraints, **self.environmental_conditions}
 
-        solution: Solution = self.dispatcher(method,
-                                             model=self.model,
-                                             objective=objective,
-                                             minimize=not maximize,
-                                             constraints=simulation_constraints)
+        solution: Solution = self.dispatcher(
+            method, model=self.model, objective=objective, minimize=not maximize, constraints=simulation_constraints
+        )
 
         status = self.__status_mapping[solution.status]
 
-        return SimulationResult(model=self.model,
-                                objective_value=solution.fobj,
-                                fluxes=solution.values,
-                                status=status,
-                                envcond=self.environmental_conditions,
-                                model_constraints=self.constraints,
-                                simul_constraints=constraints,
-                                maximize=maximize,
-                                method=method)
+        return SimulationResult(
+            model=self.model,
+            objective_value=solution.fobj,
+            fluxes=solution.values,
+            status=status,
+            envcond=self.environmental_conditions,
+            model_constraints=self.constraints,
+            simul_constraints=constraints,
+            maximize=maximize,
+            method=method,
+        )
 
-    def FVA(self,
-            obj_frac: float = 0.9,
-            reactions: List[str] = None,
-            constraints: Union[Dict[str, float], Dict[str, Tuple[float, float]]] = None,
-            loopless: bool = False,
-            internal: List[str] = None,
-            solver: Union['Solver', 'CplexSolver', 'GurobiSolver', 'OptLangSolver'] = None,
-            format: str = 'dict'):
+    def FVA(
+        self,
+        obj_frac: float = 0.9,
+        reactions: List[str] = None,
+        constraints: Union[Dict[str, float], Dict[str, Tuple[float, float]]] = None,
+        loopless: bool = False,
+        internal: List[str] = None,
+        solver: Union["Solver", "CplexSolver", "GurobiSolver", "OptLangSolver"] = None,
+        format: str = "dict",
+    ):
         """
         It performs a Flux Variability Analysis (FVA).
 
@@ -808,6 +799,7 @@ class Simulation(GERMModel, Simulator):
 
         # Check if this is a SimulatorBasedMetabolicModel and delegate to external simulator
         from ..germ.models.simulator_model import SimulatorBasedMetabolicModel
+
         if isinstance(self.model, SimulatorBasedMetabolicModel):
             # Prepare constraints for external simulator
             external_constraints = {}
@@ -815,13 +807,10 @@ class Simulation(GERMModel, Simulator):
                 external_constraints.update(constraints)
             external_constraints.update(self.constraints)
             external_constraints.update(self.environmental_conditions)
-            
+
             # Delegate to external simulator
             return self.model.simulator.FVA(
-                reactions=reactions,
-                constraints=external_constraints,
-                obj_frac=obj_frac,
-                format=format
+                reactions=reactions, constraints=external_constraints, obj_frac=obj_frac, format=format
             )
 
         if not constraints:
@@ -829,14 +818,11 @@ class Simulation(GERMModel, Simulator):
 
         simulation_constraints = {**constraints, **self.constraints, **self.environmental_conditions}
 
-        solution = fva(model=self.model,
-                       fraction=obj_frac,
-                       reactions=reactions,
-                       constraints=simulation_constraints)
+        solution = fva(model=self.model, fraction=obj_frac, reactions=reactions, constraints=simulation_constraints)
 
-        if format == 'df':
+        if format == "df":
             df = pd.concat([pd.DataFrame(solution.index), solution], axis=1)
-            df.columns = ['Reaction ID', 'Minimum', 'Maximum']
+            df.columns = ["Reaction ID", "Minimum", "Maximum"]
 
             return df
 

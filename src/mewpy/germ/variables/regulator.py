@@ -1,9 +1,10 @@
-from typing import Any, Dict, TYPE_CHECKING, Generator, Tuple, Sequence, Union
+from typing import TYPE_CHECKING, Any, Dict, Generator, Sequence, Tuple, Union
 
+from mewpy.germ.models.serialization import serialize
 from mewpy.util.constants import ModelConstants
 from mewpy.util.history import recorder
-from mewpy.germ.models.serialization import serialize
 from mewpy.util.utilities import generator
+
 from .variable import Variable
 from .variables_utils import coefficients_setter, initialize_coefficients
 
@@ -12,13 +13,15 @@ if TYPE_CHECKING:
     from .target import Target
 
 
-class Regulator(Variable, variable_type='regulator', register=True, constructor=True, checker=True):
+class Regulator(Variable, variable_type="regulator", register=True, constructor=True, checker=True):
 
-    def __init__(self,
-                 identifier: Any,
-                 coefficients: Sequence[float] = None,
-                 interactions: Dict[str, 'Interaction'] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        identifier: Any,
+        coefficients: Sequence[float] = None,
+        interactions: Dict[str, "Interaction"] = None,
+        **kwargs,
+    ):
         """
         A regulator is commonly associated with interactions and
         can usually be available as metabolite or reaction or target too.
@@ -62,47 +65,49 @@ class Regulator(Variable, variable_type='regulator', register=True, constructor=
         if self.is_reaction() or self.is_metabolite():
             return super(Regulator, self).__str__()
 
-        return f'{self.id} || {self.coefficients}'
+        return f"{self.id} || {self.coefficients}"
 
     def _regulator_to_html(self):
         """
         It returns a html representation.
         """
-        html_dict = {'Coefficients': self.coefficients,
-                     'Active': self.is_active,
-                     'Interactions': ', '.join(self.interactions),
-                     'Targets': ', '.join(self.targets),
-                     'Environmental stimulus': self.environmental_stimulus}
+        html_dict = {
+            "Coefficients": self.coefficients,
+            "Active": self.is_active,
+            "Interactions": ", ".join(self.interactions),
+            "Targets": ", ".join(self.targets),
+            "Environmental stimulus": self.environmental_stimulus,
+        }
         return html_dict
 
     # -----------------------------------------------------------------------------
     # Static attributes
     # -----------------------------------------------------------------------------
 
-    @serialize('coefficients', 'coefficients', '_coefficients')
+    @serialize("coefficients", "coefficients", "_coefficients")
     @property
     def coefficients(self) -> Tuple[float, ...]:
         """
         The coefficient of the regulator
         :return: the coefficient
         """
-        if hasattr(self, '_bounds'):
+        if hasattr(self, "_bounds"):
 
             # if it is a reaction, bounds must be returned
             return self._bounds
 
         # if it is a metabolite, the bounds coefficient of the exchange reaction must be returned
-        elif hasattr(self, 'exchange_reaction'):
+        elif hasattr(self, "exchange_reaction"):
 
-            if hasattr(self.exchange_reaction, '_bounds'):
+            if hasattr(self.exchange_reaction, "_bounds"):
                 # noinspection PyProtectedMember
                 return self.exchange_reaction._bounds
 
         return self._coefficients
 
-    @serialize('interactions', 'interactions', '_interactions')
+    @serialize("interactions", "interactions", "_interactions")
     @property
-    def interactions(self) -> Dict[str, 'Interaction']:
+    def interactions(self) -> Dict[str, "Interaction"]:
         """
         The dictionary of interactions to which the regulator is associated with
         :return: the dictionary of interactions
@@ -131,7 +136,7 @@ class Regulator(Variable, variable_type='regulator', register=True, constructor=
         coefficients_setter(self, value)
 
     @interactions.setter
-    def interactions(self, value: Dict[str, 'Interaction']):
+    def interactions(self, value: Dict[str, "Interaction"]):
         """
         The dictionary of interactions to set to the regulator
 
@@ -149,13 +154,16 @@ class Regulator(Variable, variable_type='regulator', register=True, constructor=
     # -----------------------------------------------------------------------------
 
     @property
-    def targets(self) -> Dict[str, 'Target']:
+    def targets(self) -> Dict[str, "Target"]:
         """
         The dictionary of targets to which the regulator is associated with
         :return: the dictionary of targets
         """
-        return {interaction.target.id: interaction.target for interaction in self.yield_interactions()
-                if interaction.target is not None}
+        return {
+            interaction.target.id: interaction.target
+            for interaction in self.yield_interactions()
+            if interaction.target is not None
+        }
 
     @property
     def environmental_stimulus(self) -> bool:
@@ -163,7 +171,7 @@ class Regulator(Variable, variable_type='regulator', register=True, constructor=
         True if the regulator is an environmental stimulus
         :return: True if the regulator is an environmental stimulus
         """
-        if self.types == {'regulator'}:
+        if self.types == {"regulator"}:
             return True
 
         return False
@@ -172,14 +180,14 @@ class Regulator(Variable, variable_type='regulator', register=True, constructor=
     # Generators
     # -----------------------------------------------------------------------------
 
-    def yield_interactions(self) -> Generator['Interaction', None, None]:
+    def yield_interactions(self) -> Generator["Interaction", None, None]:
         """
         Yields the interactions to which the regulator is associated with
         :return: the generator of interactions
         """
         return generator(self._interactions)
 
-    def yield_targets(self) -> Generator['Target', None, None]:
+    def yield_targets(self) -> Generator["Target", None, None]:
         """
         Yields the targets to which the regulator is associated with
         :return: the generator of targets
@@ -201,17 +209,14 @@ class Regulator(Variable, variable_type='regulator', register=True, constructor=
         coefficients_setter(self, minimum_coefficient)
 
         if history:
-            self.history.queue_command(undo_func=coefficients_setter,
-                                       undo_kwargs={'instance': self,
-                                                    'value': old_coef},
-                                       func=self.ko,
-                                       kwargs={'minimum_coefficient': minimum_coefficient,
-                                               'history': False})
+            self.history.queue_command(
+                undo_func=coefficients_setter,
+                undo_kwargs={"instance": self, "value": old_coef},
+                func=self.ko,
+                kwargs={"minimum_coefficient": minimum_coefficient, "history": False},
+            )
 
-    def update(self,
-               coefficients: Sequence[float] = None,
-               interactions: Dict[str, 'Interaction'] = None,
-               **kwargs):
+    def update(self, coefficients: Sequence[float] = None, interactions: Dict[str, "Interaction"] = None, **kwargs):
         """
         It updates the regulator
         Note that, some update operations are not registered in history.

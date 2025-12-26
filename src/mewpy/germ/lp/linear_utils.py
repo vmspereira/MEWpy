@@ -4,7 +4,6 @@ from mewpy.solvers import get_default_solver
 from mewpy.solvers.sglobal import __MEWPY_solvers__ as solvers
 from mewpy.solvers.solver import Solver
 
-
 integer_coefficients = ((0, 0), (1, 1), (0.0, 0.0), (1.0, 1.0), (0, 1), (0.0, 1.0))
 
 
@@ -27,7 +26,7 @@ def get_solver_instance(solver: Union[str, Solver] = None) -> Solver:
         SolverType = solvers.get(solver, None)
 
         if SolverType is None:
-            raise ValueError(f'{solver} is not listed as valid solver. Check the valid solvers: {solvers}')
+            raise ValueError(f"{solver} is not listed as valid solver. Check the valid solvers: {solvers}")
 
         solver = SolverType()
 
@@ -36,7 +35,7 @@ def get_solver_instance(solver: Union[str, Solver] = None) -> Solver:
         pass
 
     else:
-        raise ValueError(f'Invalid solver {solver}. Check the valid solvers: {solvers}')
+        raise ValueError(f"Invalid solver {solver}. Check the valid solvers: {solvers}")
 
     return solver
 
@@ -138,7 +137,7 @@ class LinkedList:
 
     def __setitem__(self, key, value):
 
-        raise NotImplementedError('Linked lists do not support item setting. Try pop or add')
+        raise NotImplementedError("Linked lists do not support item setting. Try pop or add")
 
     def get(self, value, default=None):
 
@@ -161,7 +160,7 @@ class LinkedList:
             if node.idxes.stop - node.idxes.start > 1:
 
                 for i in range(node.idxes.start, node.idxes.stop):
-                    yield f'{key}_{i}'
+                    yield f"{key}_{i}"
 
             else:
                 yield key
@@ -223,16 +222,16 @@ class LinkedList:
             node = Node(node[0], node[1])
 
         elif isinstance(node, dict):
-            node = Node(node['value'], node['length'])
+            node = Node(node["value"], node["length"])
 
         elif isinstance(node, Node):
             pass
 
         else:
-            raise TypeError('Node must be a tuple, list, dict(value=val, length=len) or Node instance')
+            raise TypeError("Node must be a tuple, list, dict(value=val, length=len) or Node instance")
 
         if node.value in self.data:
-            raise ValueError('Node value is already in linked list')
+            raise ValueError("Node value is already in linked list")
 
         if not self._head:
 

@@ -1,9 +1,10 @@
-from typing import Any, TYPE_CHECKING, Dict, Generator, Tuple, Sequence, Union
+from typing import TYPE_CHECKING, Any, Dict, Generator, Sequence, Tuple, Union
 
+from mewpy.germ.models.serialization import serialize
 from mewpy.util.constants import ModelConstants
 from mewpy.util.history import recorder
-from mewpy.germ.models.serialization import serialize
 from mewpy.util.utilities import generator
+
 from .variable import Variable
 from .variables_utils import coefficients_setter, initialize_coefficients
 
@@ -12,14 +13,11 @@ if TYPE_CHECKING:
     from .regulator import Regulator
 
 
-class Target(Variable, variable_type='target', register=True, constructor=True, checker=True):
+class Target(Variable, variable_type="target", register=True, constructor=True, checker=True):
 
-    def __init__(self,
-                 identifier: Any,
-                 coefficients: Sequence[float] = None,
-                 interaction: 'Interaction' = None,
-                 **kwargs):
-
+    def __init__(
+        self, identifier: Any, coefficients: Sequence[float] = None, interaction: "Interaction" = None, **kwargs
+    ):
         """
         A target gene is associated with a single interaction but can be regulated by multiple regulators.
         The regulatory interaction establishes a relationship between a target gene and regulators.
@@ -69,46 +67,48 @@ class Target(Variable, variable_type='target', register=True, constructor=True, 
 
             return str(self.interaction)
 
-        return f'{self.id} || {self.coefficients}'
+        return f"{self.id} || {self.coefficients}"
 
     def _target_to_html(self):
         """
         It returns a html representation.
         """
-        html_dict = {'Coefficients': self.coefficients,
-                     'Active': self.is_active,
-                     'Interaction': self.interaction,
-                     'Regulators': ', '.join(self.regulators)}
+        html_dict = {
+            "Coefficients": self.coefficients,
+            "Active": self.is_active,
+            "Interaction": self.interaction,
+            "Regulators": ", ".join(self.regulators),
+        }
         return html_dict
 
     # -----------------------------------------------------------------------------
     # Static attributes
     # -----------------------------------------------------------------------------
 
-    @serialize('coefficients', 'coefficients', '_coefficients')
+    @serialize("coefficients", "coefficients", "_coefficients")
     @property
     def coefficients(self) -> Tuple[float, ...]:
         """
         The coefficients of the target gene.
         :return: the coefficients
         """
-        if hasattr(self, '_bounds'):
+        if hasattr(self, "_bounds"):
 
             # if it is a reaction, bounds must be returned
             return self._bounds
 
         # if it is a metabolite, the bounds coefficient of the exchange reaction must be returned
-        elif hasattr(self, 'exchange_reaction'):
+        elif hasattr(self, "exchange_reaction"):
 
-            if hasattr(self.exchange_reaction, '_bounds'):
+            if hasattr(self.exchange_reaction, "_bounds"):
                 # noinspection PyProtectedMember
                 return self.exchange_reaction._bounds
 
         return self._coefficients
 
-    @serialize('interaction', 'interaction', '_interaction')
+    @serialize("interaction", "interaction", "_interaction")
     @property
-    def interaction(self) -> 'Interaction':
+    def interaction(self) -> "Interaction":
         """
         The interaction to which the target is associated with.
         :return: the interaction
@@ -138,7 +138,7 @@ class Target(Variable, variable_type='target', register=True, constructor=True, 
 
     @interaction.setter
     @recorder
-    def interaction(self, value: 'Interaction'):
+    def interaction(self, value: "Interaction"):
         """
         The interaction setter.
         It sets the interaction and adds the target to the interaction.
@@ -158,7 +158,7 @@ class Target(Variable, variable_type='target', register=True, constructor=True, 
     # Dynamic attributes
     # -----------------------------------------------------------------------------
     @property
-    def regulators(self) -> Dict[str, 'Regulator']:
+    def regulators(self) -> Dict[str, "Regulator"]:
         """
         The regulators that regulate the target gene.
         :return: the regulators as a dictionary
@@ -171,7 +171,7 @@ class Target(Variable, variable_type='target', register=True, constructor=True, 
     # -----------------------------------------------------------------------------
     # Generators
     # -----------------------------------------------------------------------------
-    def yield_regulators(self) -> Generator['Regulator', None, None]:
+    def yield_regulators(self) -> Generator["Regulator", None, None]:
         """
         A generator that yields the regulators that regulate the target gene.
         :return:
@@ -193,17 +193,14 @@ class Target(Variable, variable_type='target', register=True, constructor=True, 
         coefficients_setter(self, minimum_coefficient)
 
         if history:
-            self.history.queue_command(undo_func=coefficients_setter,
-                                       undo_kwargs={'instance': self,
-                                                    'value': old_coef},
-                                       func=self.ko,
-                                       kwargs={'minimum_coefficient': minimum_coefficient,
-                                               'history': False})
+            self.history.queue_command(
+                undo_func=coefficients_setter,
+                undo_kwargs={"instance": self, "value": old_coef},
+                func=self.ko,
+                kwargs={"minimum_coefficient": minimum_coefficient, "history": False},
+            )
 
-    def update(self,
-               coefficients: Sequence[float] = None,
-               interaction: 'Interaction' = None,
-               **kwargs):
+    def update(self, coefficients: Sequence[float] = None, interaction: "Interaction" = None, **kwargs):
         """
         It updates the target gene with relevant information.
 

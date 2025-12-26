@@ -1,4 +1,4 @@
-from typing import Union, TYPE_CHECKING, Dict, Callable, Any, Type, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Sequence, Type, Union
 from warnings import warn
 
 import pandas as pd
@@ -6,15 +6,17 @@ import pandas as pd
 from mewpy.germ.algebra import Symbolic
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
-def regulatory_truth_table(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                           interactions: Sequence[str] = None,
-                           initial_state: Dict[str, float] = None,
-                           strategy: str = 'max',
-                           operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
-                           decoder: dict = None) -> pd.DataFrame:
+def regulatory_truth_table(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    interactions: Sequence[str] = None,
+    initial_state: Dict[str, float] = None,
+    strategy: str = "max",
+    operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
+    decoder: dict = None,
+) -> pd.DataFrame:
     """
     The regulatory truth table of a regulatory model contains the evaluation of all regulatory events.
     RegulatoryModel's interactions are evaluated using an initial state or regulators coefficients.
@@ -35,7 +37,7 @@ def regulatory_truth_table(model: Union['Model', 'MetabolicModel', 'RegulatoryMo
     else:
         interactions = [model.interactions[interaction] for interaction in interactions]
 
-    if initial_state is None and strategy == 'all':
+    if initial_state is None and strategy == "all":
         warn('Attention! Missing initial state and calculating "all" coefficients may take some time for large models!')
 
     dfs = []
@@ -44,17 +46,19 @@ def regulatory_truth_table(model: Union['Model', 'MetabolicModel', 'RegulatoryMo
         for coefficient, regulatory_event in interaction.regulatory_events.items():
 
             if not regulatory_event.is_none:
-                df = regulatory_event.truth_table(values=initial_state,
-                                                  strategy=strategy,
-                                                  coefficient=coefficient,
-                                                  operators=operators,
-                                                  decoder=decoder)
+                df = regulatory_event.truth_table(
+                    values=initial_state,
+                    strategy=strategy,
+                    coefficient=coefficient,
+                    operators=operators,
+                    decoder=decoder,
+                )
 
                 df.index = [interaction.target.id] * df.shape[0]
 
                 dfs.append(df)
 
     df = pd.concat(dfs)
-    result_col = df.pop('result')
+    result_col = df.pop("result")
     df = pd.concat([result_col, df], axis=1)
     return df

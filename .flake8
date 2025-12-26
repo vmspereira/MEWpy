@@ -1,0 +1,19 @@
+[flake8]
+max-line-length = 125
+exclude =
+    __pycache__,
+    .git,
+    .tox,
+    build,
+    dist,
+    *.egg-info,
+    docs
+# E203: whitespace before ':' (conflicts with black)
+# W503: line break before binary operator (conflicts with black)
+# E402: module level import not at top of file
+# E722: do not use bare 'except'
+# F401: module imported but unused (acceptable in __init__.py for API exposure)
+# F403: 'from module import *' used (star imports)
+# F405: name may be undefined, or defined from star imports
+# F811: redefinition of unused name (often in try-except import blocks)
+extend-ignore = E203,W503,E402,E722,F401,F403,F405,F811

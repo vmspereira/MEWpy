@@ -5,13 +5,16 @@ class Summary:
     """
     A summary of a Solution. This object contains the main information of the solution.
     """
-    def __init__(self,
-                 inputs: pd.DataFrame = None,
-                 outputs: pd.DataFrame = None,
-                 objective: pd.DataFrame = None,
-                 df: pd.DataFrame = None,
-                 metabolic: pd.DataFrame = None,
-                 regulatory: pd.DataFrame = None):
+
+    def __init__(
+        self,
+        inputs: pd.DataFrame = None,
+        outputs: pd.DataFrame = None,
+        objective: pd.DataFrame = None,
+        df: pd.DataFrame = None,
+        metabolic: pd.DataFrame = None,
+        regulatory: pd.DataFrame = None,
+    ):
         """
         A summary of a Solution
 

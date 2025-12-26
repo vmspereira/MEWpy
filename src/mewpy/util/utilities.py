@@ -18,15 +18,18 @@
 Utilities
 ##############################################################################
 """
-import joblib
 import contextlib
 import functools
 import re
-import types
 import time
+import types
 from collections.abc import Iterable
-from .constants import atomic_weights, aa_weights
 from warnings import warn
+
+import joblib
+
+from .constants import aa_weights, atomic_weights
+
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -46,8 +49,9 @@ class AttrDict(dict):
         values = list(self.keys())
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -56,12 +60,13 @@ class AttrDict(dict):
             values.sort()
 
         import pandas as pd
-        data = [{'Attribute':x,'Value':self.get(x)} for x in values]
-        
+
+        data = [{"Attribute": x, "Value": self.get(x)} for x in values]
+
         if data:
             df = pd.DataFrame(data)
             df = df.set_index(df.columns[0])
-        else: 
+        else:
             df = pd.DataFrame()
         return df
 
@@ -70,6 +75,7 @@ class AttrDict(dict):
 
     def _repr_html_(self):
         return self.find()._repr_html_()
+
 
 class TimerError(Exception):
     """A custom exception used to report errors in use of Timer class"""
@@ -116,9 +122,7 @@ class Singleton(object):
 
 def copy_func(f):
     """Based on http://stackoverflow.com/a/6528148/190597 (Glenn Maynard)"""
-    g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
-                           argdefs=f.__defaults__,
-                           closure=f.__closure__)
+    g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__, argdefs=f.__defaults__, closure=f.__closure__)
     g = functools.update_wrapper(g, f)
     g.__kwdefaults__ = f.__kwdefaults__
     return g
@@ -148,12 +152,14 @@ class Dispatcher:
         def wrapper(state, *args, **kwargs):
             method = self.registry.get(state).__get__(instance, owner)
             return method(*args, **kwargs)
+
         return wrapper
 
     def register(self, state):
         def wrapper(method):
             self.registry[state] = method
             return method
+
         return wrapper
 
 
@@ -164,11 +170,13 @@ def iterable(obj, is_string=False):
         return obj
     return (obj,)
 
+
 def generator(container):
     return (value for value in container.values())
 
+
 # Taken from cobrapy!!!!
-chemical_formula_re = re.compile('([A-Z][a-z]?)([0-9.]+[0-9.]?|(?=[A-Z])?)')
+chemical_formula_re = re.compile("([A-Z][a-z]?)([0-9.]+[0-9.]?|(?=[A-Z])?)")
 
 
 def elements(formula):
@@ -176,9 +184,10 @@ def elements(formula):
     atoms = {}
     for atom, count in all_elements:
         if not count:
-            count = '1'
+            count = "1"
         atoms[atom] = atoms.get(atom, 0) + int(count)
     return atoms
+
 
 def molecular_weight(formula, element=None):
     elems = elements(formula)
@@ -193,13 +202,14 @@ def molecular_weight(formula, element=None):
 
     return mw
 
+
 def calculate_MW(seq, amide=False):
     """Method to calculate the molecular weight [g/mol] of every sequence in the attribute :py:attr:`sequences`.
 
-    :param (str) seq: amino acid sequence 
+    :param (str) seq: amino acid sequence
     :param (boolean) amide: whether the sequences are C-terminally amidated (subtracts 0.95 from the MW).
     :return: array of descriptor values in the attribute :py:attr:`descriptor`
-    
+
     """
     mw = [aa_weights[aa] for aa in seq]
     # sum over AA MW and subtract H20 MW for every
@@ -213,6 +223,7 @@ def calculate_MW(seq, amide=False):
 @contextlib.contextmanager
 def tqdm_joblib(tqdm_object):
     """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+
     class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
         def __call__(self, *args, **kwargs):
             tqdm_object.update(n=self.batch_size)
@@ -228,7 +239,7 @@ def tqdm_joblib(tqdm_object):
 
 
 def get_all_subclasses(cls):
-    '''Returns all subclasses of a class'''
+    """Returns all subclasses of a class"""
     all_subclasses = []
 
     for subclass in cls.__subclasses__():
@@ -237,14 +248,15 @@ def get_all_subclasses(cls):
 
     return all_subclasses
 
+
 def is_notebook() -> bool:
     try:
         shell = get_ipython().__class__.__name__
-        if shell == 'ZMQInteractiveShell':
-            return True   # Jupyter notebook or qtconsole
-        elif shell == 'TerminalInteractiveShell':
+        if shell == "ZMQInteractiveShell":
+            return True  # Jupyter notebook or qtconsole
+        elif shell == "TerminalInteractiveShell":
             return False  # Terminal running IPython
         else:
             return False  # Other type (?)
     except NameError:
-        return False      # Probably standard Python interpreter
+        return False  # Probably standard Python interpreter

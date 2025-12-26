@@ -24,6 +24,7 @@ import numpy
 from inspyred.ec.emo import Pareto
 
 from mewpy.visualization.plot import StreamingPlot
+
 from ..ea import Solution, non_dominated_population
 
 
@@ -36,7 +37,7 @@ def fitness_statistics(population, directions):
 
     def minuszero(value):
         return round(value, 6)
-            
+
     stats = {}
     population.sort(reverse=True)
     first = population[0].fitness
@@ -50,17 +51,27 @@ def fitness_statistics(population, directions):
             med_fit = numpy.median(f)
             avg_fit = numpy.mean(f)
             std_fit = numpy.std(f)
-            stats['obj_{}'.format(i)] = {'best': best_fit, 'worst': worst_fit,
-                                         'mean': avg_fit, 'median': med_fit, 'std': std_fit}
+            stats["obj_{}".format(i)] = {
+                "best": best_fit,
+                "worst": worst_fit,
+                "mean": avg_fit,
+                "median": med_fit,
+                "std": std_fit,
+            }
     else:
-        worst_fit = -1*population[0].fitness if directions[i] == -1 else population[-1].fitness
-        best_fit = -1*population[-1].fitness if directions[i] == -1 else population[0].fitness
+        worst_fit = -1 * population[0].fitness if directions[i] == -1 else population[-1].fitness
+        best_fit = -1 * population[-1].fitness if directions[i] == -1 else population[0].fitness
         f = [p.fitness * directions[0] for p in population]
         med_fit = numpy.median(f)
         avg_fit = numpy.mean(f)
         std_fit = numpy.std(f)
-        stats['obj'] = {'best': minuszero(best_fit), 'worst': minuszero(worst_fit),
-                        'mean': minuszero(avg_fit), 'median': minuszero(med_fit), 'std': minuszero(std_fit)}
+        stats["obj"] = {
+            "best": minuszero(best_fit),
+            "worst": minuszero(worst_fit),
+            "mean": minuszero(avg_fit),
+            "median": minuszero(med_fit),
+            "std": minuszero(std_fit),
+        }
 
     return stats
 
@@ -79,7 +90,7 @@ def results_observer(population, num_generations, num_evaluations, args):
     :param args: (dict) a dictionary of keyword arguments.
 
     """
-    directions = args['_ec'].directions
+    directions = args["_ec"].directions
     stats = fitness_statistics(population, directions)
     title = "Gen    Eval|"
     values = "{0:>4} {1:>6}|".format(num_generations, num_evaluations)
@@ -87,20 +98,25 @@ def results_observer(population, num_generations, num_evaluations, args):
     for key in stats:
         s = stats[key]
         title = title + "     Worst      Best    Median   Average   Std Dev|"
-        values = values + "  {0:.6f}  {1:.6f}  {2:.6f}  {3:.6f}  {4:.6f}|".format(s['worst'],
-                                                                                  s['best'],
-                                                                                  s['median'],
-                                                                                  s['mean'],
-                                                                                  s['std'])
+        values = values + "  {0:.6f}  {1:.6f}  {2:.6f}  {3:.6f}  {4:.6f}|".format(
+            s["worst"], s["best"], s["median"], s["mean"], s["std"]
+        )
     if num_generations == 0:
         print(title)
     print(values)
 
 
-class VisualizerObserver():
+class VisualizerObserver:
 
-    def __init__(self, reference_front=None, reference_point=None, display_frequency=1, axis_labels=None,
-                 non_dominated=False, print_stats=True):
+    def __init__(
+        self,
+        reference_front=None,
+        reference_point=None,
+        display_frequency=1,
+        axis_labels=None,
+        non_dominated=False,
+        print_stats=True,
+    ):
         self.figure = None
         self.display_frequency = display_frequency
         self.reference_point = reference_point
@@ -112,11 +128,11 @@ class VisualizerObserver():
     def update(self, population, num_generations, num_evaluations, args):
         generations = num_generations
         evaluations = num_evaluations
-        directions = args['_ec'].directions
+        directions = args["_ec"].directions
         p = []
         for s in population:
             if isinstance(s.fitness, Pareto):
-                a = Solution(s.candidate, [a*b for a, b in zip(s.fitness.values, directions)])
+                a = Solution(s.candidate, [a * b for a, b in zip(s.fitness.values, directions)])
             else:
                 a = Solution(s.candidate, [s.fitness * directions[0]])
             p.append(a)
@@ -125,7 +141,7 @@ class VisualizerObserver():
         ds = None
 
         if not self.non_dominated:
-            ds = list(set(p)-set(nds))
+            ds = list(set(p) - set(nds))
 
         if self.figure is None:
             self.figure = StreamingPlot(axis_labels=self.axis_labels)
@@ -133,9 +149,7 @@ class VisualizerObserver():
 
         if (generations % self.display_frequency) == 0:
             self.figure.update(nds, dominated=ds)
-            self.figure.ax.set_title(
-                'Eval: {}'.format(evaluations), fontsize=13)
+            self.figure.ax.set_title("Eval: {}".format(evaluations), fontsize=13)
 
         if self.print_stats:
-            results_observer(population, num_generations,
-                             num_evaluations, args)
+            results_observer(population, num_generations, num_evaluations, args)

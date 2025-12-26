@@ -5,13 +5,14 @@ This module provides the RegulatoryExtension class, which wraps external simulat
 (COBRApy, reframed) and adds regulatory network functionality without duplicating
 metabolic data. All metabolic operations are delegated to the wrapped simulator.
 """
-from typing import TYPE_CHECKING, Any, Union, Generator, Dict, Tuple, Optional
+
 import json
+from typing import TYPE_CHECKING, Any, Dict, Generator, Optional, Tuple, Union
 
 if TYPE_CHECKING:
-    from mewpy.simulation.simulation import Simulator
-    from mewpy.germ.variables import Regulator, Target, Interaction
     from mewpy.germ.algebra import Expression
+    from mewpy.germ.variables import Interaction, Regulator, Target
+    from mewpy.simulation.simulation import Simulator
 
 # Runtime imports
 from mewpy.germ.algebra import parse_expression
@@ -51,10 +52,9 @@ class RegulatoryExtension:
         >>> solution = rfba.optimize()
     """
 
-    def __init__(self,
-                 simulator: 'Simulator',
-                 regulatory_network: Optional[Any] = None,
-                 identifier: Optional[str] = None):
+    def __init__(
+        self, simulator: "Simulator", regulatory_network: Optional[Any] = None, identifier: Optional[str] = None
+    ):
         """
         Initialize RegulatoryExtension with a simulator and optional regulatory network.
 
@@ -63,15 +63,15 @@ class RegulatoryExtension:
         :param identifier: Optional identifier for the integrated model
         """
         self._simulator = simulator
-        self._identifier = identifier or getattr(simulator, 'id', 'regulatory_extension')
+        self._identifier = identifier or getattr(simulator, "id", "regulatory_extension")
 
         # Regulatory network storage (ONLY regulatory components)
-        self._regulators: Dict[str, 'Regulator'] = {}
-        self._targets: Dict[str, 'Target'] = {}
-        self._interactions: Dict[str, 'Interaction'] = {}
+        self._regulators: Dict[str, "Regulator"] = {}
+        self._targets: Dict[str, "Target"] = {}
+        self._interactions: Dict[str, "Interaction"] = {}
 
         # Cache for parsed GPR expressions (performance optimization)
-        self._gpr_cache: Dict[str, 'Expression'] = {}
+        self._gpr_cache: Dict[str, "Expression"] = {}
 
         # Load regulatory network if provided
         if regulatory_network is not None:
@@ -82,13 +82,15 @@ class RegulatoryExtension:
     # =========================================================================
 
     @classmethod
-    def from_sbml(cls,
-                  metabolic_path: str,
-                  regulatory_path: str = None,
-                  regulatory_format: str = 'csv',
-                  flavor: str = 'reframed',
-                  identifier: str = None,
-                  **regulatory_kwargs) -> 'RegulatoryExtension':
+    def from_sbml(
+        cls,
+        metabolic_path: str,
+        regulatory_path: str = None,
+        regulatory_format: str = "csv",
+        flavor: str = "reframed",
+        identifier: str = None,
+        **regulatory_kwargs,
+    ) -> "RegulatoryExtension":
         """
         Create RegulatoryExtension from SBML metabolic model and optional regulatory network.
 
@@ -129,11 +131,13 @@ class RegulatoryExtension:
         from mewpy.simulation import get_simulator
 
         # Load metabolic model (prefer reframed - more lightweight)
-        if flavor == 'reframed':
+        if flavor == "reframed":
             from reframed.io.sbml import load_cbmodel
+
             metabolic_model = load_cbmodel(metabolic_path)
-        elif flavor == 'cobra':
+        elif flavor == "cobra":
             import cobra
+
             metabolic_model = cobra.io.read_sbml_model(metabolic_path)
         else:
             raise ValueError(f"Unknown flavor: {flavor}. Use 'reframed' (default, lightweight) or 'cobra'")
@@ -144,21 +148,19 @@ class RegulatoryExtension:
         # Load regulatory network if provided
         regulatory_network = None
         if regulatory_path:
-            regulatory_network = cls._load_regulatory_from_file(
-                regulatory_path,
-                regulatory_format,
-                **regulatory_kwargs
-            )
+            regulatory_network = cls._load_regulatory_from_file(regulatory_path, regulatory_format, **regulatory_kwargs)
 
         return cls(simulator, regulatory_network, identifier)
 
     @classmethod
-    def from_model(cls,
-                   metabolic_model,
-                   regulatory_path: str = None,
-                   regulatory_format: str = 'csv',
-                   identifier: str = None,
-                   **regulatory_kwargs) -> 'RegulatoryExtension':
+    def from_model(
+        cls,
+        metabolic_model,
+        regulatory_path: str = None,
+        regulatory_format: str = "csv",
+        identifier: str = None,
+        **regulatory_kwargs,
+    ) -> "RegulatoryExtension":
         """
         Create RegulatoryExtension from COBRApy/reframed model and optional regulatory network.
 
@@ -188,18 +190,12 @@ class RegulatoryExtension:
         # Load regulatory network if provided
         regulatory_network = None
         if regulatory_path:
-            regulatory_network = cls._load_regulatory_from_file(
-                regulatory_path,
-                regulatory_format,
-                **regulatory_kwargs
-            )
+            regulatory_network = cls._load_regulatory_from_file(regulatory_path, regulatory_format, **regulatory_kwargs)
 
         return cls(simulator, regulatory_network, identifier)
 
     @classmethod
-    def from_json(cls,
-                  json_path: str,
-                  identifier: str = None) -> 'RegulatoryExtension':
+    def from_json(cls, json_path: str, identifier: str = None) -> "RegulatoryExtension":
         """
         Create RegulatoryExtension from JSON file containing both metabolic and regulatory data.
 
@@ -210,7 +206,7 @@ class RegulatoryExtension:
         Example:
             >>> model = RegulatoryExtension.from_json('integrated_model.json')
         """
-        from mewpy.io import Reader, Engines
+        from mewpy.io import Engines, Reader
 
         # Use existing JSON reader
         reader = Reader(Engines.JSON, json_path)
@@ -221,23 +217,23 @@ class RegulatoryExtension:
 
         # Extract simulator and regulatory network
         from mewpy.simulation import get_simulator
+
         simulator = get_simulator(integrated_model)
 
         # Create RegulatoryExtension with regulatory components
         from mewpy.germ.models.regulatory import RegulatoryModel
+
         regulatory_network = RegulatoryModel(
-            identifier='regulatory',
-            interactions=integrated_model.interactions if hasattr(integrated_model, 'interactions') else {},
-            regulators=integrated_model.regulators if hasattr(integrated_model, 'regulators') else {},
-            targets=integrated_model.targets if hasattr(integrated_model, 'targets') else {}
+            identifier="regulatory",
+            interactions=integrated_model.interactions if hasattr(integrated_model, "interactions") else {},
+            regulators=integrated_model.regulators if hasattr(integrated_model, "regulators") else {},
+            targets=integrated_model.targets if hasattr(integrated_model, "targets") else {},
         )
 
         return cls(simulator, regulatory_network, identifier)
 
     @staticmethod
-    def _load_regulatory_from_file(file_path: str,
-                                    file_format: str,
-                                    **kwargs):
+    def _load_regulatory_from_file(file_path: str, file_format: str, **kwargs):
         """
         Load regulatory network from file.
 
@@ -246,15 +242,15 @@ class RegulatoryExtension:
         :param kwargs: Additional arguments for the reader
         :return: RegulatoryModel instance
         """
-        from mewpy.io import Reader, Engines, read_model
+        from mewpy.io import Engines, Reader, read_model
 
         # Determine engine based on format
-        if file_format.lower() == 'csv':
+        if file_format.lower() == "csv":
             # Default to BooleanRegulatoryCSV
             engine = Engines.BooleanRegulatoryCSV
-        elif file_format.lower() == 'sbml':
+        elif file_format.lower() == "sbml":
             engine = Engines.RegulatorySBML
-        elif file_format.lower() == 'json':
+        elif file_format.lower() == "json":
             engine = Engines.JSON
         else:
             raise ValueError(f"Unknown regulatory format: {file_format}. Use 'csv', 'sbml', or 'json'")
@@ -275,7 +271,7 @@ class RegulatoryExtension:
         return self._identifier
 
     @property
-    def simulator(self) -> 'Simulator':
+    def simulator(self) -> "Simulator":
         """Access to the underlying simulator."""
         return self._simulator
 
@@ -370,7 +366,7 @@ class RegulatoryExtension:
     # Simulation Methods (Delegated to Simulator)
     # =========================================================================
 
-    def simulate(self, method='FBA', **kwargs):
+    def simulate(self, method="FBA", **kwargs):
         """
         Run simulation using the underlying simulator.
 
@@ -419,7 +415,7 @@ class RegulatoryExtension:
         else:
             raise TypeError(f"Expected RegulatoryModel, got {type(regulatory_network)}")
 
-    def add_regulator(self, regulator: 'Regulator'):
+    def add_regulator(self, regulator: "Regulator"):
         """
         Add a regulator to the regulatory network.
 
@@ -427,7 +423,7 @@ class RegulatoryExtension:
         """
         self._regulators[regulator.id] = regulator
 
-    def add_target(self, target: 'Target'):
+    def add_target(self, target: "Target"):
         """
         Add a target to the regulatory network.
 
@@ -435,7 +431,7 @@ class RegulatoryExtension:
         """
         self._targets[target.id] = target
 
-    def add_interaction(self, interaction: 'Interaction'):
+    def add_interaction(self, interaction: "Interaction"):
         """
         Add an interaction to the regulatory network.
 
@@ -470,7 +466,7 @@ class RegulatoryExtension:
         if interaction_id in self._interactions:
             del self._interactions[interaction_id]
 
-    def get_regulator(self, regulator_id: str) -> 'Regulator':
+    def get_regulator(self, regulator_id: str) -> "Regulator":
         """
         Get a regulator by ID.
 
@@ -479,7 +475,7 @@ class RegulatoryExtension:
         """
         return self._regulators.get(regulator_id)
 
-    def get_target(self, target_id: str) -> 'Target':
+    def get_target(self, target_id: str) -> "Target":
         """
         Get a target by ID.
 
@@ -488,7 +484,7 @@ class RegulatoryExtension:
         """
         return self._targets.get(target_id)
 
-    def get_interaction(self, interaction_id: str) -> 'Interaction':
+    def get_interaction(self, interaction_id: str) -> "Interaction":
         """
         Get an interaction by ID.
 
@@ -497,7 +493,7 @@ class RegulatoryExtension:
         """
         return self._interactions.get(interaction_id)
 
-    def yield_regulators(self) -> Generator[Tuple[str, 'Regulator'], None, None]:
+    def yield_regulators(self) -> Generator[Tuple[str, "Regulator"], None, None]:
         """
         Yield all regulators.
 
@@ -506,7 +502,7 @@ class RegulatoryExtension:
         for reg_id, regulator in self._regulators.items():
             yield reg_id, regulator
 
-    def yield_targets(self) -> Generator[Tuple[str, 'Target'], None, None]:
+    def yield_targets(self) -> Generator[Tuple[str, "Target"], None, None]:
         """
         Yield all targets.
 
@@ -515,7 +511,7 @@ class RegulatoryExtension:
         for tgt_id, target in self._targets.items():
             yield tgt_id, target
 
-    def yield_interactions(self) -> Generator[Tuple[str, 'Interaction'], None, None]:
+    def yield_interactions(self) -> Generator[Tuple[str, "Interaction"], None, None]:
         """
         Yield all interactions.
 
@@ -560,17 +556,17 @@ class RegulatoryExtension:
             yield gene_id
 
     @property
-    def regulators(self) -> Dict[str, 'Regulator']:
+    def regulators(self) -> Dict[str, "Regulator"]:
         """Dictionary of regulators."""
         return self._regulators.copy()
 
     @property
-    def targets(self) -> Dict[str, 'Target']:
+    def targets(self) -> Dict[str, "Target"]:
         """Dictionary of targets."""
         return self._targets.copy()
 
     @property
-    def interactions(self) -> Dict[str, 'Interaction']:
+    def interactions(self) -> Dict[str, "Interaction"]:
         """Dictionary of interactions."""
         return self._interactions.copy()
 
@@ -578,7 +574,7 @@ class RegulatoryExtension:
     # GPR Parsing with Caching
     # =========================================================================
 
-    def get_parsed_gpr(self, rxn_id: str) -> 'Expression':
+    def get_parsed_gpr(self, rxn_id: str) -> "Expression":
         """
         Get parsed GPR expression for a reaction (with caching).
 
@@ -593,10 +589,12 @@ class RegulatoryExtension:
                 except Exception:
                     # If parsing fails, create None expression
                     from mewpy.germ.algebra import Expression
+
                     self._gpr_cache[rxn_id] = Expression()
             else:
                 # Empty GPR
                 from mewpy.germ.algebra import Expression
+
                 self._gpr_cache[rxn_id] = Expression()
 
         return self._gpr_cache[rxn_id]
@@ -632,16 +630,16 @@ class RegulatoryExtension:
         :return: Dictionary representation
         """
         return {
-            'id': self._identifier,
-            'simulator_type': type(self._simulator).__name__,
-            'simulator_id': getattr(self._simulator, 'id', None),
-            'regulators': {reg_id: reg.to_dict() for reg_id, reg in self._regulators.items()},
-            'targets': {tgt_id: tgt.to_dict() for tgt_id, tgt in self._targets.items()},
-            'interactions': {int_id: inter.to_dict() for int_id, inter in self._interactions.items()}
+            "id": self._identifier,
+            "simulator_type": type(self._simulator).__name__,
+            "simulator_id": getattr(self._simulator, "id", None),
+            "regulators": {reg_id: reg.to_dict() for reg_id, reg in self._regulators.items()},
+            "targets": {tgt_id: tgt.to_dict() for tgt_id, tgt in self._targets.items()},
+            "interactions": {int_id: inter.to_dict() for int_id, inter in self._interactions.items()},
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], simulator: 'Simulator') -> 'RegulatoryExtension':
+    def from_dict(cls, data: Dict[str, Any], simulator: "Simulator") -> "RegulatoryExtension":
         """
         Deserialize from dictionary.
 
@@ -649,22 +647,22 @@ class RegulatoryExtension:
         :param simulator: Simulator instance to wrap
         :return: RegulatoryExtension instance
         """
-        from mewpy.germ.variables import Regulator, Target, Interaction
+        from mewpy.germ.variables import Interaction, Regulator, Target
 
-        extension = cls(simulator, identifier=data.get('id'))
+        extension = cls(simulator, identifier=data.get("id"))
 
         # Load regulators
-        for reg_id, reg_data in data.get('regulators', {}).items():
+        for reg_id, reg_data in data.get("regulators", {}).items():
             regulator = Regulator.from_dict(reg_data)
             extension.add_regulator(regulator)
 
         # Load targets
-        for tgt_id, tgt_data in data.get('targets', {}).items():
+        for tgt_id, tgt_data in data.get("targets", {}).items():
             target = Target.from_dict(tgt_data)
             extension.add_target(target)
 
         # Load interactions
-        for int_id, int_data in data.get('interactions', {}).items():
+        for int_id, int_data in data.get("interactions", {}).items():
             interaction = Interaction.from_dict(int_data)
             extension.add_interaction(interaction)
 
@@ -680,11 +678,11 @@ class RegulatoryExtension:
         :param filepath: Path to output JSON file
         """
         data = self.to_dict()
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
 
     @classmethod
-    def load(cls, filepath: str, simulator: 'Simulator') -> 'RegulatoryExtension':
+    def load(cls, filepath: str, simulator: "Simulator") -> "RegulatoryExtension":
         """
         Load regulatory network from JSON file.
 
@@ -692,7 +690,7 @@ class RegulatoryExtension:
         :param simulator: Simulator instance to wrap
         :return: RegulatoryExtension instance
         """
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = json.load(f)
         return cls.from_dict(data, simulator)
 
@@ -702,16 +700,20 @@ class RegulatoryExtension:
 
     def __repr__(self) -> str:
         """String representation."""
-        return (f"RegulatoryExtension(id='{self._identifier}', "
-                f"simulator={type(self._simulator).__name__}, "
-                f"regulators={len(self._regulators)}, "
-                f"targets={len(self._targets)}, "
-                f"interactions={len(self._interactions)})")
+        return (
+            f"RegulatoryExtension(id='{self._identifier}', "
+            f"simulator={type(self._simulator).__name__}, "
+            f"regulators={len(self._regulators)}, "
+            f"targets={len(self._targets)}, "
+            f"interactions={len(self._interactions)})"
+        )
 
     def __str__(self) -> str:
         """Human-readable string."""
-        return (f"RegulatoryExtension '{self._identifier}'\n"
-                f"  Metabolic: {len(self.reactions)} reactions, "
-                f"{len(self.genes)} genes, {len(self.metabolites)} metabolites\n"
-                f"  Regulatory: {len(self._regulators)} regulators, "
-                f"{len(self._targets)} targets, {len(self._interactions)} interactions")
+        return (
+            f"RegulatoryExtension '{self._identifier}'\n"
+            f"  Metabolic: {len(self.reactions)} reactions, "
+            f"{len(self.genes)} genes, {len(self.metabolites)} metabolites\n"
+            f"  Regulatory: {len(self._regulators)} regulators, "
+            f"{len(self._targets)} targets, {len(self._interactions)} interactions"
+        )

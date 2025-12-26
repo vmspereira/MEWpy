@@ -6,9 +6,9 @@ Author: Vitor Pereira
 ##############################################################################
 """
 
-from .ode import ODEMethod, SolverConfigurations, ODEStatus, KineticConfigurations
+from .ode import KineticConfigurations, ODEMethod, ODEStatus, SolverConfigurations
+from .sglobal import __MEWPY_ode_solvers__, __MEWPY_solvers__
 from .solution import Solution, Status
-from .sglobal import __MEWPY_solvers__, __MEWPY_ode_solvers__
 
 # #################################################
 # Linear Programming Solvers

@@ -1,13 +1,12 @@
 import abc
-from typing import List, Any, Dict, Callable, Union, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Union
 
-from .algebra_utils import solution_decode, _walk
+from .algebra_utils import _walk, solution_decode
 
 
 class Symbolic:
 
     def __init__(self, value=None, variables=None):
-
         """
         The Symbolic object implements the base logic for symbolic algebra manipulation and evaluation.
         Symbolic is the base class that provides the abstraction and tools for a given variable or operator be handled
@@ -91,16 +90,16 @@ class Symbolic:
         Returns the bounds of the symbolic object
         """
         if self.model_variable:
-            if hasattr(self.model_variable, 'bounds'):
+            if hasattr(self.model_variable, "bounds"):
                 return self.model_variable.bounds
 
-            if hasattr(self.model_variable, 'coefficients'):
+            if hasattr(self.model_variable, "coefficients"):
                 return min(self.model_variable.coefficients), max(self.model_variable.coefficients)
 
         return 0, 1
 
     def key(self):
-        return self.to_string().replace(' ', '')
+        return self.to_string().replace(" ", "")
 
     def __repr__(self):
 
@@ -114,76 +113,76 @@ class Symbolic:
 
     def __str__(self):
 
-        string_repr = ''
+        string_repr = ""
 
         if self.is_and:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' & '
+                string_repr += child.to_string() + " & "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_or:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' | '
+                string_repr += child.to_string() + " | "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_not:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += ' ~ ' + child.to_string()
-            string_repr += ')'
+                string_repr += " ~ " + child.to_string()
+            string_repr += ")"
 
         elif self.is_equal:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' = '
+                string_repr += child.to_string() + " = "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_not_equal:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' != '
+                string_repr += child.to_string() + " != "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_inequality:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' > '
+                string_repr += child.to_string() + " > "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_greater:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' > '
+                string_repr += child.to_string() + " > "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_greater_equal:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' >= '
+                string_repr += child.to_string() + " >= "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_less:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' < '
+                string_repr += child.to_string() + " < "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         elif self.is_less_equal:
-            string_repr += '('
+            string_repr += "("
             for child in self.variables:
-                string_repr += child.to_string() + ' <= '
+                string_repr += child.to_string() + " <= "
             string_repr = string_repr[:-3]
-            string_repr += ')'
+            string_repr += ")"
 
         else:
 
@@ -214,7 +213,7 @@ class Symbolic:
 
         raise StopIteration
 
-    def atoms(self, symbols_only=False) -> List['Symbolic']:
+    def atoms(self, symbols_only=False) -> List["Symbolic"]:
         """
         It returns all symbolic atoms associated with this symbolic object
 
@@ -254,12 +253,9 @@ class Symbolic:
 
         return left
 
-    def evaluate(self,
-                 values: Dict[str, Any] = None,
-                 operators: Dict[str, Callable] = None,
-                 default=0,
-                 **kwargs) -> Union[float, int, Any]:
-
+    def evaluate(
+        self, values: Dict[str, Any] = None, operators: Dict[str, Callable] = None, default=0, **kwargs
+    ) -> Union[float, int, Any]:
         """
         Evaluate a Symbolic algebra expression based on the coefficients/values of the symbols or atoms contained
         in the expression.
@@ -296,10 +292,7 @@ class Symbolic:
 
     def __call__(self, values=None, operators=None, default=0, **kwargs):
 
-        return self.evaluate(values=values,
-                             operators=operators,
-                             default=default,
-                             **kwargs)
+        return self.evaluate(values=values, operators=operators, default=default, **kwargs)
 
 
 class Boolean(Symbolic):
@@ -457,7 +450,7 @@ class Not(Boolean):
         if operator is not None:
             return operator(left)
 
-        return solution_decode(~ int(left))
+        return solution_decode(~int(left))
 
 
 class Relational(Boolean):
@@ -796,10 +789,10 @@ class Symbol(AtomNumber, Boolean):
             value = values[self.name]
 
         elif self.model_variable:
-            if hasattr(self.model_variable, 'bounds'):
+            if hasattr(self.model_variable, "bounds"):
                 value = max(self.model_variable.bounds)
 
-            elif hasattr(self.model_variable, 'coefficients'):
+            elif hasattr(self.model_variable, "coefficients"):
                 value = max(self.model_variable.coefficients)
 
             else:
@@ -809,7 +802,7 @@ class Symbol(AtomNumber, Boolean):
             value = default
 
         if not isinstance(value, (int, float, bool, AtomNumber)):
-            raise ValueError(f'cannot evaluate {self.name} for {value}')
+            raise ValueError(f"cannot evaluate {self.name} for {value}")
 
         return solution_decode(value)
 
@@ -827,7 +820,7 @@ class NoneAtom(Symbol):
 
     @property
     def name(self):
-        return ''
+        return ""
 
     def _evaluate(self, **kwargs):
         return 0

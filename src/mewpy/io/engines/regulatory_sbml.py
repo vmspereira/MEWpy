@@ -1,23 +1,39 @@
 import os
 from functools import partial
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
-from mewpy.io.dto import DataTransferObject, VariableRecord, History, FunctionTerm, CompartmentRecord
-from mewpy.germ.algebra import Expression, Symbol, NoneAtom, Float
-from mewpy.germ.models import RegulatoryModel, MetabolicModel
+from mewpy.germ.algebra import Expression, Float, NoneAtom, Symbol
+from mewpy.germ.models import MetabolicModel, RegulatoryModel
+from mewpy.io.dto import CompartmentRecord, DataTransferObject, FunctionTerm, History, VariableRecord
 from mewpy.util.constants import ModelConstants
+
 from .engine import Engine
-from .engines_utils import (ASTNODE_BOOLEAN_VALUES, ASTNODE_RELATIONAL_OPERATORS,
-                            ASTNODE_NAME, ASTNODE_BOOLEAN_OPERATORS, ASTNODE_VALUES,
-                            f_id, fs_id,
-                            F_GENE, F_SPECIE, F_REACTION, F_SPECIE_REV, F_GENE_REV, F_REACTION_REV, F_TRANSITION,
-                            F_TRANSITION_REV,
-                            get_sbml_doc_to_write, get_sbml_doc_to_read,
-                            write_sbml_doc,
-                            set_math, expression_warning, sbml_warning)
+from .engines_utils import (
+    ASTNODE_BOOLEAN_OPERATORS,
+    ASTNODE_BOOLEAN_VALUES,
+    ASTNODE_NAME,
+    ASTNODE_RELATIONAL_OPERATORS,
+    ASTNODE_VALUES,
+    F_GENE,
+    F_GENE_REV,
+    F_REACTION,
+    F_REACTION_REV,
+    F_SPECIE,
+    F_SPECIE_REV,
+    F_TRANSITION,
+    F_TRANSITION_REV,
+    expression_warning,
+    f_id,
+    fs_id,
+    get_sbml_doc_to_read,
+    get_sbml_doc_to_write,
+    sbml_warning,
+    set_math,
+    write_sbml_doc,
+)
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
 class RegulatorySBML(Engine):
@@ -27,7 +43,7 @@ class RegulatorySBML(Engine):
 
     @property
     def model_type(self):
-        return 'regulatory'
+        return "regulatory"
 
     @property
     def model(self):
@@ -51,12 +67,12 @@ class RegulatorySBML(Engine):
 
         coefficients = set()
 
-        for row in notes.split('\n'):
+        for row in notes.split("\n"):
 
             row = row.strip()
 
-            if row.startswith('<p>') and row.endswith('</p>'):
-                _, level = row.split(':')
+            if row.startswith("<p>") and row.endswith("</p>"):
+                _, level = row.split(":")
 
                 # st = st.strip('<p>')
                 # level = level.strip('</p>')
@@ -67,9 +83,9 @@ class RegulatorySBML(Engine):
                 lb = ModelConstants.REACTION_LOWER_BOUND
                 ub = ModelConstants.REACTION_UPPER_BOUND
 
-                level = level.replace('+inf', f'{ub}').replace('-inf', f'{lb}')
+                level = level.replace("+inf", f"{ub}").replace("-inf", f"{lb}")
 
-                min_coef, max_coef = level.split(',')
+                min_coef, max_coef = level.split(",")
 
                 min_coef = float(min_coef[1:])
                 coefficients.add(min_coef)
@@ -85,18 +101,18 @@ class RegulatorySBML(Engine):
         if not notes:
             return
 
-        for row in notes.split('\n'):
+        for row in notes.split("\n"):
 
             row = row.strip()
 
-            if row.startswith('<p>') and row.endswith('</p>'):
-                parameter, level = row.split(':')
+            if row.startswith("<p>") and row.endswith("</p>"):
+                parameter, level = row.split(":")
 
-                parameter = parameter.strip('<p>')
-                level = level.strip('</p>')
+                parameter = parameter.strip("<p>")
+                level = level.strip("</p>")
 
-                if 'initial' in parameter.lower():
-                    return float(level.replace(' ', ''))
+                if "initial" in parameter.lower():
+                    return float(level.replace(" ", ""))
 
     def _update_qual_species_coefficients(self, qual_species, value):
 
@@ -197,7 +213,6 @@ class RegulatorySBML(Engine):
             raise SyntaxError
 
     def parse_math_node(self, ast_node, inputs_thresholds):
-
         """
         Reads and parses a node of type math ASTNode into an algebraic expression.
 
@@ -215,8 +230,9 @@ class RegulatorySBML(Engine):
 
         except SyntaxError:
 
-            self.warnings.append(partial(expression_warning,
-                                         f'{ast_node} cannot be parsed. Assigning empty expression instead'))
+            self.warnings.append(
+                partial(expression_warning, f"{ast_node} cannot be parsed. Assigning empty expression instead")
+            )
 
             symbolic = NoneAtom()
 
@@ -228,7 +244,7 @@ class RegulatorySBML(Engine):
             _, identifier = os.path.split(self.io)
             return os.path.splitext(identifier)[0]
 
-        return 'model'
+        return "model"
 
     def _open_to_read(self):
 
@@ -243,19 +259,23 @@ class RegulatorySBML(Engine):
         self.dto.model = self.dto.doc.getModel()
 
         if self.dto.model is None:
-            raise OSError(f'{self.io} is not a valid input. Model SBML section is missing. '
-                          f'Provide a correct path or file handler')
+            raise OSError(
+                f"{self.io} is not a valid input. Model SBML section is missing. "
+                f"Provide a correct path or file handler"
+            )
 
-        self.dto.qual_plugin = self.dto.model.getPlugin('qual')
+        self.dto.qual_plugin = self.dto.model.getPlugin("qual")
 
         if self.dto.qual_plugin is None:
-            raise OSError(f'Although {self.io} is a valid SBML file, the qual plugin was not detected. Thus, '
-                          f'regulatory interactions cannot be determined')
+            raise OSError(
+                f"Although {self.io} is a valid SBML file, the qual plugin was not detected. Thus, "
+                f"regulatory interactions cannot be determined"
+            )
 
         identifier = self.dto.model.getIdAttribute()
 
         if not identifier:
-            self.warnings.append(partial(sbml_warning, 'Model identifier is not encoded in the SBML file'))
+            self.warnings.append(partial(sbml_warning, "Model identifier is not encoded in the SBML file"))
 
             identifier = self.get_identifier()
 
@@ -269,13 +289,15 @@ class RegulatorySBML(Engine):
         # -----------------------------------------------------------------------------
         # Doc, Model and FBC Plugin
         # -----------------------------------------------------------------------------
-        self.dto.doc = get_sbml_doc_to_write(self.io,
-                                             level=3,
-                                             version=1,
-                                             packages=('qual',),
-                                             packages_version=(1,),
-                                             packages_required=(True,),
-                                             sbo_term=False)
+        self.dto.doc = get_sbml_doc_to_write(
+            self.io,
+            level=3,
+            version=1,
+            packages=("qual",),
+            packages_version=(1,),
+            packages_required=(True,),
+            sbo_term=False,
+        )
 
         if self.dto.model is None:
 
@@ -285,47 +307,47 @@ class RegulatorySBML(Engine):
 
             self.dto.model = self.dto.doc.getModel()
 
-        self.dto.qual_plugin = self.dto.model.getPlugin('qual')
+        self.dto.qual_plugin = self.dto.model.getPlugin("qual")
 
         if self.model.id is not None:
             self.dto.model.setId(self.model.id)
-            self.dto.model.setMetaId('meta_' + self.model.id)
+            self.dto.model.setMetaId("meta_" + self.model.id)
 
         else:
-            self.dto.model.setMetaId('meta_model')
+            self.dto.model.setMetaId("meta_model")
 
         if self.model.name is not None:
             self.dto.model.setName(self.model.name)
 
-    def open(self, mode='r'):
+    def open(self, mode="r"):
 
-        if mode == 'r':
+        if mode == "r":
 
             return self._open_to_read()
 
-        elif mode == 'w':
+        elif mode == "w":
 
             return self._open_to_write()
 
         else:
-            raise ValueError(f'{mode} mode is not recognized. Try one of the following: r, w')
+            raise ValueError(f"{mode} mode is not recognized. Try one of the following: r, w")
 
     def parse(self):
 
         if self.dto is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.id is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.doc is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.model is None:
-            raise OSError(f'SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.qual_plugin is None:
-            raise OSError(f'SBML file is not open')
+            raise OSError("SBML file is not open")
 
         self.dto.level = self.dto.model.getLevel()
         self.dto.version = self.dto.model.getVersion()
@@ -348,8 +370,9 @@ class RegulatorySBML(Engine):
         # Compartments
         # -----------------------------------------------------------------------------
         for compartment in self.dto.model.getListOfCompartments():
-            self.dto.compartments[compartment.getIdAttribute()] = CompartmentRecord(id=compartment.getIdAttribute(),
-                                                                                    name=compartment.getName())
+            self.dto.compartments[compartment.getIdAttribute()] = CompartmentRecord(
+                id=compartment.getIdAttribute(), name=compartment.getName()
+            )
 
         # -----------------------------------------------------------------------------
         # Qualitative Species
@@ -374,9 +397,14 @@ class RegulatorySBML(Engine):
 
             if coefficients:
 
-                self.warnings.append(partial(sbml_warning, f'Are the {identifier} coefficients encoded in the notes '
-                                                           f'section? Coefficients must be hard coded during the '
-                                                           f'math nodes of each transition.'))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"Are the {identifier} coefficients encoded in the notes "
+                        f"section? Coefficients must be hard coded during the "
+                        f"math nodes of each transition.",
+                    )
+                )
 
                 maximum_level = max(coefficients)
                 minimum_level = min(coefficients)
@@ -398,29 +426,38 @@ class RegulatorySBML(Engine):
                 active_coefficient = self._parse_initial_level_note(notes)
 
                 if active_coefficient is None:
-                    self.warnings.append(partial(sbml_warning, f'{identifier} initial level was not found. '
-                                                               f'Setting default/initial coefficient to the '
-                                                               f'minimum value'))
+                    self.warnings.append(
+                        partial(
+                            sbml_warning,
+                            f"{identifier} initial level was not found. "
+                            f"Setting default/initial coefficient to the "
+                            f"minimum value",
+                        )
+                    )
 
                     active_coefficient = 0.0
 
             if minimum_level > active_coefficient > maximum_level:
 
-                raise ValueError(f'Initial level is higher/lower than the minimum/maximum level for the {identifier} '
-                                 f'qual species')
+                raise ValueError(
+                    f"Initial level is higher/lower than the minimum/maximum level for the {identifier} "
+                    f"qual species"
+                )
 
             else:
 
                 coefficients.add(active_coefficient)
 
-            variable = VariableRecord(id=identifier,
-                                      name=name,
-                                      aliases=aliases,
-                                      compartment=compartment,
-                                      constant=constant,
-                                      notes=notes,
-                                      coefficients=coefficients,
-                                      active_coefficient=active_coefficient)
+            variable = VariableRecord(
+                id=identifier,
+                name=name,
+                aliases=aliases,
+                compartment=compartment,
+                constant=constant,
+                notes=notes,
+                coefficients=coefficients,
+                active_coefficient=active_coefficient,
+            )
 
             self.dto.variables[identifier] = variable
 
@@ -471,7 +508,7 @@ class RegulatorySBML(Engine):
 
                 self.dto.regulators[regulator_id] = regulator_record
 
-                self.variables[regulator_id].add('regulator')
+                self.variables[regulator_id].add("regulator")
 
                 # input identifier
                 if regulator_input.isSetId():
@@ -488,9 +525,14 @@ class RegulatorySBML(Engine):
                     inputs_thresholds[input_id] = input_threshold
 
             if inputs_thresholds:
-                self.warnings.append(partial(sbml_warning, f'{identifier} threshold levels detected. It is '
-                                                           f'recommended to encode input levels directly in the math '
-                                                           f'node'))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"{identifier} threshold levels detected. It is "
+                        f"recommended to encode input levels directly in the math "
+                        f"node",
+                    )
+                )
 
             # -----------------------------------------------------------------------------
             # Targets/List of Outputs
@@ -511,7 +553,7 @@ class RegulatorySBML(Engine):
 
                 self.dto.targets[target_id] = target_record
 
-                self.variables[target_id].add('target')
+                self.variables[target_id].add("target")
 
             # -----------------------------------------------------------------------------
             # Function Terms
@@ -530,9 +572,14 @@ class RegulatorySBML(Engine):
 
             if default_term is None:
 
-                self.warnings.append(partial(sbml_warning, f'Default function term '
-                                                           f'not set for transition {identifier}.'
-                                                           f'Setting default function term of zero.'))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"Default function term "
+                        f"not set for transition {identifier}."
+                        f"Setting default function term of zero.",
+                    )
+                )
 
                 result_level = 0.0
 
@@ -543,12 +590,13 @@ class RegulatorySBML(Engine):
                 if result_level is None:
                     result_level = 0.0
 
-                    self.warnings.append(partial(sbml_warning, 'Default function term result level not found. '
-                                                               'Setting to zero'))
+                    self.warnings.append(
+                        partial(sbml_warning, "Default function term result level not found. " "Setting to zero")
+                    )
 
-            function_terms[result_level] = FunctionTerm(id=f'{identifier}_{result_level}',
-                                                        symbolic=NoneAtom(),
-                                                        coefficient=result_level)
+            function_terms[result_level] = FunctionTerm(
+                id=f"{identifier}_{result_level}", symbolic=NoneAtom(), coefficient=result_level
+            )
 
             # -----------------------------------------------------------------------------
             # Math based function terms
@@ -564,14 +612,21 @@ class RegulatorySBML(Engine):
                 if result_level is None:
                     result_level = 0
 
-                    self.warnings.append(partial(sbml_warning, f'Function term result level not found '
-                                                               f'for term in transition {identifier}. '
-                                                               f'Setting to zero'))
+                    self.warnings.append(
+                        partial(
+                            sbml_warning,
+                            f"Function term result level not found "
+                            f"for term in transition {identifier}. "
+                            f"Setting to zero",
+                        )
+                    )
 
                 # a transition can only have one function term per result level
                 if result_level in function_terms:
-                    raise ValueError(f'Function term {identifier} with {result_level} result level has already '
-                                     f'been used by other function terms')
+                    raise ValueError(
+                        f"Function term {identifier} with {result_level} result level has already "
+                        f"been used by other function terms"
+                    )
 
                 # a transition can only have function terms to which the result levels are less or equal than the
                 # maximum levels of all its outputs. _update_qual_species_coefficients will check these issues
@@ -590,16 +645,21 @@ class RegulatorySBML(Engine):
 
                 else:
 
-                    self.warnings.append(partial(sbml_warning, f'Function term math node was'
-                                                               f'not set for transition {identifier} with '
-                                                               f'{result_level}.'
-                                                               f'Setting function term equal to the result level.'))
+                    self.warnings.append(
+                        partial(
+                            sbml_warning,
+                            f"Function term math node was"
+                            f"not set for transition {identifier} with "
+                            f"{result_level}."
+                            f"Setting function term equal to the result level.",
+                        )
+                    )
 
                     symbolic = NoneAtom()
 
-                function_terms[result_level] = FunctionTerm(id=f'{identifier}_{result_level}',
-                                                            symbolic=symbolic,
-                                                            coefficient=result_level)
+                function_terms[result_level] = FunctionTerm(
+                    id=f"{identifier}_{result_level}", symbolic=symbolic, coefficient=result_level
+                )
 
             # -----------------------------------------------------------------------------
             # Interaction record
@@ -608,25 +668,25 @@ class RegulatorySBML(Engine):
             # Setting an interaction per target/output
 
             for target in targets.values():
-                interaction_id = f'{target.id}_interaction'
+                interaction_id = f"{target.id}_interaction"
 
-                interaction_record = VariableRecord(id=interaction_id,
-                                                    name=identifier,
-                                                    aliases={interaction_id, identifier, name, target.id},
-                                                    target=target,
-                                                    function_terms=function_terms,
-                                                    regulators=regulators)
+                interaction_record = VariableRecord(
+                    id=interaction_id,
+                    name=identifier,
+                    aliases={interaction_id, identifier, name, target.id},
+                    target=target,
+                    function_terms=function_terms,
+                    regulators=regulators,
+                )
 
                 self.dto.interactions[interaction_id] = interaction_record
 
-                self.variables[interaction_id].add('interaction')
+                self.variables[interaction_id].add("interaction")
 
-    def read(self,
-             model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None,
-             variables=None):
+    def read(self, model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None, variables=None):
 
         if not model:
-            model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = self.model
+            model: Union["Model", "MetabolicModel", "RegulatoryModel"] = self.model
 
         if not variables:
             variables = self.variables
@@ -637,8 +697,7 @@ class RegulatorySBML(Engine):
         if self.dto.name:
             model.name = self.dto.name
 
-        model.compartments = {compartment.id: compartment.name
-                              for compartment in self.dto.compartments.values()}
+        model.compartments = {compartment.id: compartment.name for compartment in self.dto.compartments.values()}
 
         processed_vars = set()
 
@@ -646,11 +705,13 @@ class RegulatorySBML(Engine):
 
             target_record = interaction_record.target
 
-            target, warning = target_record.to_variable(model=model,
-                                                        types=variables.get(target_record.id, {'target'}),
-                                                        name=target_record.name,
-                                                        aliases=target_record.aliases,
-                                                        coefficients=target_record.coefficients)
+            target, warning = target_record.to_variable(
+                model=model,
+                types=variables.get(target_record.id, {"target"}),
+                name=target_record.name,
+                aliases=target_record.aliases,
+                coefficients=target_record.coefficients,
+            )
 
             if warning:
                 self.warnings.append(partial(sbml_warning, warning))
@@ -663,11 +724,13 @@ class RegulatorySBML(Engine):
 
             for regulator_id, regulator_record in regulators_records.items():
 
-                regulator, warn = regulator_record.to_variable(model=model,
-                                                               types=variables.get(regulator_id, {'regulator'}),
-                                                               name=regulator_record.name,
-                                                               aliases=regulator_record.aliases,
-                                                               coefficients=regulator_record.coefficients)
+                regulator, warn = regulator_record.to_variable(
+                    model=model,
+                    types=variables.get(regulator_id, {"regulator"}),
+                    name=regulator_record.name,
+                    aliases=regulator_record.aliases,
+                    coefficients=regulator_record.coefficients,
+                )
 
                 if warn:
                     self.warnings.append(partial(sbml_warning, warn))
@@ -679,18 +742,22 @@ class RegulatorySBML(Engine):
             regulatory_events = {}
 
             for func_term in interaction_record.function_terms.values():
-                expression_regulators = {symbol.name: regulators[symbol.name]
-                                         for symbol in func_term.symbolic.atoms(symbols_only=True)}
+                expression_regulators = {
+                    symbol.name: regulators[symbol.name] for symbol in func_term.symbolic.atoms(symbols_only=True)
+                }
 
-                regulatory_events[func_term.coefficient] = Expression(symbolic=func_term.symbolic,
-                                                                      variables=expression_regulators)
+                regulatory_events[func_term.coefficient] = Expression(
+                    symbolic=func_term.symbolic, variables=expression_regulators
+                )
 
-            interaction, warn = interaction_record.to_variable(model=model,
-                                                               types=variables.get(interaction_id, {'interaction'}),
-                                                               name=interaction_record.name,
-                                                               aliases=interaction_record.aliases,
-                                                               target=target,
-                                                               regulatory_events=regulatory_events)
+            interaction, warn = interaction_record.to_variable(
+                model=model,
+                types=variables.get(interaction_id, {"interaction"}),
+                name=interaction_record.name,
+                aliases=interaction_record.aliases,
+                target=target,
+                regulatory_events=regulatory_events,
+            )
 
             if warn:
                 self.warnings.append(partial(sbml_warning, warn))
@@ -703,11 +770,13 @@ class RegulatorySBML(Engine):
 
                 if variable_id not in processed_vars:
 
-                    variable, warn = variable_record.to_variable(model=model,
-                                                                 types=variables.get(variable_id, {'regulator'}),
-                                                                 name=variable_record.name,
-                                                                 aliases=variable_record.aliases,
-                                                                 coefficients=variable_record.coefficients)
+                    variable, warn = variable_record.to_variable(
+                        model=model,
+                        types=variables.get(variable_id, {"regulator"}),
+                        name=variable_record.name,
+                        aliases=variable_record.aliases,
+                        coefficients=variable_record.coefficients,
+                    )
 
                     if warn:
                         self.warnings.append(partial(sbml_warning, warn))
@@ -757,13 +826,13 @@ class RegulatorySBML(Engine):
     def write(self):
 
         if self.dto is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.doc is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.model is None:
-            raise OSError(f'SBML file is not open')
+            raise OSError("SBML file is not open")
 
         # -----------------------------------------------------------------------------
         # Compartments
@@ -780,10 +849,10 @@ class RegulatorySBML(Engine):
                 default_compartment = compartment_id
 
         if default_compartment is None:
-            default_compartment = 'e'
+            default_compartment = "e"
             sbml_compartment = self.dto.model.createCompartment()
-            sbml_compartment.setId('e')
-            sbml_compartment.setName('extracellular')
+            sbml_compartment.setId("e")
+            sbml_compartment.setName("extracellular")
             sbml_compartment.setConstant(True)
 
         # -----------------------------------------------------------------------------
@@ -798,7 +867,7 @@ class RegulatorySBML(Engine):
             target_id = self._reverse_f_id(target)
             qual_species.setId(target_id)
 
-            if hasattr(target, 'compartment'):
+            if hasattr(target, "compartment"):
 
                 if target.compartment is None:
                     compartment = default_compartment
@@ -832,7 +901,7 @@ class RegulatorySBML(Engine):
                 regulator_id = self._reverse_f_id(regulator)
                 qual_species.setId(regulator_id)
 
-                if hasattr(regulator, 'compartment'):
+                if hasattr(regulator, "compartment"):
 
                     if regulator.compartment is None:
                         compartment = default_compartment
@@ -872,7 +941,7 @@ class RegulatorySBML(Engine):
 
                 target_id = self._reverse_f_id(interaction.target)
 
-                output.setId(f'{target_id}_out')
+                output.setId(f"{target_id}_out")
                 output.setQualitativeSpecies(target_id)
 
             # -----------------------------------------------------------------------------
@@ -882,7 +951,7 @@ class RegulatorySBML(Engine):
             for regulator in interaction.yield_regulators():
                 regulator_id = self._reverse_f_id(regulator)
 
-                input_id = f'{regulator_id}_input'
+                input_id = f"{regulator_id}_input"
                 reg_input = transition.createInput()
                 reg_input.setId(input_id)
                 reg_input.setQualitativeSpecies(regulator_id)
@@ -910,27 +979,28 @@ class RegulatorySBML(Engine):
                 function_term.setResultLevel(int(coefficient))
 
                 # operators to be replaced
-                replacements = {'&': '&&',
-                                '|': '||',
-                                '~': '!',
-                                '=': '==',
-                                '<==': '<=',
-                                '>==': '>='}
+                replacements = {"&": "&&", "|": "||", "~": "!", "=": "==", "<==": "<=", ">==": ">="}
 
                 # reverse ids for the variables that must be replaced
-                symbols_reverse_ids = {variable.id: self._reverse_f_id(variable)
-                                       for variable in expression.variables.values()}
+                symbols_reverse_ids = {
+                    variable.id: self._reverse_f_id(variable) for variable in expression.variables.values()
+                }
 
                 replacements.update(symbols_reverse_ids)
 
                 expression_string = expression.to_string()
 
-                expression_string = self._expression_replace(expression_string=expression_string,
-                                                             replacements=replacements)
+                expression_string = self._expression_replace(
+                    expression_string=expression_string, replacements=replacements
+                )
 
                 if not expression_string:
-                    self.warnings.append(partial(sbml_warning, f'Empty expression to be set as a function term in '
-                                                               f'transition {transition_id}'))
+                    self.warnings.append(
+                        partial(
+                            sbml_warning,
+                            f"Empty expression to be set as a function term in " f"transition {transition_id}",
+                        )
+                    )
 
                     continue
 
@@ -943,7 +1013,7 @@ class RegulatorySBML(Engine):
 
     def close(self):
 
-        if hasattr(self.io, 'close'):
+        if hasattr(self.io, "close"):
             self.io.close()
 
     def clean(self):

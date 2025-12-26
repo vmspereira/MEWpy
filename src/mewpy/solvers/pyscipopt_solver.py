@@ -18,11 +18,13 @@ PySCIPOpt solver interface
 Author: Vitor Pereira
 ##############################################################################
 """
-from .solver import Solver, VarType, Parameter, default_parameters
-from .solution import Solution, Status
-from pyscipopt import Model as SCIPModel
 from math import inf
 from warnings import warn
+
+from pyscipopt import Model as SCIPModel
+
+from .solution import Solution, Status
+from .solver import Parameter, Solver, VarType, default_parameters
 
 
 class PySCIPOptSolver(Solver):
@@ -382,7 +384,6 @@ class PySCIPOptSolver(Solver):
 
         for var_id, bounds in constraints.items():
             if var_id in self._vars:
-                var = self._vars[var_id]
                 lb, ub = bounds if isinstance(bounds, tuple) else (bounds, bounds)
 
                 # Store original bounds

@@ -1,15 +1,15 @@
 from functools import partial
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
-from mewpy.io.dto import VariableRecord, DataTransferObject, FunctionTerm
 from mewpy.germ.algebra import Expression, NoneAtom
 from mewpy.germ.models.unified_factory import unified_factory
-from .engine import Engine
-from .engines_utils import build_symbolic, expression_warning, cobra_warning
+from mewpy.io.dto import DataTransferObject, FunctionTerm, VariableRecord
 
+from .engine import Engine
+from .engines_utils import build_symbolic, cobra_warning, expression_warning
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import RegulatoryModel, Model, MetabolicModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
 class ReframedModel(Engine):
@@ -22,7 +22,7 @@ class ReframedModel(Engine):
 
     @property
     def model_type(self):
-        return 'metabolic'
+        return "metabolic"
 
     @property
     def model(self):
@@ -39,14 +39,14 @@ class ReframedModel(Engine):
         if self.dto.reframed_model:
             return self.dto.reframed_model.id
 
-        return 'model'
+        return "model"
 
-    def open(self, mode='r'):
+    def open(self, mode="r"):
 
         self._dto = DataTransferObject()
 
-        if not hasattr(self.io, 'reactions'):
-            raise OSError(f'{self.io} is not a valid input. Provide a reframed model')
+        if not hasattr(self.io, "reactions"):
+            raise OSError(f"{self.io} is not a valid input. Provide a reframed model")
 
         self.dto.reframed_model = self.io
 
@@ -55,13 +55,13 @@ class ReframedModel(Engine):
     def parse(self):
 
         if self.dto is None:
-            raise OSError('Model is not open')
+            raise OSError("Model is not open")
 
         if self.dto.id is None:
-            raise OSError('Model is not open')
+            raise OSError("Model is not open")
 
         if self.dto.reframed_model is None:
-            raise OSError('Model is not open')
+            raise OSError("Model is not open")
 
         # -----------------------------------------------------------------------------
         # Reactions
@@ -87,11 +87,9 @@ class ReframedModel(Engine):
             genes = {}
             for symbol in symbolic.atoms(symbols_only=True):
 
-                self.variables[symbol.name].add('gene')
+                self.variables[symbol.name].add("gene")
 
-                gene_record = VariableRecord(id=symbol.name,
-                                             name=symbol.name,
-                                             aliases={symbol.name, symbol.value})
+                gene_record = VariableRecord(id=symbol.name, name=symbol.name, aliases={symbol.name, symbol.value})
 
                 genes[symbol.name] = gene_record
 
@@ -110,12 +108,14 @@ class ReframedModel(Engine):
 
                 met = self.dto.reframed_model.metabolites.get(met)
 
-                met_record = VariableRecord(id=met.id,
-                                            name=met.name,
-                                            aliases={met.id, met.name},
-                                            compartment=met.compartment,
-                                            charge=met.metadata.get('CHARGE', None),
-                                            formula=met.metadata.get('FORMULA', None))
+                met_record = VariableRecord(
+                    id=met.id,
+                    name=met.name,
+                    aliases={met.id, met.name},
+                    compartment=met.compartment,
+                    charge=met.metadata.get("CHARGE", None),
+                    formula=met.metadata.get("FORMULA", None),
+                )
 
                 metabolites[met.id] = met_record
 
@@ -123,64 +123,64 @@ class ReframedModel(Engine):
 
                 processed_metabolites.add(met.id)
 
-                self.variables[met.id].add('metabolite')
+                self.variables[met.id].add("metabolite")
 
                 self.dto.metabolites[met.id] = met_record
 
             # -----------------------------------------------------------------------------
             # GPR Function term
             # -----------------------------------------------------------------------------
-            function_term = FunctionTerm(id='gpr_term', symbolic=symbolic, coefficient=1)
+            function_term = FunctionTerm(id="gpr_term", symbolic=symbolic, coefficient=1)
 
             # -----------------------------------------------------------------------------
             # Reaction
             # -----------------------------------------------------------------------------
-            reaction_record = VariableRecord(id=rxn.id,
-                                             name=rxn.name,
-                                             aliases={rxn.id, rxn.name},
-                                             bounds=(rxn.lb, rxn.ub),
-                                             genes=genes,
-                                             gpr=function_term,
-                                             stoichiometry=stoichiometry,
-                                             metabolites=metabolites)
+            reaction_record = VariableRecord(
+                id=rxn.id,
+                name=rxn.name,
+                aliases={rxn.id, rxn.name},
+                bounds=(rxn.lb, rxn.ub),
+                genes=genes,
+                gpr=function_term,
+                stoichiometry=stoichiometry,
+                metabolites=metabolites,
+            )
 
-            self.variables[rxn.id].add('reaction')
+            self.variables[rxn.id].add("reaction")
 
             self.dto.reactions[rxn.id] = reaction_record
 
         for met_id, met in self.dto.reframed_model.metabolites.items():
 
             if met.id not in processed_metabolites:
-                met_record = VariableRecord(id=met.id,
-                                            name=met.name,
-                                            aliases={met.id, met.name},
-                                            compartment=met.compartment,
-                                            charge=met.metadata.get('CHARGE', None),
-                                            formula=met.metadata.get('FORMULA', None))
+                met_record = VariableRecord(
+                    id=met.id,
+                    name=met.name,
+                    aliases={met.id, met.name},
+                    compartment=met.compartment,
+                    charge=met.metadata.get("CHARGE", None),
+                    formula=met.metadata.get("FORMULA", None),
+                )
 
-                self.variables[met.id].add('metabolite')
+                self.variables[met.id].add("metabolite")
 
                 self.dto.metabolites[met.id] = met_record
 
         for gene_id, gene in self.dto.reframed_model.genes.items():
 
             if gene.id not in processed_genes:
-                gene_record = VariableRecord(id=gene.id,
-                                             name=gene.id,
-                                             aliases={gene.id})
+                gene_record = VariableRecord(id=gene.id, name=gene.id, aliases={gene.id})
 
-                self.variables[gene.id].add('gene')
+                self.variables[gene.id].add("gene")
 
                 self.dto.genes[gene.id] = gene_record
 
         self.dto.objective = self.dto.reframed_model.get_objective()
 
-    def read(self,
-             model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None,
-             variables=None):
+    def read(self, model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None, variables=None):
 
         if not model:
-            model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = self.model
+            model: Union["Model", "MetabolicModel", "RegulatoryModel"] = self.model
 
         if not variables:
             variables = self.variables
@@ -200,10 +200,12 @@ class ReframedModel(Engine):
 
             for gene_id, gene_record in rxn_record.genes.items():
 
-                gene, warning = gene_record.to_variable(model=model,
-                                                        types=variables.get(gene_id, {'gene'}),
-                                                        name=gene_record.name,
-                                                        aliases=gene_record.aliases)
+                gene, warning = gene_record.to_variable(
+                    model=model,
+                    types=variables.get(gene_id, {"gene"}),
+                    name=gene_record.name,
+                    aliases=gene_record.aliases,
+                )
 
                 if warning:
                     self.warnings.append(partial(cobra_warning, warning))
@@ -216,13 +218,15 @@ class ReframedModel(Engine):
 
             for met_id, met_record in rxn_record.metabolites.items():
 
-                met, warning = met_record.to_variable(model=model,
-                                                      types=variables.get(met_id, {'metabolite'}),
-                                                      name=met_record.name,
-                                                      aliases=met_record.aliases,
-                                                      compartment=met_record.compartment,
-                                                      charge=met_record.charge,
-                                                      formula=met_record.formula)
+                met, warning = met_record.to_variable(
+                    model=model,
+                    types=variables.get(met_id, {"metabolite"}),
+                    name=met_record.name,
+                    aliases=met_record.aliases,
+                    compartment=met_record.compartment,
+                    charge=met_record.charge,
+                    formula=met_record.formula,
+                )
 
                 if warning:
                     self.warnings.append(partial(cobra_warning, warning))
@@ -235,11 +239,13 @@ class ReframedModel(Engine):
 
             gpr = Expression(symbolic=rxn_record.gpr.symbolic, variables=genes)
 
-            rxn, warning = rxn_record.to_variable(model=model,
-                                                  types=variables.get(rxn_id, {'reaction'}),
-                                                  bounds=rxn_record.bounds,
-                                                  gpr=gpr,
-                                                  stoichiometry=stoichiometry)
+            rxn, warning = rxn_record.to_variable(
+                model=model,
+                types=variables.get(rxn_id, {"reaction"}),
+                bounds=rxn_record.bounds,
+                gpr=gpr,
+                stoichiometry=stoichiometry,
+            )
 
             if warning:
                 self.warnings.append(partial(cobra_warning, warning))
@@ -251,13 +257,15 @@ class ReframedModel(Engine):
         for met_id, met_record in self.dto.metabolites.items():
 
             if met_id not in processed_metabolites:
-                met, warning = met_record.to_variable(model=model,
-                                                      types=variables.get(met_id, {'metabolite'}),
-                                                      name=met_record.name,
-                                                      aliases=met_record.aliases,
-                                                      compartment=met_record.compartment,
-                                                      charge=met_record.charge,
-                                                      formula=met_record.formula)
+                met, warning = met_record.to_variable(
+                    model=model,
+                    types=variables.get(met_id, {"metabolite"}),
+                    name=met_record.name,
+                    aliases=met_record.aliases,
+                    compartment=met_record.compartment,
+                    charge=met_record.charge,
+                    formula=met_record.formula,
+                )
 
                 if warning:
                     self.warnings.append(partial(cobra_warning, warning))
@@ -267,10 +275,12 @@ class ReframedModel(Engine):
         for gene_id, gene_record in self.dto.genes.items():
 
             if gene_id not in processed_genes:
-                gene, warning = gene_record.to_variable(model=model,
-                                                        types=variables.get(gene_id, {'gene'}),
-                                                        name=gene_record.name,
-                                                        aliases=gene_record.aliases)
+                gene, warning = gene_record.to_variable(
+                    model=model,
+                    types=variables.get(gene_id, {"gene"}),
+                    name=gene_record.name,
+                    aliases=gene_record.aliases,
+                )
 
                 if warning:
                     self.warnings.append(partial(cobra_warning, warning))

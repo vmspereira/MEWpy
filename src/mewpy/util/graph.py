@@ -13,7 +13,7 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-""" 
+"""
 ##############################################################################
 Graph methods for metabolic models.
 Generates a networkx graph based on metabolic networks
@@ -22,20 +22,23 @@ Author: Vitor Pereira
 ##############################################################################
 """
 import math
+
 import networkx as nx
 import numpy as np
+
 from mewpy.simulation import get_simulator
+
 from .constants import COFACTORS
 
-METABOLITE = 'METABOLITE'
-REACTION = 'REACTION    '
-REV = 'REV'
-IRREV = 'IRREV'
+METABOLITE = "METABOLITE"
+REACTION = "REACTION    "
+REV = "REV"
+IRREV = "IRREV"
 
 
-
-
-def create_metabolic_graph(model, directed=True, carbon=True, reactions=None, remove=[], edges_labels=False, biomass=False, metabolites=False):
+def create_metabolic_graph(
+    model, directed=True, carbon=True, reactions=None, remove=[], edges_labels=False, biomass=False, metabolites=False
+):
     """ Creates a metabolic graph
 
     :param model: A model or a model containter
@@ -48,7 +51,6 @@ def create_metabolic_graph(model, directed=True, carbon=True, reactions=None, re
     :param (bool) edges_labels: Adds a reversabily label to edges. Defaults to False.
     :returns: A networkx graph of the metabolic network.
     """
-
 
     container = get_simulator(model)
 
@@ -67,9 +69,9 @@ def create_metabolic_graph(model, directed=True, carbon=True, reactions=None, re
     for r in reactions:
         the_metabolites = container.get_reaction_metabolites(r)
         for m in the_metabolites:
-            if m in remove or container.get_metabolite(m)['formula'] in COFACTORS.values():
+            if m in remove or container.get_metabolite(m)["formula"] in COFACTORS.values():
                 continue
-            if carbon and 'C' not in container.metabolite_elements(m).keys():
+            if carbon and "C" not in container.metabolite_elements(m).keys():
                 continue
             if m not in G.nodes:
                 G.add_node(m, label=m, node_class=METABOLITE, node_id=m)
@@ -89,9 +91,9 @@ def create_metabolic_graph(model, directed=True, carbon=True, reactions=None, re
                 label = REV
 
             if edges_labels:
-                G[tail][head]['label'] = label
+                G[tail][head]["label"] = label
 
-            G[tail][head]['reversible'] = lb < 0
+            G[tail][head]["reversible"] = lb < 0
 
     if not metabolites:
         met_nodes = [x for x, v in dict(G.nodes(data="node_class")).items() if v == METABOLITE]
@@ -100,10 +102,6 @@ def create_metabolic_graph(model, directed=True, carbon=True, reactions=None, re
             out_ = G.out_edges(m, data=True)
             for s, _, r1 in in_:
                 for _, t, r2 in out_:
-                    try:
-                        rev = r1['reversible'] and r2['reversible']
-                    except:
-                        rev = False
                     G.add_edge(s, t)
             G.remove_node(m)
 
@@ -122,13 +120,13 @@ def filter_by_degree(G, max_degree, inplace=True):
         v = None
         while not found and position < len(s):
             k, v = s[position]
-            if G.nodes[k]['node_class'] == METABOLITE:
+            if G.nodes[k]["node_class"] == METABOLITE:
                 found = True
             else:
                 position += 1
         if k and v > max_degree:
             G.remove_node(k)
-            print('removed ', k)
+            print("removed ", k)
             s = list(sorted(G.degree, key=lambda item: item[1], reverse=True))
         else:
             stop = True
@@ -147,7 +145,7 @@ def shortest_distance(model, reaction, reactions=None, remove=[]):
     :returns: A dictionary of distances.
     """
     container = get_simulator(model)
-    
+
     rxns = reactions if reactions else container.reactions
     if reaction not in rxns:
         rxns.append(reaction)
@@ -199,9 +197,9 @@ def probabilistic_gene_targets(model, product, targets, factor=10):
     :param int factor: Maximum number of repetitions. Defaults to 10.
     :returns: A probabilistic target list.
     """
-    
+
     container = get_simulator(model)
-    
+
     # Reaction targets
     if not targets:
         genes = container.genes

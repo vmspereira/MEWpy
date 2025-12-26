@@ -1,27 +1,47 @@
 import os
 from functools import partial
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
-from mewpy.io.dto import DataTransferObject, VariableRecord, History, FunctionTerm, CompartmentRecord
-from mewpy.germ.algebra import Expression, Symbol, Or, And, NoneAtom
+from mewpy.germ.algebra import And, Expression, NoneAtom, Or, Symbol
 from mewpy.germ.models import RegulatoryModel
 from mewpy.germ.models.unified_factory import unified_factory
+from mewpy.io.dto import CompartmentRecord, DataTransferObject, FunctionTerm, History, VariableRecord
 from mewpy.util.constants import ModelConstants
+
 from .engine import Engine
-from .engines_utils import (build_symbolic,
-                            pattern_notes,
-                            f_id, F_GENE, F_SPECIE, F_REACTION, F_SPECIE_REV, F_GENE_REV, F_REACTION_REV, convert_fbc,
-                            get_sbml_doc_to_write, get_sbml_doc_to_read,
-                            UNIT_ID, UNITS,
-                            add_sbml_parameter, LOWER_BOUND_ID, UPPER_BOUND_ID, ZERO_BOUND_ID,
-                            BOUND_MINUS_INF, BOUND_PLUS_INF,
-                            SBO_DEFAULT_FLUX_BOUND, SBO_FLUX_BOUND,
-                            get_sbml_lb_id, get_sbml_ub_id, write_sbml_doc,
-                            set_gpr,
-                            expression_warning, sbml_warning)
+from .engines_utils import (
+    BOUND_MINUS_INF,
+    BOUND_PLUS_INF,
+    F_GENE,
+    F_GENE_REV,
+    F_REACTION,
+    F_REACTION_REV,
+    F_SPECIE,
+    F_SPECIE_REV,
+    LOWER_BOUND_ID,
+    SBO_DEFAULT_FLUX_BOUND,
+    SBO_FLUX_BOUND,
+    UNIT_ID,
+    UNITS,
+    UPPER_BOUND_ID,
+    ZERO_BOUND_ID,
+    add_sbml_parameter,
+    build_symbolic,
+    convert_fbc,
+    expression_warning,
+    f_id,
+    get_sbml_doc_to_read,
+    get_sbml_doc_to_write,
+    get_sbml_lb_id,
+    get_sbml_ub_id,
+    pattern_notes,
+    sbml_warning,
+    set_gpr,
+    write_sbml_doc,
+)
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
 class MetabolicSBML(Engine):
@@ -36,7 +56,7 @@ class MetabolicSBML(Engine):
 
     @property
     def model_type(self):
-        return 'metabolic'
+        return "metabolic"
 
     @property
     def model(self):
@@ -62,8 +82,9 @@ class MetabolicSBML(Engine):
                 key, value = match.group("content").split(":", 1)
 
             except ValueError:
-                self.warnings.append(partial(sbml_warning,
-                                             "Unexpected content format {}.".format(match.group("content"))))
+                self.warnings.append(
+                    partial(sbml_warning, "Unexpected content format {}.".format(match.group("content")))
+                )
                 continue
 
             value = value.strip()
@@ -96,15 +117,13 @@ class MetabolicSBML(Engine):
 
         if fbc_association.isFbcOr():
 
-            args = [self._parse_gpa(child)
-                    for child in fbc_association.getListOfAssociations()]
+            args = [self._parse_gpa(child) for child in fbc_association.getListOfAssociations()]
 
             return Or(variables=args)
 
         elif fbc_association.isFbcAnd():
 
-            args = [self._parse_gpa(child)
-                    for child in fbc_association.getListOfAssociations()]
+            args = [self._parse_gpa(child) for child in fbc_association.getListOfAssociations()]
 
             return And(variables=args)
 
@@ -113,7 +132,6 @@ class MetabolicSBML(Engine):
             return self.parse_leaves(fbc_association)
 
     def parse_gpa(self, fbc_association):
-
         """
         Reads and parses a node of type math ASTNode into a boolean algebraic expression.
 
@@ -127,8 +145,9 @@ class MetabolicSBML(Engine):
 
         except SyntaxError:
 
-            self.warnings.append(partial(expression_warning,
-                                         f'{fbc_association} cannot be parsed. Assigning empty expression instead'))
+            self.warnings.append(
+                partial(expression_warning, f"{fbc_association} cannot be parsed. Assigning empty expression instead")
+            )
 
             symbolic = NoneAtom()
 
@@ -140,7 +159,7 @@ class MetabolicSBML(Engine):
             _, identifier = os.path.split(self.io)
             return os.path.splitext(identifier)[0]
 
-        return 'model'
+        return "model"
 
     def _open_to_read(self):
 
@@ -155,13 +174,15 @@ class MetabolicSBML(Engine):
         self.dto.model = self.dto.doc.getModel()
 
         if self.dto.model is None:
-            raise OSError(f'{self.io} is not a valid input. Model SBML section is missing. '
-                          f'Provide a correct path or file handler')
+            raise OSError(
+                f"{self.io} is not a valid input. Model SBML section is missing. "
+                f"Provide a correct path or file handler"
+            )
 
         identifier = self.dto.model.getIdAttribute()
 
         if not identifier:
-            self.warnings.append(partial(sbml_warning, 'Model identifier is not encoded in the SBML file'))
+            self.warnings.append(partial(sbml_warning, "Model identifier is not encoded in the SBML file"))
 
             identifier = self.get_identifier()
 
@@ -176,13 +197,15 @@ class MetabolicSBML(Engine):
         # Doc, Model and FBC Plugin
         # -----------------------------------------------------------------------------
 
-        self.dto.doc = get_sbml_doc_to_write(self.io,
-                                             level=3,
-                                             version=1,
-                                             packages=('fbc',),
-                                             packages_version=(2,),
-                                             packages_required=(False,),
-                                             sbo_term=True)
+        self.dto.doc = get_sbml_doc_to_write(
+            self.io,
+            level=3,
+            version=1,
+            packages=("fbc",),
+            packages_version=(2,),
+            packages_required=(False,),
+            sbo_term=True,
+        )
 
         if self.dto.model is None:
 
@@ -193,45 +216,45 @@ class MetabolicSBML(Engine):
             self.dto.model = self.dto.doc.getModel()
 
         # fbc plugin is added by get_sbml_doc_to_write
-        self.dto.fbc_plugin = self.dto.model.getPlugin('fbc')
+        self.dto.fbc_plugin = self.dto.model.getPlugin("fbc")
         self.dto.fbc_plugin.setStrict(True)
 
         if self.model.id is not None:
             self.dto.model.setId(self.model.id)
-            self.dto.model.setMetaId('meta_' + self.model.id)
+            self.dto.model.setMetaId("meta_" + self.model.id)
 
         else:
-            self.dto.model.setMetaId('meta_model')
+            self.dto.model.setMetaId("meta_model")
 
         if self.model.name is not None:
             self.dto.model.setName(self.model.name)
 
-    def open(self, mode='r'):
+    def open(self, mode="r"):
 
-        if mode == 'r':
+        if mode == "r":
 
             return self._open_to_read()
 
-        elif mode == 'w':
+        elif mode == "w":
 
             return self._open_to_write()
 
         else:
-            raise ValueError(f'{mode} mode is not recognized. Try one of the following: r, w')
+            raise ValueError(f"{mode} mode is not recognized. Try one of the following: r, w")
 
     def parse(self):
 
         if self.dto is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.id is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.doc is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.model is None:
-            raise OSError(f'SBML file is not open')
+            raise OSError("SBML file is not open")
 
         self.dto.fbc_plugin = self.dto.model.getPlugin("fbc")
 
@@ -240,16 +263,20 @@ class MetabolicSBML(Engine):
 
         else:
             if not self.dto.fbc_plugin.isSetStrict():
-                self.warnings.append(partial(sbml_warning, 'SBML model fbc plugin is not set to strict. It must '
-                                                           'fbc:strict="true"'))
+                self.warnings.append(
+                    partial(sbml_warning, "SBML model fbc plugin is not set to strict. It must " 'fbc:strict="true"')
+                )
 
             doc_fbc = self.dto.doc.getPlugin("fbc")
             fbc_version = doc_fbc.getPackageVersion()
 
             # fbc 1 to 2. If fails, an import error is launched
             if fbc_version == 1:
-                self.warnings.append(partial(sbml_warning, 'Models should be encoded using fbc version 2. Converting '
-                                                           'fbc v1 to fbc v2'))
+                self.warnings.append(
+                    partial(
+                        sbml_warning, "Models should be encoded using fbc version 2. Converting " "fbc v1 to fbc v2"
+                    )
+                )
 
                 convert_fbc(self.dto.doc)
 
@@ -279,8 +306,9 @@ class MetabolicSBML(Engine):
         # -----------------------------------------------------------------------------
 
         for compartment in self.dto.model.getListOfCompartments():
-            self.dto.compartments[compartment.getIdAttribute()] = CompartmentRecord(id=compartment.getIdAttribute(),
-                                                                                    name=compartment.getName())
+            self.dto.compartments[compartment.getIdAttribute()] = CompartmentRecord(
+                id=compartment.getIdAttribute(), name=compartment.getName()
+            )
 
         # -----------------------------------------------------------------------------
         # Metabolites and Extracellular metabolites
@@ -317,16 +345,18 @@ class MetabolicSBML(Engine):
                     met_charge = None
                     met_formula = None
 
-            met_record = VariableRecord(id=met_id,
-                                        name=met_name,
-                                        aliases=met_aliases,
-                                        notes=met_notes,
-                                        annotation=met_annotation,
-                                        compartment=met_compartment,
-                                        charge=met_charge,
-                                        formula=met_formula)
+            met_record = VariableRecord(
+                id=met_id,
+                name=met_name,
+                aliases=met_aliases,
+                notes=met_notes,
+                annotation=met_annotation,
+                compartment=met_compartment,
+                charge=met_charge,
+                formula=met_formula,
+            )
 
-            self.variables[met_id].add('metabolite')
+            self.variables[met_id].add("metabolite")
 
             if met.getBoundaryCondition() is True:
                 # extracellular metabolites
@@ -364,13 +394,11 @@ class MetabolicSBML(Engine):
                 gene_notes = gene.getNotesString()
                 gene_annotation = gene.getAnnotationString()
 
-                gene_record = VariableRecord(id=gene_id,
-                                             name=gene_name,
-                                             aliases=gene_aliases,
-                                             notes=gene_notes,
-                                             annotation=gene_annotation)
+                gene_record = VariableRecord(
+                    id=gene_id, name=gene_name, aliases=gene_aliases, notes=gene_notes, annotation=gene_annotation
+                )
 
-                self.variables[gene_id].add('gene')
+                self.variables[gene_id].add("gene")
 
                 genes[gene_id] = gene_record
                 self.dto.variables[gene_id] = gene_record
@@ -429,25 +457,41 @@ class MetabolicSBML(Engine):
                         else:
 
                             self.warnings.append(
-                                partial(sbml_warning, f"Incorrect {bound_parameter} bound for {reaction} reaction. "
-                                                      f"Set to default"))
+                                partial(
+                                    sbml_warning,
+                                    f"Incorrect {bound_parameter} bound for {reaction} reaction. " f"Set to default",
+                                )
+                            )
 
                     else:
 
-                        self.warnings.append(partial(sbml_warning, f"Bound for {reaction} reaction not found in the "
-                                                                   f"SBML model fbc plugin. Set to "
-                                                                   f"default. Try to set all bounds explicitly on all "
-                                                                   f"reactions"))
+                        self.warnings.append(
+                            partial(
+                                sbml_warning,
+                                f"Bound for {reaction} reaction not found in the "
+                                f"SBML model fbc plugin. Set to "
+                                f"default. Try to set all bounds explicitly on all "
+                                f"reactions",
+                            )
+                        )
 
             elif reaction.isSetKineticLaw():
 
-                self.warnings.append(partial(sbml_warning, f"{reaction} reaction fbc plugin not found. This might "
-                                                           f"hinder reaction parsing"))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"{reaction} reaction fbc plugin not found. This might " f"hinder reaction parsing",
+                    )
+                )
 
-                self.warnings.append(partial(
-                    sbml_warning, f"Bounds have been detected in kinetic laws for {reaction} reaction. "
-                                  f"Try to set all bounds explicitly on all reactions using the fbc plugin, as mewpy "
-                                  f"can miss sometimes kinetic laws"))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"Bounds have been detected in kinetic laws for {reaction} reaction. "
+                        f"Try to set all bounds explicitly on all reactions using the fbc plugin, as mewpy "
+                        f"can miss sometimes kinetic laws",
+                    )
+                )
 
                 # bounds encoded in the kinetic law. Not advised
                 kinetic_law = reaction.getKineticLaw()
@@ -455,7 +499,7 @@ class MetabolicSBML(Engine):
                 rxn_bounds = [ModelConstants.REACTION_LOWER_BOUND, ModelConstants.REACTION_UPPER_BOUND]
 
                 # parameters of the kinetic law
-                kinetic_parameters = ('LOWER_BOUND', 'UPPER_BOUND')
+                kinetic_parameters = ("LOWER_BOUND", "UPPER_BOUND")
 
                 for i, kinetic_parameter in enumerate(kinetic_parameters):
 
@@ -465,20 +509,32 @@ class MetabolicSBML(Engine):
                         rxn_bounds[i] = bound.getValue()
 
                     else:
-                        self.warnings.append(partial(sbml_warning,
-                                                     f"{kinetic_parameter} has not been detected. "
-                                                     f"{kinetic_parameter} has been set to default. "
-                                                     f"Try to set all bounds explicitly on all reactions using "
-                                                     f"the fbc plugin"))
+                        self.warnings.append(
+                            partial(
+                                sbml_warning,
+                                f"{kinetic_parameter} has not been detected. "
+                                f"{kinetic_parameter} has been set to default. "
+                                f"Try to set all bounds explicitly on all reactions using "
+                                f"the fbc plugin",
+                            )
+                        )
 
             else:
 
-                self.warnings.append(partial(sbml_warning, f"{reaction} reaction fbc plugin not found. This might "
-                                                           f"hinder reaction parsing"))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"{reaction} reaction fbc plugin not found. This might " f"hinder reaction parsing",
+                    )
+                )
 
-                self.warnings.append(partial(sbml_warning,
-                                             f"Bounds have not been detected. Bounds have been set to default. Try to "
-                                             f"set all bounds explicitly on all reactions using the fbc plugin"))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        "Bounds have not been detected. Bounds have been set to default. Try to "
+                        "set all bounds explicitly on all reactions using the fbc plugin",
+                    )
+                )
 
                 rxn_bounds = [ModelConstants.REACTION_LOWER_BOUND, ModelConstants.REACTION_UPPER_BOUND]
 
@@ -497,8 +553,9 @@ class MetabolicSBML(Engine):
                 reactant_id = f_id(reactant.getSpecies(), F_SPECIE)
 
                 if reactant_id not in self.dto.metabolites:
-                    raise ValueError(f"{reactant_id} reactant of {reaction} reaction "
-                                     f"is not listed as specie in the SBML Model.")
+                    raise ValueError(
+                        f"{reactant_id} reactant of {reaction} reaction " f"is not listed as specie in the SBML Model."
+                    )
 
                 reactant_record = self.dto.metabolites[reactant_id]
 
@@ -512,8 +569,9 @@ class MetabolicSBML(Engine):
                 product_id = f_id(product.getSpecies(), F_SPECIE)
 
                 if product_id not in self.dto.metabolites:
-                    raise ValueError(f"{product_id} product of {reaction} reaction "
-                                     f"is not listed as specie in the SBML Model.")
+                    raise ValueError(
+                        f"{product_id} product of {reaction} reaction " f"is not listed as specie in the SBML Model."
+                    )
 
                 product_record = self.dto.metabolites[product_id]
 
@@ -539,23 +597,25 @@ class MetabolicSBML(Engine):
 
             else:
 
-                self.warnings.append(partial(sbml_warning,
-                                             "Please use fbc plugin fbc:gpr to encode gprs in the future, "
-                                             "as parsing gprs from notes might be troublesome"))
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        "Please use fbc plugin fbc:gpr to encode gprs in the future, "
+                        "as parsing gprs from notes might be troublesome",
+                    )
+                )
 
                 # Else the gpr parsing tries to find the gpr rule (string) within the notes
 
-                gpr_rule = rxn_notes.get('GENE ASSOCIATION',
-                                         rxn_notes.get('GENE_ASSOCIATION', None))
+                gpr_rule = rxn_notes.get("GENE ASSOCIATION", rxn_notes.get("GENE_ASSOCIATION", None))
 
                 if gpr_rule is None:
 
-                    self.warnings.append(partial(sbml_warning,
-                                                 "GPR was not found within the reaction's notes section"))
+                    self.warnings.append(partial(sbml_warning, "GPR was not found within the reaction's notes section"))
 
                 else:
 
-                    gpr_rule = ' '.join(f_id(child, F_GENE) for child in gpr_rule.split(' '))
+                    gpr_rule = " ".join(f_id(child, F_GENE) for child in gpr_rule.split(" "))
 
                     symbolic, warning = build_symbolic(expression=gpr_rule)
 
@@ -575,14 +635,13 @@ class MetabolicSBML(Engine):
 
                     else:
 
-                        self.warnings.append(partial(sbml_warning,
-                                                     f'{symbol.name} is not listed in the SBML model fbc plugin'))
+                        self.warnings.append(
+                            partial(sbml_warning, f"{symbol.name} is not listed in the SBML model fbc plugin")
+                        )
 
-                gene_record = VariableRecord(id=symbol.name,
-                                             name=symbol.name,
-                                             aliases={symbol.name, symbol.value})
+                gene_record = VariableRecord(id=symbol.name, name=symbol.name, aliases={symbol.name, symbol.value})
 
-                self.variables[symbol.name].add('gene')
+                self.variables[symbol.name].add("gene")
 
                 self.dto.variables[symbol.name] = gene_record
                 self.dto.genes[symbol.name] = gene_record
@@ -592,26 +651,28 @@ class MetabolicSBML(Engine):
             # -----------------------------------------------------------------------------
             # GPR Function term
             # -----------------------------------------------------------------------------
-            function_term = FunctionTerm(id='gpr_term', symbolic=symbolic, coefficient=1)
+            function_term = FunctionTerm(id="gpr_term", symbolic=symbolic, coefficient=1)
 
             # ------------------------------------------------
             # Building reaction record and assigning to containers
             # ------------------------------------------------
 
-            reaction_record = VariableRecord(id=rxn_id,
-                                             name=rxn_name,
-                                             aliases=rxn_aliases,
-                                             notes=rxn_notes,
-                                             annotation=rxn_annotation,
-                                             bounds=tuple(rxn_bounds),
-                                             genes=rxn_genes,
-                                             gpr=function_term,
-                                             metabolites=rxn_metabolites,
-                                             products=rxn_products,
-                                             reactants=rxn_reactants,
-                                             stoichiometry=rxn_stoichiometry)
+            reaction_record = VariableRecord(
+                id=rxn_id,
+                name=rxn_name,
+                aliases=rxn_aliases,
+                notes=rxn_notes,
+                annotation=rxn_annotation,
+                bounds=tuple(rxn_bounds),
+                genes=rxn_genes,
+                gpr=function_term,
+                metabolites=rxn_metabolites,
+                products=rxn_products,
+                reactants=rxn_reactants,
+                stoichiometry=rxn_stoichiometry,
+            )
 
-            self.variables[rxn_id].add('reaction')
+            self.variables[rxn_id].add("reaction")
 
             reactions[rxn_id] = reaction_record
 
@@ -629,23 +690,26 @@ class MetabolicSBML(Engine):
             # Building reaction record and assigning to containers
             # ------------------------------------------------
 
-            reaction_record = VariableRecord(id=f'EX_{extracellular_met.id}',
-                                             name=f'EX_{extracellular_met.id}',
-                                             bounds=(ModelConstants.REACTION_LOWER_BOUND,
-                                                     ModelConstants.REACTION_UPPER_BOUND),
-                                             metabolites={extracellular_met.id: extracellular_met},
-                                             reactants={extracellular_met.id: extracellular_met},
-                                             stoichiometry={extracellular_met.id: -1})
+            reaction_record = VariableRecord(
+                id=f"EX_{extracellular_met.id}",
+                name=f"EX_{extracellular_met.id}",
+                bounds=(ModelConstants.REACTION_LOWER_BOUND, ModelConstants.REACTION_UPPER_BOUND),
+                metabolites={extracellular_met.id: extracellular_met},
+                reactants={extracellular_met.id: extracellular_met},
+                stoichiometry={extracellular_met.id: -1},
+            )
 
-            self.variables[f'EX_{extracellular_met.id}'].add('reaction')
+            self.variables[f"EX_{extracellular_met.id}"].add("reaction")
 
-            extracellular_reactions[f'EX_{extracellular_met.id}'] = reaction_record
+            extracellular_reactions[f"EX_{extracellular_met.id}"] = reaction_record
 
-            self.dto.variables[f'EX_{extracellular_met.id}'] = reaction_record
+            self.dto.variables[f"EX_{extracellular_met.id}"] = reaction_record
 
-            self.warnings.append(partial(sbml_warning,
-                                         f'EX_{extracellular_met.id} reaction added '
-                                         f'for metabolite {extracellular_met.id}'))
+            self.warnings.append(
+                partial(
+                    sbml_warning, f"EX_{extracellular_met.id} reaction added " f"for metabolite {extracellular_met.id}"
+                )
+            )
 
         self.dto.extracellular_reactions = extracellular_reactions
         self.dto.reactions.update(extracellular_reactions)
@@ -682,36 +746,40 @@ class MetabolicSBML(Engine):
                     objective_rxn = self.dto.reactions.get(flux_objective_id, None)
 
                     if objective_rxn is None:
-                        self.warnings.append(partial(sbml_warning,
-                                                     f"Objective {flux_objective_id} reaction "
-                                                     f"not found in the SBML model"))
+                        self.warnings.append(
+                            partial(
+                                sbml_warning, f"Objective {flux_objective_id} reaction " f"not found in the SBML model"
+                            )
+                        )
 
                         continue
 
                     coef = flux_objective.getCoefficient()
 
-                    if direction == 'minimize':
+                    if direction == "minimize":
                         coef = -coef
 
                     model_objective[flux_objective_id] = coef
 
         else:
-            self.warnings.append(partial(sbml_warning,
-                                         f"Objective might be encoded in kinetic laws of a given reaction. However, "
-                                         f"mewpy does not handle kinetic laws. The objective has not been set. Try "
-                                         f"to set the objective explicitly on the fbc plugin"))
+            self.warnings.append(
+                partial(
+                    sbml_warning,
+                    "Objective might be encoded in kinetic laws of a given reaction. However, "
+                    "mewpy does not handle kinetic laws. The objective has not been set. Try "
+                    "to set the objective explicitly on the fbc plugin",
+                )
+            )
 
         if len(model_objective) == 0:
             self.warnings.append(partial(sbml_warning, "No objective found for the model"))
 
         self.dto.objective = model_objective
 
-    def read(self,
-             model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None,
-             variables=None):
+    def read(self, model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None, variables=None):
 
         if not model:
-            model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = self.model
+            model: Union["Model", "MetabolicModel", "RegulatoryModel"] = self.model
 
         if not variables:
             variables = self.variables
@@ -722,8 +790,7 @@ class MetabolicSBML(Engine):
         if self.dto.name:
             model.name = self.dto.name
 
-        model.compartments = {compartment.id: compartment.name
-                              for compartment in self.dto.compartments.values()}
+        model.compartments = {compartment.id: compartment.name for compartment in self.dto.compartments.values()}
 
         processed_metabolites = set()
         processed_genes = set()
@@ -734,10 +801,12 @@ class MetabolicSBML(Engine):
 
             for gene_id, gene_record in rxn_record.genes.items():
 
-                gene, warning = gene_record.to_variable(model=model,
-                                                        types=variables.get(gene_id, {'gene'}),
-                                                        name=gene_record.name,
-                                                        aliases=gene_record.aliases)
+                gene, warning = gene_record.to_variable(
+                    model=model,
+                    types=variables.get(gene_id, {"gene"}),
+                    name=gene_record.name,
+                    aliases=gene_record.aliases,
+                )
 
                 if warning:
                     self.warnings.append(partial(sbml_warning, warning))
@@ -750,13 +819,15 @@ class MetabolicSBML(Engine):
 
             for met_id, met_record in rxn_record.metabolites.items():
 
-                met, warning = met_record.to_variable(model=model,
-                                                      types=variables.get(met_id, {'metabolite'}),
-                                                      name=met_record.name,
-                                                      aliases=met_record.aliases,
-                                                      compartment=met_record.compartment,
-                                                      charge=met_record.charge,
-                                                      formula=met_record.formula)
+                met, warning = met_record.to_variable(
+                    model=model,
+                    types=variables.get(met_id, {"metabolite"}),
+                    name=met_record.name,
+                    aliases=met_record.aliases,
+                    compartment=met_record.compartment,
+                    charge=met_record.charge,
+                    formula=met_record.formula,
+                )
 
                 if warning:
                     self.warnings.append(partial(sbml_warning, warning))
@@ -769,11 +840,13 @@ class MetabolicSBML(Engine):
 
             gpr = Expression(symbolic=rxn_record.gpr.symbolic, variables=genes)
 
-            rxn, warning = rxn_record.to_variable(model=model,
-                                                  types=variables.get(rxn_id, {'reaction'}),
-                                                  bounds=rxn_record.bounds,
-                                                  gpr=gpr,
-                                                  stoichiometry=stoichiometry)
+            rxn, warning = rxn_record.to_variable(
+                model=model,
+                types=variables.get(rxn_id, {"reaction"}),
+                bounds=rxn_record.bounds,
+                gpr=gpr,
+                stoichiometry=stoichiometry,
+            )
 
             if warning:
                 self.warnings.append(partial(sbml_warning, warning))
@@ -785,13 +858,15 @@ class MetabolicSBML(Engine):
         for met_id, met_record in self.dto.metabolites.items():
 
             if met_id not in processed_metabolites:
-                met, warning = met_record.to_variable(model=model,
-                                                      types=variables.get(met_id, {'metabolite'}),
-                                                      name=met_record.name,
-                                                      aliases=met_record.aliases,
-                                                      compartment=met_record.compartment,
-                                                      charge=met_record.charge,
-                                                      formula=met_record.formula)
+                met, warning = met_record.to_variable(
+                    model=model,
+                    types=variables.get(met_id, {"metabolite"}),
+                    name=met_record.name,
+                    aliases=met_record.aliases,
+                    compartment=met_record.compartment,
+                    charge=met_record.charge,
+                    formula=met_record.formula,
+                )
 
                 if warning:
                     self.warnings.append(partial(sbml_warning, warning))
@@ -801,10 +876,12 @@ class MetabolicSBML(Engine):
         for gene_id, gene_record in self.dto.genes.items():
 
             if gene_id not in processed_genes:
-                gene, warning = gene_record.to_variable(model=model,
-                                                        types=variables.get(gene_id, {'gene'}),
-                                                        name=gene_record.name,
-                                                        aliases=gene_record.aliases)
+                gene, warning = gene_record.to_variable(
+                    model=model,
+                    types=variables.get(gene_id, {"gene"}),
+                    name=gene_record.name,
+                    aliases=gene_record.aliases,
+                )
 
                 if warning:
                     self.warnings.append(partial(sbml_warning, warning))
@@ -820,18 +897,18 @@ class MetabolicSBML(Engine):
     def write(self):
 
         if self.dto is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.doc is None:
-            raise OSError('SBML file is not open')
+            raise OSError("SBML file is not open")
 
         if self.dto.model is None:
-            raise OSError(f'SBML file is not open')
+            raise OSError("SBML file is not open")
 
         # -----------------------------------------------------------------------------
         # Units
         # -----------------------------------------------------------------------------
-        units = self.config.get('units', False)
+        units = self.config.get("units", False)
         unit_definition = None
         if units:
 
@@ -848,35 +925,41 @@ class MetabolicSBML(Engine):
         # -----------------------------------------------------------------------------
         # Constants and parameters
         # -----------------------------------------------------------------------------
-        add_sbml_parameter(sbml_model=self.dto.model,
-                           parameter_id=LOWER_BOUND_ID,
-                           value=ModelConstants.REACTION_LOWER_BOUND,
-                           constant=True,
-                           sbo=SBO_DEFAULT_FLUX_BOUND)
+        add_sbml_parameter(
+            sbml_model=self.dto.model,
+            parameter_id=LOWER_BOUND_ID,
+            value=ModelConstants.REACTION_LOWER_BOUND,
+            constant=True,
+            sbo=SBO_DEFAULT_FLUX_BOUND,
+        )
 
-        add_sbml_parameter(sbml_model=self.dto.model,
-                           parameter_id=UPPER_BOUND_ID,
-                           value=ModelConstants.REACTION_UPPER_BOUND,
-                           constant=True,
-                           sbo=SBO_DEFAULT_FLUX_BOUND)
+        add_sbml_parameter(
+            sbml_model=self.dto.model,
+            parameter_id=UPPER_BOUND_ID,
+            value=ModelConstants.REACTION_UPPER_BOUND,
+            constant=True,
+            sbo=SBO_DEFAULT_FLUX_BOUND,
+        )
 
-        add_sbml_parameter(sbml_model=self.dto.model,
-                           parameter_id=ZERO_BOUND_ID,
-                           value=0,
-                           constant=True,
-                           sbo=SBO_DEFAULT_FLUX_BOUND)
+        add_sbml_parameter(
+            sbml_model=self.dto.model, parameter_id=ZERO_BOUND_ID, value=0, constant=True, sbo=SBO_DEFAULT_FLUX_BOUND
+        )
 
-        add_sbml_parameter(sbml_model=self.dto.model,
-                           parameter_id=BOUND_MINUS_INF,
-                           value=-float("Inf"),
-                           constant=True,
-                           sbo=SBO_DEFAULT_FLUX_BOUND)
+        add_sbml_parameter(
+            sbml_model=self.dto.model,
+            parameter_id=BOUND_MINUS_INF,
+            value=-float("Inf"),
+            constant=True,
+            sbo=SBO_DEFAULT_FLUX_BOUND,
+        )
 
-        add_sbml_parameter(sbml_model=self.dto.model,
-                           parameter_id=BOUND_PLUS_INF,
-                           value=float("Inf"),
-                           constant=True,
-                           sbo=SBO_DEFAULT_FLUX_BOUND)
+        add_sbml_parameter(
+            sbml_model=self.dto.model,
+            parameter_id=BOUND_PLUS_INF,
+            value=float("Inf"),
+            constant=True,
+            sbo=SBO_DEFAULT_FLUX_BOUND,
+        )
 
         # -----------------------------------------------------------------------------
         # Compartments
@@ -899,7 +982,7 @@ class MetabolicSBML(Engine):
             sbml_specie.setHasOnlySubstanceUnits(False)
             sbml_specie.setName(metabolite.name)
             sbml_specie.setCompartment(metabolite.compartment)
-            specie_fbc = sbml_specie.getPlugin('fbc')
+            specie_fbc = sbml_specie.getPlugin("fbc")
             specie_fbc.setCharge(metabolite.charge)
             specie_fbc.setChemicalFormula(metabolite.formula)
 
@@ -917,9 +1000,9 @@ class MetabolicSBML(Engine):
         # Objective
         # -----------------------------------------------------------------------------
         objective = self.dto.fbc_plugin.createObjective()
-        objective.setId('obj')
-        objective.setType('maximize')
-        self.dto.fbc_plugin.setActiveObjectiveId('obj')
+        objective.setId("obj")
+        objective.setType("maximize")
+        self.dto.fbc_plugin.setActiveObjectiveId("obj")
 
         for reaction, coefficient in self.model.objective.items():
             flux_objective = objective.createFluxObjective()
@@ -957,37 +1040,41 @@ class MetabolicSBML(Engine):
             # -----------------------------------------------------------------------------
             # Bounds
             # -----------------------------------------------------------------------------
-            sbml_rxn_fbc = sbml_reaction.getPlugin('fbc')
+            sbml_rxn_fbc = sbml_reaction.getPlugin("fbc")
 
-            lb_parameter_id = get_sbml_lb_id(sbml_model=self.dto.model,
-                                             reaction=reaction,
-                                             unit_definition=unit_definition)
+            lb_parameter_id = get_sbml_lb_id(
+                sbml_model=self.dto.model, reaction=reaction, unit_definition=unit_definition
+            )
 
             if lb_parameter_id is None:
-                lb_parameter_id = f'{f_id(reaction.id, F_REACTION_REV)}_lb'
+                lb_parameter_id = f"{f_id(reaction.id, F_REACTION_REV)}_lb"
 
-                add_sbml_parameter(sbml_model=self.dto.model,
-                                   parameter_id=lb_parameter_id,
-                                   value=reaction.lower_bound,
-                                   sbo=SBO_FLUX_BOUND,
-                                   constant=True,
-                                   unit_definition=unit_definition)
+                add_sbml_parameter(
+                    sbml_model=self.dto.model,
+                    parameter_id=lb_parameter_id,
+                    value=reaction.lower_bound,
+                    sbo=SBO_FLUX_BOUND,
+                    constant=True,
+                    unit_definition=unit_definition,
+                )
 
             sbml_rxn_fbc.setLowerFluxBound(lb_parameter_id)
 
-            ub_parameter_id = get_sbml_ub_id(sbml_model=self.dto.model,
-                                             reaction=reaction,
-                                             unit_definition=unit_definition)
+            ub_parameter_id = get_sbml_ub_id(
+                sbml_model=self.dto.model, reaction=reaction, unit_definition=unit_definition
+            )
 
             if ub_parameter_id is None:
-                ub_parameter_id = f'{f_id(reaction.id, F_REACTION_REV)}_lb'
+                ub_parameter_id = f"{f_id(reaction.id, F_REACTION_REV)}_lb"
 
-                add_sbml_parameter(sbml_model=self.dto.model,
-                                   parameter_id=ub_parameter_id,
-                                   value=reaction.upper_bound,
-                                   sbo=SBO_FLUX_BOUND,
-                                   constant=True,
-                                   unit_definition=unit_definition)
+                add_sbml_parameter(
+                    sbml_model=self.dto.model,
+                    parameter_id=ub_parameter_id,
+                    value=reaction.upper_bound,
+                    sbo=SBO_FLUX_BOUND,
+                    constant=True,
+                    unit_definition=unit_definition,
+                )
 
             sbml_rxn_fbc.setUpperFluxBound(ub_parameter_id)
 
@@ -1000,7 +1087,7 @@ class MetabolicSBML(Engine):
 
     def close(self):
 
-        if hasattr(self.io, 'close'):
+        if hasattr(self.io, "close"):
             self.io.close()
 
     def clean(self):

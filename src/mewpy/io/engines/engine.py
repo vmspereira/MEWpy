@@ -1,22 +1,25 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-
-from typing import Union, TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import RegulatoryModel, MetabolicModel, Model
-    from mewpy.io.dto import DataTransferObject
     from io import TextIOWrapper
+
     from cobra import Model as CobraModel
     from reframed import CBModel as ReframedModel
+
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+    from mewpy.io.dto import DataTransferObject
 
 
 class Engine(metaclass=ABCMeta):
 
-    def __init__(self,
-                 io: Union[str, 'TextIOWrapper', 'CobraModel', 'ReframedModel'],
-                 config: dict,
-                 model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None):
+    def __init__(
+        self,
+        io: Union[str, "TextIOWrapper", "CobraModel", "ReframedModel"],
+        config: dict,
+        model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None,
+    ):
         """
         The engine interface for reading/writing models. The abstract properties and methods should be fully
         implemented in the concrete engines.
@@ -75,7 +78,7 @@ class Engine(metaclass=ABCMeta):
         self._warnings = []
 
     @property
-    def io(self) -> Union[str, 'TextIOWrapper', 'CobraModel', 'ReframedModel']:
+    def io(self) -> Union[str, "TextIOWrapper", "CobraModel", "ReframedModel"]:
         return self._io
 
     @property
@@ -83,7 +86,7 @@ class Engine(metaclass=ABCMeta):
         return self._config
 
     @property
-    def model(self) -> Union['Model', 'MetabolicModel', 'RegulatoryModel']:
+    def model(self) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
         return self._model
 
     @property
@@ -92,7 +95,7 @@ class Engine(metaclass=ABCMeta):
         return
 
     @property
-    def dto(self) -> 'DataTransferObject':
+    def dto(self) -> "DataTransferObject":
         return self._dto
 
     @property
@@ -104,7 +107,7 @@ class Engine(metaclass=ABCMeta):
         return self._warnings
 
     @abstractmethod
-    def open(self, mode: str = 'r'):
+    def open(self, mode: str = "r"):
         """
         Open makes the preparation for reading or writing
 
@@ -123,9 +126,9 @@ class Engine(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def read(self,
-             model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None,
-             variables: dict = None) -> Union['Model', 'MetabolicModel', 'RegulatoryModel']:
+    def read(
+        self, model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None, variables: dict = None
+    ) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
         """
         Reads a model into a GERM model. If a model is provided, the read method will increment further variables
         If a variables dictionary is provided, multi-type variables can be built together with the ones available in

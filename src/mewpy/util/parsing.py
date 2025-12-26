@@ -23,11 +23,11 @@ Author: Vitor Pereira
 """
 import re
 import sys
-from abc import abstractmethod
-from operator import add, sub, mul, truediv, pow
 import typing as T
-from math import *
+from abc import abstractmethod
 from copy import copy
+from math import *
+from operator import add, mul, pow, sub, truediv
 
 # Boolean operator symbols
 S_AND = "&"
@@ -154,12 +154,11 @@ def evaluate_expression(expression: str, variables: T.List[str]) -> T.Any:
     return eval(proposition)
 
 
-def evaluate_expression_tree(expression: str, 
-                             variables: T.List[str]) -> T.Any:
-    """Evaluates a logical expression (containing variables, 
+def evaluate_expression_tree(expression: str, variables: T.List[str]) -> T.Any:
+    """Evaluates a logical expression (containing variables,
     'and','or', 'not','(' , ')') against the presence (True)
     or absence (False) of propositions within a list.
-    Assumes the correctness of the expression. The evaluation 
+    Assumes the correctness of the expression. The evaluation
     is achieved by means of a parsing tree.
 
     :param str expression: The expression to be evaluated.
@@ -174,14 +173,14 @@ def evaluate_expression_tree(expression: str,
 
 
 def maybe_fn(f: T.Callable, v1: T.Any, v2: T.Any) -> T.Any:
-    """Maybe evaluator: if one of the arguments is None, it 
+    """Maybe evaluator: if one of the arguments is None, it
     retuns the value of the other argument. If both arguments
     are None, it returns None. If both arguments are not None
     it returns the evaluation f(v1,v2).
 
     :param f: a function
     :param v1: the first argument
-    :param v2: the second argument  
+    :param v2: the second argument
     """
     if v1 is None:
         return v2
@@ -235,10 +234,8 @@ class Node(object):
         if self.is_leaf():
             return str(self.value)
         else:
-            return (f"{str(self.value)} "
-                    f"( {str(self.left)} ,"
-                    f" {str(self.right)} )")
-        
+            return f"{str(self.value)} " f"( {str(self.left)} ," f" {str(self.right)} )"
+
     # def _repr_latex_(self):
     #    return "$$ %s $$" % (self.to_latex())
 
@@ -285,11 +282,7 @@ class Node(object):
         if self.is_leaf():
             return set()
         else:
-            return (
-                {self.value}
-                .union(self.left.get_operators())
-                .union(self.right.get_operators())
-            )
+            return {self.value}.union(self.left.get_operators()).union(self.right.get_operators())
 
     def get_parameters(self):
         """Parameters are all non numeric symbols in an expression"""
@@ -318,10 +311,9 @@ class Node(object):
         if self.right is not None:
             self.right.print_node(level + 1)
 
-
     def evaluate(self, f_operand=None, f_operator=None):
         """
-        Evaluates the expression using the f_operand and 
+        Evaluates the expression using the f_operand and
         f_operator mapping functions
         """
         if f_operand is None or f_operator is None:
@@ -357,28 +349,26 @@ class Node(object):
             v = r_map[self.value] if self.value in r_map.keys() else self.value
             return Node(v, None, None)
         else:
-            return Node(
-                self.value, self.left.replace(r_map), self.right.replace(r_map), self.tp
-            )
+            return Node(self.value, self.left.replace(r_map), self.right.replace(r_map), self.tp)
 
-    def replace_node(self,value,node):
-          
-        if  self.value is not None and self.value==value:
+    def replace_node(self, value, node):
+
+        if self.value is not None and self.value == value:
             self.value = node.value
             self.left = node.left.copy()
             self.right = node.right.copy()
             self.tp = node.tp
-        
+
         elif not self.is_leaf():
-            self.left.replace_node(value,node)
-            self.right.replace_node(value,node)
-        
+            self.left.replace_node(value, node)
+            self.right.replace_node(value, node)
+
         else:
             pass
-        
-    def replace_nodes(self,nodes:dict):
-        for k,v in nodes.items():
-            self.replace_node(k,v)     
+
+    def replace_nodes(self, nodes: dict):
+        for k, v in nodes.items():
+            self.replace_node(k, v)
 
     def to_infix(
         self,
@@ -401,11 +391,11 @@ class Node(object):
         :return: An infix string representation of the node
         :rtype: str
         """
-        
+
         rep = {S_AND: "and", S_OR: "or", "^": "**"}
         if replacers:
             rep.update(replacers)
-            
+
         def rval(value):
             return str(rep[value]) if value in rep.keys() else str(value)
 
@@ -414,9 +404,9 @@ class Node(object):
                 return ""
             else:
                 return rval(self.value)
-        elif self.tp >=2:
-            op = opar if self.tp==2 else ''
-            cp = cpar if self.tp==2 else ''
+        elif self.tp >= 2:
+            op = opar if self.tp == 2 else ""
+            cp = cpar if self.tp == 2 else ""
             return "".join(
                 [
                     rval(self.value),
@@ -475,10 +465,7 @@ class Node(object):
 
             elif self.tp == 1:
                 return (
-                    convert_constant(self.value)
-                    + r"\left("
-                    + self.right.to_latex()[0]
-                    + r"\right)",
+                    convert_constant(self.value) + r"\left(" + self.right.to_latex()[0] + r"\right)",
                     MAX_PRECEDENCE,
                 )
             else:
@@ -528,17 +515,16 @@ class Syntax:
     @staticmethod
     def replace():
         return {}
-    
+
     @staticmethod
     def sub(op):
         return op
-    
 
 
 class Arithmetic(Syntax):
     """Defines a basic arithmetic sintax."""
 
-    operators = ["+", "-", '**', "*", "/", "^"]
+    operators = ["+", "-", "**", "*", "/", "^"]
 
     @staticmethod
     def is_operator(op):
@@ -561,18 +547,18 @@ class Arithmetic(Syntax):
 
     @staticmethod
     def sub(op):
-        if op=='**':
-            return '^'
+        if op == "**":
+            return "^"
         else:
             return op
-    
+
     @staticmethod
     def rsub(op):
-        if op=='^':
-            return '**'
+        if op == "^":
+            return "**"
         else:
             return op
-    
+
 
 class ArithmeticEvaluator:
     @staticmethod
@@ -736,16 +722,14 @@ def tokenize_function(exp: str) -> T.List[str]:
     else:
         return tokens
 
+
 def list2tree(values, rules):
-    if len(values)==0:
+    if len(values) == 0:
         return Node(EMPTY_LEAF)
-    elif len(values)==1:
+    elif len(values) == 1:
         return build_tree(values[0], rules)
     else:
-        return Node(',', 
-                    build_tree(values[0], rules),
-                    list2tree(values[1:],rules))
-    
+        return Node(",", build_tree(values[0], rules), list2tree(values[1:], rules))
 
 
 # Tree
@@ -784,9 +768,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
                 token = " ".join(exp_list[i:p])
                 i = p - 1
 
-            if predecessor and not (
-                rules.is_operator(predecessor) or predecessor in ["(", ")"]
-            ):
+            if predecessor and not (rules.is_operator(predecessor) or predecessor in ["(", ")"]):
                 s = tree_stack[-1].value
                 tree_stack[-1].value = s + " " + token
             else:
@@ -797,13 +779,9 @@ def build_tree(exp: str, rules: Syntax) -> Node:
                     if len(params) == 1:
                         t = Node(fname, Node(EMPTY_LEAF), build_tree(params[0], rules), 1)
                     elif len(params) == 2:
-                        t = Node(
-                            fname, build_tree(params[0], rules), build_tree(params[1], rules), 2
-                        )
+                        t = Node(fname, build_tree(params[0], rules), build_tree(params[1], rules), 2)
                     else:
-                        t = Node(
-                            fname, build_tree(params[0], rules), list2tree(params[1:],rules) , len(f)-1
-                        )
+                        t = Node(fname, build_tree(params[0], rules), list2tree(params[1:], rules), len(f) - 1)
                 else:
                     t = Node(token)
                 tree_stack.append(t)
@@ -811,10 +789,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
             if not stack or stack[-1] == "(":
                 stack.append(token)
 
-            elif (
-                rules.is_greater_precedence(token, stack[-1])
-                and rules.associativity(token) == 1
-            ):
+            elif rules.is_greater_precedence(token, stack[-1]) and rules.associativity(token) == 1:
                 stack.append(token)
 
             else:
@@ -863,8 +838,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
     return t
 
 
-def tokenize_infix_expression(exp: str, 
-                              rules: Syntax = None) -> T.List[str]:
+def tokenize_infix_expression(exp: str, rules: Syntax = None) -> T.List[str]:
     _exp = exp.replace("(", " ( ").replace(")", " ) ")
     if rules:
         for op in rules.operators:

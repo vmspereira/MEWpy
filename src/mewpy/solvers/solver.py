@@ -23,21 +23,24 @@ https://github.com/cdanielmachado/reframed
 """
 from enum import Enum
 from math import inf
-from reframed.core.cbmodel import CBModel
+
 from cobra.core.model import Model
+from reframed.core.cbmodel import CBModel
 
 from ..simulation.simulation import Simulator
 
 
 class VarType(Enum):
-    """ Enumeration of possible variable types. """
-    BINARY = 'binary'
-    INTEGER = 'integer'
-    CONTINUOUS = 'continuous'
+    """Enumeration of possible variable types."""
+
+    BINARY = "binary"
+    INTEGER = "integer"
+    CONTINUOUS = "continuous"
 
 
 class Parameter(Enum):
-    """ Enumeration of parameters common to all solvers. """
+    """Enumeration of parameters common to all solvers."""
+
     TIME_LIMIT = 0
     FEASIBILITY_TOL = 1
     INT_FEASIBILITY_TOL = 2
@@ -55,7 +58,7 @@ default_parameters = {
 
 
 class Solver(object):
-    """ Abstract class representing a generic solver.
+    """Abstract class representing a generic solver.
 
     All solver interfaces should implement the methods defined in this class.
     """
@@ -67,7 +70,7 @@ class Solver(object):
         self.model = model
 
     def add_variable(self, var_id, lb=-inf, ub=inf, vartype=VarType.CONTINUOUS, update=True):
-        """ Add a variable to the current problem.
+        """Add a variable to the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -87,8 +90,8 @@ class Solver(object):
         """
         pass
 
-    def add_constraint(self, constr_id, lhs, sense='=', rhs=0, update=True):
-        """ Add a constraint to the current problem.
+    def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
+        """Add a constraint to the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -100,7 +103,7 @@ class Solver(object):
         pass
 
     def remove_variable(self, var_id):
-        """ Remove a variable from the current problem.
+        """Remove a variable from the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -108,7 +111,7 @@ class Solver(object):
         pass
 
     def remove_variables(self, var_ids):
-        """ Remove variables from the current problem.
+        """Remove variables from the current problem.
 
         Arguments:
             var_ids (list): variable identifiers
@@ -116,7 +119,7 @@ class Solver(object):
         pass
 
     def remove_constraint(self, constr_id):
-        """ Remove a constraint from the current problem.
+        """Remove a constraint from the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -124,7 +127,7 @@ class Solver(object):
         pass
 
     def remove_constraints(self, constr_ids):
-        """ Remove constraints from the current problem.
+        """Remove constraints from the current problem.
 
         Arguments:
             constr_ids (list): constraint identifiers
@@ -132,7 +135,7 @@ class Solver(object):
         pass
 
     def list_variables(self):
-        """ Get a list of the variable ids defined for the current problem.
+        """Get a list of the variable ids defined for the current problem.
 
         Returns:
             list: variable ids
@@ -140,7 +143,7 @@ class Solver(object):
         return self.var_ids
 
     def list_constraints(self):
-        """ Get a list of the constraint ids defined for the current problem.
+        """Get a list of the constraint ids defined for the current problem.
 
         Returns:
             list: constraint ids
@@ -148,11 +151,11 @@ class Solver(object):
         return self.constr_ids
 
     def update(self):
-        """ Update internal structure. Used for efficient lazy updating. """
+        """Update internal structure. Used for efficient lazy updating."""
         pass
 
     def set_objective(self, linear=None, quadratic=None, minimize=True):
-        """ Set a predefined objective for this problem.
+        """Set a predefined objective for this problem.
 
         Args:
             linear (str or dict): linear coefficients (or a single variable to optimize)
@@ -166,7 +169,7 @@ class Solver(object):
         pass
 
     def build_problem(self, model):
-        """ Create problem structure for a given model.
+        """Create problem structure for a given model.
 
         Arguments:
             model
@@ -180,11 +183,12 @@ class Solver(object):
             raise TypeError
 
     def __build_problem_model(self, model):
-        """ Create a problem for metabolic models (REFRAMED or COBRApy)
+        """Create a problem for metabolic models (REFRAMED or COBRApy)
         Args:
             model: A metabolic model
         """
         from ..simulation import get_simulator
+
         sim = get_simulator(model)
         self.__build_problem_simulator(sim)
 
@@ -204,8 +208,19 @@ class Solver(object):
             self.add_constraint(m_id, table[m_id], update=False)
         self.update()
 
-    def solve(self, linear=None, quadratic=None, minimize=None, model=None, constraints=None, get_values=True,
-              shadow_prices=False, reduced_costs=False, pool_size=0, pool_gap=None):
+    def solve(
+        self,
+        linear=None,
+        quadratic=None,
+        minimize=None,
+        model=None,
+        constraints=None,
+        get_values=True,
+        shadow_prices=False,
+        reduced_costs=False,
+        pool_size=0,
+        pool_gap=None,
+    ):
         """ Solve the optimization problem.
 
         Arguments:
@@ -226,7 +241,7 @@ class Solver(object):
         """
 
         # An exception is raised if the subclass does not implement this method.
-        raise Exception('Not implemented for this solver.')
+        raise Exception("Not implemented for this solver.")
 
     def get_solution_pool(self, get_values=True):
         """ Return a solution pool for MILP problems.
@@ -241,20 +256,20 @@ class Solver(object):
             list: list of Solution objects
 
         """
-        raise Exception('Not implemented for this solver.')
+        raise Exception("Not implemented for this solver.")
 
     def set_parameter(self, parameter, value):
-        """ Set a parameter value for this optimization problem
+        """Set a parameter value for this optimization problem
 
         Arguments:
             parameter (Parameter): parameter type
             value (float): parameter value
         """
 
-        raise Exception('Not implemented for this solver.')
+        raise Exception("Not implemented for this solver.")
 
     def set_parameters(self, parameters):
-        """ Set values for multiple parameters
+        """Set values for multiple parameters
 
         Arguments:
             parameters (dict of Parameter to value): parameter values
@@ -264,22 +279,22 @@ class Solver(object):
             self.set_parameter(parameter, value)
 
     def set_logging(self, enabled=False):
-        """ Enable or disable log output:
+        """Enable or disable log output:
 
         Arguments:
             enabled (bool): turn logging on (default: False)
         """
 
-        raise Exception('Not implemented for this solver.')
+        raise Exception("Not implemented for this solver.")
 
     def write_to_file(self, filename):
-        """ Write problem to file:
+        """Write problem to file:
 
         Arguments:
             filename (str): file path
         """
 
-        raise Exception('Not implemented for this solver.')
+        raise Exception("Not implemented for this solver.")
 
     def change_coefficients(self, coefficients):
         """Changes variables coefficients in constraints
@@ -287,4 +302,4 @@ class Solver(object):
         :param coefficients: A list of tuples (constraint name, variable name, new value)
         :type coefficients: list
         """
-        raise Exception('Not implemented for this solver.')
+        raise Exception("Not implemented for this solver.")

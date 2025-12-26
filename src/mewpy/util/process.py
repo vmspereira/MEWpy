@@ -25,33 +25,37 @@ from abc import ABC, abstractmethod
 
 from .constants import EAConstants, ModelConstants
 
-
 MP_Evaluators = []
 
 from multiprocessing import Process
 from multiprocessing.pool import Pool as MPPool
-MP_Evaluators.append('nodaemon')
+
+MP_Evaluators.append("nodaemon")
 
 # pathos
 try:
     import pathos.multiprocessing as multiprocessing
     from pathos.multiprocessing import Pool
-    MP_Evaluators.append('mp')
 
-except ImportError as e:
+    MP_Evaluators.append("mp")
+
+except ImportError:
     import multiprocessing
     from multiprocessing.pool import Pool
-    MP_Evaluators.append('mp')
+
+    MP_Evaluators.append("mp")
 # dask
 try:
     import dask
-    MP_Evaluators.append('dask')
+
+    MP_Evaluators.append("dask")
 except ImportError:
     pass
 # pyspark
 try:
     from pyspark import SparkConf, SparkContext
-    MP_Evaluators.append('spark')
+
+    MP_Evaluators.append("spark")
 except ImportError:
     pass
 
@@ -60,18 +64,21 @@ class NoDaemonProcess(Process):
 
     def _get_daemon(self):
         return False
-    def _set_daemon(self,value):
+
+    def _set_daemon(self, value):
         pass
+
     daemon = property(_get_daemon, _set_daemon)
+
 
 class NoDaemonProcessPool(MPPool):
     Process = NoDaemonProcess
 
 
 def cpu_count():
-    """ The number of cpus
-        Return EAConstants.NUM_CPUS if it is set to a positive number
-        otherwise return half of the available cpus.
+    """The number of cpus
+    Return EAConstants.NUM_CPUS if it is set to a positive number
+    otherwise return half of the available cpus.
     """
     if EAConstants.NUM_CPUS > 0:
         return EAConstants.NUM_CPUS
@@ -90,13 +97,13 @@ class Evaluable(ABC):
 
 
 class Evaluator(ABC):
-
     """An interface for multiprocessing evaluators
 
     Raises:
         NotImplementedError: Requires an evaluated method to
         be implemented.
     """
+
     @abstractmethod
     def evaluate(self, candidates, args):
         raise NotImplementedError
@@ -144,11 +151,11 @@ class NoDaemonMultiProcessorEvaluator(Evaluator):
         self.mp_num_cpus = mp_num_cpus
         self.evaluator = evaluator
         self.__name__ = self.__class__.__name__
-        print('nodaemon')
+        print("nodaemon")
 
     def evaluate(self, candidates, args):
         """
-        Values in args will be ignored and not passed to the evaluator 
+        Values in args will be ignored and not passed to the evaluator
         to avoid unnecessary pickling in inspyred.
         """
         pool = NoDaemonProcessPool(self.mp_num_cpus)
@@ -162,7 +169,7 @@ class NoDaemonMultiProcessorEvaluator(Evaluator):
 
 class DaskEvaluator(Evaluator):
 
-    def __init__(self, evaluator, mp_num_cpus, scheduler='processes'):
+    def __init__(self, evaluator, mp_num_cpus, scheduler="processes"):
         """A Dask multiprocessing evaluator
 
         Args:
@@ -190,8 +197,7 @@ class SparkEvaluator(Evaluator):
             mp_num_cpus (int): Number of CPUs.
         """
         self.evaluator = evaluator
-        self.spark_conf = SparkConf().setAppName(
-            "mewpy").setMaster(f"local[{mp_num_cpus}]")
+        self.spark_conf = SparkConf().setAppName("mewpy").setMaster(f"local[{mp_num_cpus}]")
         self.spark_context = SparkContext(conf=self.spark_conf)
         self.__name__ = self.__class__.__name__
 
@@ -206,7 +212,8 @@ class SparkEvaluator(Evaluator):
 # ray
 try:
     import ray
-    MP_Evaluators.append('ray')
+
+    MP_Evaluators.append("ray")
 except ImportError:
     pass
 else:
@@ -214,7 +221,7 @@ else:
     @ray.remote
     class RayActor:
         """
-        Each actor (worker) has a solver instance to overcome the need 
+        Each actor (worker) has a solver instance to overcome the need
         to serialize solvers which may not be pickable.
         The solver is not reset before each evaluation.
         """
@@ -223,8 +230,7 @@ else:
             self.problem = copy.deepcopy(problem)
 
         def evaluate_candidates(self, candidates):
-            """Evaluates a sublist of candidates
-            """
+            """Evaluates a sublist of candidates"""
             if getattr(self.problem, "evaluator", False):
                 return self.problem.evaluator(candidates, None)
             else:
@@ -245,8 +251,7 @@ else:
             self.func = copy.deepcopy(func)
 
         def evaluate_candidates(self, candidates):
-            """Evaluates a sublist of candidates
-            """
+            """Evaluates a sublist of candidates"""
             res = []
             for candidate in candidates:
                 res.append(self.func(candidate))
@@ -262,11 +267,9 @@ else:
             """
             ray.init(ignore_reinit_error=True)
             if isfunc:
-                self.actors = [RayActorF.remote(problem)
-                               for _ in range(number_of_actors)]
+                self.actors = [RayActorF.remote(problem) for _ in range(number_of_actors)]
             else:
-                self.actors = [RayActor.remote(problem)
-                               for _ in range(number_of_actors)]
+                self.actors = [RayActor.remote(problem) for _ in range(number_of_actors)]
             self.number_of_actors = len(self.actors)
             self.__name__ = self.__class__.__name__
             print(f"Using {self.number_of_actors} workers.")
@@ -281,7 +284,7 @@ else:
             p = 0
             for _ in range(self.number_of_actors):
                 d = size + 1 if n > 0 else size
-                sub_lists.append(candidates[p:p + d])
+                sub_lists.append(candidates[p : p + d])
                 p = p + d
                 n -= 1
             values = []
@@ -299,8 +302,7 @@ else:
 
 
 def get_mp_evaluators():
-    """"Returns the list of available multiprocessing evaluators.
-    """
+    """ "Returns the list of available multiprocessing evaluators."""
     return MP_Evaluators
 
 
@@ -316,13 +318,13 @@ def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUAT
     Returns:
         [type]: [description]
     """
-    if evaluator == 'ray' and 'ray' in MP_Evaluators:
+    if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(problem, n_mp)
-    elif evaluator == 'nodaemon' and 'nodaemon' in MP_Evaluators:
-        return NoDaemonMultiProcessorEvaluator(problem,n_mp) 
-    elif evaluator == 'dask' and 'dask' in MP_Evaluators:
+    elif evaluator == "nodaemon" and "nodaemon" in MP_Evaluators:
+        return NoDaemonMultiProcessorEvaluator(problem, n_mp)
+    elif evaluator == "dask" and "dask" in MP_Evaluators:
         return DaskEvaluator(problem.evaluate, n_mp)
-    elif evaluator == 'spark' and 'spark' in MP_Evaluators:
+    elif evaluator == "spark" and "spark" in MP_Evaluators:
         return SparkEvaluator(problem.evaluate, n_mp)
     else:
         return MultiProcessorEvaluator(problem.evaluate, n_mp)
@@ -340,13 +342,13 @@ def get_fevaluator(func, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR
     Returns:
         [type]: [description]
     """
-    if evaluator == 'ray' and 'ray' in MP_Evaluators:
+    if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(func, n_mp, isfunc=True)
-    elif evaluator == 'nodaemon' and 'nodaemon' in MP_Evaluators:
-        return NoDaemonMultiProcessorEvaluator(func,n_mp) 
-    elif evaluator == 'dask' and 'dask' in MP_Evaluators:
+    elif evaluator == "nodaemon" and "nodaemon" in MP_Evaluators:
+        return NoDaemonMultiProcessorEvaluator(func, n_mp)
+    elif evaluator == "dask" and "dask" in MP_Evaluators:
         return DaskEvaluator(func, n_mp)
-    elif evaluator == 'spark' and 'spark' in MP_Evaluators:
+    elif evaluator == "spark" and "spark" in MP_Evaluators:
         return SparkEvaluator(func, n_mp)
     else:
         return MultiProcessorEvaluator(func, n_mp)

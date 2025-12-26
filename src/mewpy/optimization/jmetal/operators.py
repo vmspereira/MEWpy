@@ -15,7 +15,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Genetic operators for jmetalpy 
+Genetic operators for jmetalpy
 
 Authors: Vitor Pereira
 ##############################################################################
@@ -25,15 +25,15 @@ import copy
 import random
 from typing import List
 
-from jmetal.core.operator import Mutation, Crossover
+from jmetal.core.operator import Crossover, Mutation
 from jmetal.core.solution import Solution
 
-from .problem import KOSolution, OUSolution
 from ...util.constants import EAConstants
+from .problem import KOSolution, OUSolution
 
 
 class ShrinkMutation(Mutation[Solution]):
-    """ Shrink mutation. A gene is removed from the solution.
+    """Shrink mutation. A gene is removed from the solution.
 
     :param probability: (float), The mutation probability.
     :param min_size: (int) the solution minimum size.
@@ -61,11 +61,11 @@ class ShrinkMutation(Mutation[Solution]):
         return solution
 
     def get_name(self):
-        return 'Shrink Mutation'
+        return "Shrink Mutation"
 
 
 class GrowMutationKO(Mutation[KOSolution]):
-    """ Grow mutation. A gene is added to the solution.
+    """Grow mutation. A gene is added to the solution.
 
     :param probability: (float), The mutation probability.
     :param min_size: (int) the solution minimum size.
@@ -97,11 +97,11 @@ class GrowMutationKO(Mutation[KOSolution]):
         return solution
 
     def get_name(self):
-        return 'Grow Mutation KO'
+        return "Grow Mutation KO"
 
 
 class GrowMutationOU(Mutation[OUSolution]):
-    """ Grow mutation. A gene is added to the solution.
+    """Grow mutation. A gene is added to the solution.
 
     :param probability: (float), The mutation probability.
     :param min_size: (int) the solution minimum size.
@@ -135,7 +135,7 @@ class GrowMutationOU(Mutation[OUSolution]):
         return solution
 
     def get_name(self):
-        return 'Grow Mutation OU'
+        return "Grow Mutation OU"
 
 
 class UniformCrossoverKO(Crossover[KOSolution, KOSolution]):
@@ -152,12 +152,11 @@ class UniformCrossoverKO(Crossover[KOSolution, KOSolution]):
 
     def execute(self, parents: List[KOSolution]) -> List[KOSolution]:
         if len(parents) != 2:
-            raise Exception('The number of parents is not two: {}'.format(len(parents)))
+            raise Exception("The number of parents is not two: {}".format(len(parents)))
 
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
-        if random.random() <= self.probability and (
-                len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
+        if random.random() <= self.probability and (len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
             mom = set(copy.copy(offspring[0].variables))
             dad = set(copy.copy(offspring[1].variables))
             intersection = mom & dad
@@ -192,7 +191,7 @@ class UniformCrossoverKO(Crossover[KOSolution, KOSolution]):
         return 2
 
     def get_name(self):
-        return 'Uniform Crossover KO'
+        return "Uniform Crossover KO"
 
 
 class MutationContainer(Mutation[Solution]):
@@ -217,12 +216,12 @@ class MutationContainer(Mutation[Solution]):
             return solution
 
     def get_name(self):
-        return 'Mutation container'
+        return "Mutation container"
 
 
 class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
     """
-        Uniform Crossover for OU solutions
+    Uniform Crossover for OU solutions
     """
 
     def __init__(self, probability: float = 0.1, max_size: int = EAConstants.MAX_SOLUTION_SIZE):
@@ -231,12 +230,11 @@ class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
 
     def execute(self, parents: List[OUSolution]) -> List[OUSolution]:
         if len(parents) != 2:
-            raise Exception('The number of parents is not two: {}'.format(len(parents)))
+            raise Exception("The number of parents is not two: {}".format(len(parents)))
 
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
-        if random.random() <= self.probability and (
-                len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
+        if random.random() <= self.probability and (len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
             mom = set(copy.copy(offspring[0].variables))
             dad = set(copy.copy(offspring[1].variables))
 
@@ -277,7 +275,7 @@ class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
         return 2
 
     def get_name(self):
-        return 'Uniform Crossover OU'
+        return "Uniform Crossover OU"
 
 
 class SingleMutationKO(Mutation[KOSolution]):
@@ -289,7 +287,7 @@ class SingleMutationKO(Mutation[KOSolution]):
         super(SingleMutationKO, self).__init__(probability=probability)
 
     def execute(self, solution: Solution) -> Solution:
-        n = solution.upper_bound-solution.lower_bound+1
+        n = solution.upper_bound - solution.lower_bound + 1
         if random.random() <= self.probability and len(solution.variables) < n:
             mutant = copy.copy(solution.variables)
             index = random.randint(0, len(mutant) - 1)
@@ -303,7 +301,7 @@ class SingleMutationKO(Mutation[KOSolution]):
         return solution
 
     def get_name(self):
-        return 'Single Mutation KO'
+        return "Single Mutation KO"
 
 
 class SingleMutationOU(Mutation[OUSolution]):
@@ -315,7 +313,7 @@ class SingleMutationOU(Mutation[OUSolution]):
         super(SingleMutationOU, self).__init__(probability=probability)
 
     def execute(self, solution: Solution) -> Solution:
-        n = solution.upper_bound[0]-solution.lower_bound[0]+1
+        n = solution.upper_bound[0] - solution.lower_bound[0] + 1
         if random.random() <= self.probability and len(solution.variables) < n:
             mutant = copy.copy(solution.variables)
             lix = [i for (i, j) in mutant]
@@ -325,9 +323,9 @@ class SingleMutationOU(Mutation[OUSolution]):
             if random.random() > 0.5:
                 idx = random.randint(solution.lower_bound[0], solution.upper_bound[0])
                 while idx in lix:
-                    idx = idx+1
+                    idx = idx + 1
                     if idx > solution.upper_bound[0]:
-                       idx = solution.lower_bound[0]
+                        idx = solution.lower_bound[0]
                 is_mutate_idx = True
             lv = random.randint(solution.lower_bound[1], solution.upper_bound[1])
             if not is_mutate_idx:
@@ -338,7 +336,7 @@ class SingleMutationOU(Mutation[OUSolution]):
         return solution
 
     def get_name(self):
-        return 'Single Mutation KO'
+        return "Single Mutation KO"
 
 
 class SingleMutationOULevel(Mutation[OUSolution]):
@@ -362,18 +360,21 @@ class SingleMutationOULevel(Mutation[OUSolution]):
         return solution
 
     def get_name(self):
-        return 'Single Mutation KO'
+        return "Single Mutation KO"
 
 
 class GaussianMutation(Mutation[Solution]):
     """
-     A Gaussian mutator
+    A Gaussian mutator
     """
 
-    def __init__(self, probability: float = 0.1,
-                 gaussian_mutation_rate: float = 0.1,
-                 gaussian_mean: float = 0.0,
-                 gaussian_std: float = 1.0):
+    def __init__(
+        self,
+        probability: float = 0.1,
+        gaussian_mutation_rate: float = 0.1,
+        gaussian_mean: float = 0.0,
+        gaussian_std: float = 1.0,
+    ):
         super(GaussianMutation, self).__init__(probability=probability)
         self.gaussian_mutation_rate = gaussian_mutation_rate
         self.gaussian_mean = gaussian_mean
@@ -391,12 +392,12 @@ class GaussianMutation(Mutation[Solution]):
         return solution
 
     def get_name(self):
-        return 'Gaussian Mutator'
+        return "Gaussian Mutator"
 
 
 class UniformCrossover(Crossover[Solution, Solution]):
     """
-        Uniform Crossover
+    Uniform Crossover
     """
 
     def __init__(self, probability: float = 0.1):
@@ -404,12 +405,11 @@ class UniformCrossover(Crossover[Solution, Solution]):
 
     def execute(self, parents: List[Solution]) -> List[Solution]:
         if len(parents) != 2:
-            raise Exception('The number of parents is not two: {}'.format(len(parents)))
+            raise Exception("The number of parents is not two: {}".format(len(parents)))
 
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
-        if random.random() <= self.probability and (
-                len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
+        if random.random() <= self.probability and (len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
             mom = copy.copy(offspring[0].variables)
             dad = copy.copy(offspring[1].variables)
             child1 = []
@@ -435,7 +435,7 @@ class UniformCrossover(Crossover[Solution, Solution]):
         return 2
 
     def get_name(self):
-        return 'Uniform Crossover'
+        return "Uniform Crossover"
 
 
 class SingleRealMutation(Mutation[Solution]):
@@ -449,12 +449,14 @@ class SingleRealMutation(Mutation[Solution]):
     def execute(self, solution: Solution) -> Solution:
         if random.random() <= self.probability:
             index = random.randint(0, len(solution.variables) - 1)
-            solution.variables[index] = solution.lower_bound[index] + \
-                (solution.upper_bound[index] - solution.lower_bound[index]) * random.random()
+            solution.variables[index] = (
+                solution.lower_bound[index]
+                + (solution.upper_bound[index] - solution.lower_bound[index]) * random.random()
+            )
         return solution
 
     def get_name(self):
-        return 'Single Real Mutation'
+        return "Single Real Mutation"
 
 
 REP_INT = {
@@ -465,7 +467,7 @@ REP_INT = {
     "UCROSSOU": UniformCrossoverOU,
     "SMUTKO": SingleMutationKO,
     "SMUTOU": SingleMutationOU,
-    "SMLEVEL": SingleMutationOULevel
+    "SMLEVEL": SingleMutationOULevel,
 }
 
 
@@ -475,10 +477,8 @@ def build_ko_operators(problem):
 
     # add shrink and growth mutation only if max size != min size
     if problem.candidate_max_size != problem.candidate_min_size:
-        mutators.append(GrowMutationKO(
-            1.0, max_size=problem.candidate_max_size))
-        mutators.append(ShrinkMutation(
-            1.0, min_size=problem.candidate_min_size))
+        mutators.append(GrowMutationKO(1.0, max_size=problem.candidate_max_size))
+        mutators.append(ShrinkMutation(1.0, min_size=problem.candidate_min_size))
 
     mutators.append(SingleMutationKO(1.0))
     mutations = MutationContainer(0.3, mutators=mutators)
@@ -496,10 +496,8 @@ def build_ou_operators(problem):
     # add shrink and growth mutation only if max size != min size
     # and do not add if single ou if  max size == min size == targets size
     if _max != _min:
-        mutators.append(GrowMutationOU(
-            1.0, max_size=problem.candidate_max_size))
-        mutators.append(ShrinkMutation(
-            1.0, min_size=problem.candidate_min_size))
+        mutators.append(GrowMutationOU(1.0, max_size=problem.candidate_max_size))
+        mutators.append(ShrinkMutation(1.0, min_size=problem.candidate_min_size))
         mutators.append(SingleMutationOU(1.0))
     elif _min != _t_size:
         mutators.append(SingleMutationOU(1.0))

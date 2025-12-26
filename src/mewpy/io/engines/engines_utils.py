@@ -7,19 +7,32 @@ from typing import Tuple
 
 import libsbml
 
+from mewpy.germ.algebra import (
+    And,
+    BoolFalse,
+    BoolTrue,
+    Equal,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
+    NoneAtom,
+    Not,
+    Or,
+    Symbolic,
+    parse_expression,
+)
 from mewpy.util.constants import ModelConstants
-from mewpy.germ.algebra import (And, Or, Not, Less, Greater, LessEqual, GreaterEqual, BoolFalse, BoolTrue,
-                                NoneAtom, Symbolic, Equal, parse_expression)
 
 
 def build_symbolic(expression) -> Tuple[Symbolic, str]:
     try:
 
-        return parse_expression(expression), ''
+        return parse_expression(expression), ""
 
     except SyntaxError:
 
-        return NoneAtom(), f'{expression} cannot be parsed. Assigning empty expression instead'
+        return NoneAtom(), f"{expression} cannot be parsed. Assigning empty expression instead"
 
 
 def get_sbml_doc_to_read(io):
@@ -29,26 +42,20 @@ def get_sbml_doc_to_read(io):
             doc = libsbml.readSBMLFromFile(io)
 
         else:
-            raise OSError(f'{io} is not a valid input. Provide the path or file handler')
+            raise OSError(f"{io} is not a valid input. Provide the path or file handler")
 
-    elif hasattr(io, 'read'):
+    elif hasattr(io, "read"):
 
         doc = libsbml.readSBMLFromString(io.read())
 
     else:
 
-        raise OSError(f'{io} is not a valid input. Provide the path or file handler')
+        raise OSError(f"{io} is not a valid input. Provide the path or file handler")
 
     return doc
 
 
-def get_sbml_doc_to_write(io,
-                          level,
-                          version,
-                          packages,
-                          packages_version,
-                          packages_required,
-                          sbo_term=False):
+def get_sbml_doc_to_write(io, level, version, packages, packages_version, packages_required, sbo_term=False):
     doc = None
 
     if isinstance(io, str):
@@ -61,7 +68,7 @@ def get_sbml_doc_to_write(io,
 
             pass
 
-    elif hasattr(io, 'read'):
+    elif hasattr(io, "read"):
 
         # filepath handler
 
@@ -74,7 +81,7 @@ def get_sbml_doc_to_write(io,
 
     else:
 
-        raise OSError(f'{io} is not a valid input. Provide the path or file handler')
+        raise OSError(f"{io} is not a valid input. Provide the path or file handler")
 
     if doc is None:
 
@@ -98,17 +105,14 @@ def get_sbml_doc_to_write(io,
 # -----------------------------------------------------------------------------
 # SBML AST NODES
 # -----------------------------------------------------------------------------
-ASTNODE_BOOLEAN_OPERATORS = {
-    libsbml.AST_LOGICAL_AND: And,
-    libsbml.AST_LOGICAL_OR: Or,
-    libsbml.AST_LOGICAL_NOT: Not}
+ASTNODE_BOOLEAN_OPERATORS = {libsbml.AST_LOGICAL_AND: And, libsbml.AST_LOGICAL_OR: Or, libsbml.AST_LOGICAL_NOT: Not}
 
 ASTNODE_RELATIONAL_OPERATORS = {
     libsbml.AST_RELATIONAL_LEQ: LessEqual,
     libsbml.AST_RELATIONAL_GEQ: GreaterEqual,
     libsbml.AST_RELATIONAL_LT: Less,
     libsbml.AST_RELATIONAL_GT: Greater,
-    libsbml.AST_RELATIONAL_EQ: Equal
+    libsbml.AST_RELATIONAL_EQ: Equal,
 }
 
 ASTNODE_VALUES = {
@@ -128,12 +132,12 @@ ASTNODE_NAME = libsbml.AST_NAME
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-LOWER_BOUND_ID = 'mewpy_lb'
-UPPER_BOUND_ID = 'mewpy_ub'
-ZERO_BOUND_ID = 'mewpy_zero_b'
+LOWER_BOUND_ID = "mewpy_lb"
+UPPER_BOUND_ID = "mewpy_ub"
+ZERO_BOUND_ID = "mewpy_zero_b"
 
-BOUND_MINUS_INF = 'minus_inf'
-BOUND_PLUS_INF = 'plus_inf'
+BOUND_MINUS_INF = "minus_inf"
+BOUND_PLUS_INF = "plus_inf"
 
 # -----------------------------------------------------------------------------
 # SBO
@@ -146,12 +150,14 @@ SBO_EXCHANGE_REACTION = "SBO:0000627"
 # -----------------------------------------------------------------------------
 # UNITS
 # -----------------------------------------------------------------------------
-UNIT_ID = 'mmol_per_gDW_per_hr'
+UNIT_ID = "mmol_per_gDW_per_hr"
 
-Unit = namedtuple('Unit', ['kind', 'scale', 'multiplier', 'exponent'])
-UNITS = (Unit(kind=libsbml.UNIT_KIND_MOLE, scale=-3, multiplier=1, exponent=1),
-         Unit(kind=libsbml.UNIT_KIND_GRAM, scale=0, multiplier=1, exponent=-1),
-         Unit(kind=libsbml.UNIT_KIND_SECOND, scale=0, multiplier=3600, exponent=-1))
+Unit = namedtuple("Unit", ["kind", "scale", "multiplier", "exponent"])
+UNITS = (
+    Unit(kind=libsbml.UNIT_KIND_MOLE, scale=-3, multiplier=1, exponent=1),
+    Unit(kind=libsbml.UNIT_KIND_GRAM, scale=0, multiplier=1, exponent=-1),
+    Unit(kind=libsbml.UNIT_KIND_SECOND, scale=0, multiplier=3600, exponent=-1),
+)
 
 # IMPORTANT NOTE: SOME FUNCTIONS FOR PARSING SBML ENTITIES (namely, metabolic entities) HAVE BEEN HEAVILY
 # INSPIRED BY THE TALENTED PEOPLE DEVELOPING COBRAPY. CHECK THE SOURCE: https://github.com/opencobra/cobrapy
@@ -164,86 +170,86 @@ SBML_DOT = "__SBML_DOT__"
 # -----------------------------------------------------------------------------
 # Note pattern
 # -----------------------------------------------------------------------------
-pattern_notes = re.compile(r'<(?P<prefix>(\w+:)?)p[^>]*>(?P<content>.*?)</(?P=prefix)p>', re.IGNORECASE | re.DOTALL)
+pattern_notes = re.compile(r"<(?P<prefix>(\w+:)?)p[^>]*>(?P<content>.*?)</(?P=prefix)p>", re.IGNORECASE | re.DOTALL)
 
-pattern_to_sbml = re.compile(r'([^0-9_a-zA-Z])')
+pattern_to_sbml = re.compile(r"([^0-9_a-zA-Z])")
 
-pattern_from_sbml = re.compile(r'__(\d+)__')
+pattern_from_sbml = re.compile(r"__(\d+)__")
 
 
 def _escape_non_alphanum(non_ascii):
     """converts a non alphanumeric character to a string representation of
-    its ascii number """
+    its ascii number"""
     return "__" + str(ord(non_ascii.group())) + "__"
 
 
 def _number_to_chr(digit_str):
-    """converts an ascii number to a character """
+    """converts an ascii number to a character"""
     return chr(int(digit_str.group(1)))
 
 
 def _clip(sid, prefix):
     """Clips a prefix from the beginning of a string if it exists."""
-    return sid[len(prefix):] if sid.startswith(prefix) else sid
+    return sid[len(prefix) :] if sid.startswith(prefix) else sid
 
 
-def _f_gene(sid, prefix='G_'):
+def _f_gene(sid, prefix="G_"):
     """Clips gene prefix from id."""
     sid = sid.replace(SBML_DOT, ".")
     sid = pattern_from_sbml.sub(_number_to_chr, sid)
     return _clip(sid, prefix)
 
 
-def _f_gene_rev(sid, prefix='G_'):
+def _f_gene_rev(sid, prefix="G_"):
     """Adds gene prefix to id."""
     sid = pattern_to_sbml.sub(_escape_non_alphanum, sid)
     return prefix + sid.replace(".", SBML_DOT)
 
 
-def _f_specie(sid, prefix='M_'):
+def _f_specie(sid, prefix="M_"):
     """Clips specie/metabolite prefix from id."""
     sid = pattern_from_sbml.sub(_number_to_chr, sid)
     return _clip(sid, prefix)
 
 
-def _f_specie_rev(sid, prefix='M_'):
+def _f_specie_rev(sid, prefix="M_"):
     """Adds specie/metabolite prefix to id."""
     sid = pattern_to_sbml.sub(_escape_non_alphanum, sid)
     return prefix + sid
 
 
-def _f_reaction(sid, prefix='R_'):
+def _f_reaction(sid, prefix="R_"):
     """Clips reaction prefix from id."""
     sid = pattern_from_sbml.sub(_number_to_chr, sid)
     return _clip(sid, prefix)
 
 
-def _f_reaction_rev(sid, prefix='R_'):
+def _f_reaction_rev(sid, prefix="R_"):
     """Adds reaction prefix to id."""
     sid = pattern_to_sbml.sub(_escape_non_alphanum, sid)
     return prefix + sid
 
 
-def _f_transition(sid, prefix='TR_'):
+def _f_transition(sid, prefix="TR_"):
     """Clips transition prefix from id."""
     sid = pattern_from_sbml.sub(_number_to_chr, sid)
     return _clip(sid, prefix)
 
 
-def _f_transition_rev(sid, prefix='TR_'):
+def _f_transition_rev(sid, prefix="TR_"):
     """Adds transition prefix to id."""
     sid = pattern_to_sbml.sub(_escape_non_alphanum, sid)
     return prefix + sid
 
 
-F_GENE = 'F_GENE'
-F_GENE_REV = 'F_GENE_REV'
-F_SPECIE = 'F_SPECIE'
-F_SPECIE_REV = 'F_SPECIE_REV'
-F_REACTION = 'F_REACTION'
-F_REACTION_REV = 'F_REACTION_REV'
-F_TRANSITION = 'F_TRANSITION'
-F_TRANSITION_REV = 'F_TRANSITION_REV'
+F_GENE = "F_GENE"
+F_GENE_REV = "F_GENE_REV"
+F_SPECIE = "F_SPECIE"
+F_SPECIE_REV = "F_SPECIE_REV"
+F_REACTION = "F_REACTION"
+F_REACTION_REV = "F_REACTION_REV"
+F_TRANSITION = "F_TRANSITION"
+F_TRANSITION_REV = "F_TRANSITION_REV"
 
 F_REPLACE = {
     F_GENE: _f_gene,
@@ -254,7 +260,6 @@ F_REPLACE = {
     F_REACTION_REV: _f_reaction_rev,
     F_TRANSITION: _f_transition,
     F_TRANSITION_REV: _f_transition_rev,
-
 }
 
 
@@ -291,7 +296,7 @@ def get_sbml_lb_id(sbml_model, reaction, unit_definition=None):
     elif value == 0:
         return ZERO_BOUND_ID
 
-    elif value == -float('Inf'):
+    elif value == -float("Inf"):
         return BOUND_MINUS_INF
 
     else:
@@ -308,7 +313,7 @@ def get_sbml_ub_id(sbml_model, reaction, unit_definition=None):
     elif value == 0:
         return ZERO_BOUND_ID
 
-    elif value == float('Inf'):
+    elif value == float("Inf"):
         return BOUND_PLUS_INF
 
     else:
@@ -323,7 +328,7 @@ def set_gpr(engine, warning, reaction, sbml_rxn_fbc):
 
         if gpr:
 
-            gpr = gpr.replace('&', 'and').replace('|', 'or')
+            gpr = gpr.replace("&", "and").replace("|", "or")
 
             gpa = sbml_rxn_fbc.createGeneProductAssociation()
             op = gpa.setAssociation(gpr, True, False)
@@ -341,12 +346,12 @@ def set_math(identifier, expression, function_term):
     op = function_term.setMath(math)
 
     if op is None:
-        return f'Could not set {expression} expression for {identifier}'
+        return f"Could not set {expression} expression for {identifier}"
 
     elif isinstance(op, int) and op != libsbml.LIBSBML_OPERATION_SUCCESS:
-        return f'Could not set {expression} expression for {identifier}'
+        return f"Could not set {expression} expression for {identifier}"
 
-    return ''
+    return ""
 
 
 def convert_fbc(doc):
@@ -363,7 +368,7 @@ def write_sbml_doc(io, doc):
     if isinstance(io, str):
         libsbml.writeSBMLToFile(doc, io)
 
-    elif hasattr(io, 'write'):
+    elif hasattr(io, "write"):
         sbml = libsbml.writeSBMLToString(doc)
         io.write(sbml)
 
@@ -371,6 +376,7 @@ def write_sbml_doc(io, doc):
 # -----------------------------------------------------------------------------
 # Warning stuff
 # -----------------------------------------------------------------------------
+
 
 def prom_warning(message):
     return warnings.warn(message, Warning, stacklevel=2)

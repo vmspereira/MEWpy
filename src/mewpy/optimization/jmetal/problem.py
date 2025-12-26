@@ -21,25 +21,30 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import random
-from typing import Tuple, List
+from typing import List, Tuple
+
 from jmetal.core.problem import Problem
 from jmetal.core.solution import Solution
 
-from ..ea import SolutionInterface, dominance_test
 from ...util.process import Evaluable
-
+from ..ea import SolutionInterface, dominance_test
 
 # define EA representation for OU
 IntTupple = Tuple[int]
 
 
 class KOSolution(Solution[int], SolutionInterface):
-    """ Class representing a KO solution """
+    """Class representing a KO solution"""
 
-    def __init__(self, lower_bound: int, upper_bound: int, number_of_variables: int, number_of_objectives: int,
-                 number_of_constraints: int = 0):
-        super(KOSolution, self).__init__(number_of_variables,
-                                         number_of_objectives, number_of_constraints)
+    def __init__(
+        self,
+        lower_bound: int,
+        upper_bound: int,
+        number_of_variables: int,
+        number_of_objectives: int,
+        number_of_constraints: int = 0,
+    ):
+        super(KOSolution, self).__init__(number_of_variables, number_of_objectives, number_of_constraints)
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
 
@@ -73,10 +78,8 @@ class KOSolution(Solution[int], SolutionInterface):
 
     def __copy__(self):
         new_solution = KOSolution(
-            self.lower_bound,
-            self.upper_bound,
-            self.number_of_variables,
-            self.number_of_objectives)
+            self.lower_bound, self.upper_bound, self.number_of_variables, self.number_of_objectives
+        )
         new_solution.objectives = self.objectives[:]
         new_solution.variables = self.variables[:]
         new_solution.constraints = self.constraints[:]
@@ -105,10 +108,10 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
     Class representing a Over/Under expression solution.
     """
 
-    def __init__(self, lower_bound: List[int], upper_bound: List[int], number_of_variables: int,
-                 number_of_objectives: int):
-        super(OUSolution, self).__init__(number_of_variables,
-                                         number_of_objectives)
+    def __init__(
+        self, lower_bound: List[int], upper_bound: List[int], number_of_variables: int, number_of_objectives: int
+    ):
+        super(OUSolution, self).__init__(number_of_variables, number_of_objectives)
         self.upper_bound = upper_bound
         self.lower_bound = lower_bound
 
@@ -141,10 +144,7 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
 
     def __copy__(self):
         new_solution = OUSolution(
-            self.lower_bound,
-            self.upper_bound,
-            self.number_of_variables,
-            self.number_of_objectives
+            self.lower_bound, self.upper_bound, self.number_of_variables, self.number_of_objectives
         )
         new_solution.objectives = self.objectives[:]
         new_solution.variables = self.variables[:]
@@ -173,8 +173,10 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
         self._number_of_objectives = len(self.problem.fevaluation)
         # Handle different bounder types
         try:
-            if hasattr(self.problem.bounder, 'upper_bound') and hasattr(self.problem.bounder, 'lower_bound'):
-                if isinstance(self.problem.bounder.upper_bound, int) and isinstance(self.problem.bounder.lower_bound, int):
+            if hasattr(self.problem.bounder, "upper_bound") and hasattr(self.problem.bounder, "lower_bound"):
+                if isinstance(self.problem.bounder.upper_bound, int) and isinstance(
+                    self.problem.bounder.lower_bound, int
+                ):
                     self._number_of_variables = self.problem.bounder.upper_bound - self.problem.bounder.lower_bound + 1
                 else:
                     self._number_of_variables = 100  # Default fallback
@@ -197,15 +199,15 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
     @property
     def name(self) -> str:
         return self.problem.get_name()
-        
+
     @property
     def number_of_objectives(self) -> int:
         return self._number_of_objectives
-        
+
     @property
     def number_of_variables(self) -> int:
         return self._number_of_variables
-        
+
     @property
     def number_of_constraints(self) -> int:
         return self._number_of_constraints
@@ -228,15 +230,17 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
             self.problem.bounder.lower_bound,
             self.problem.bounder.upper_bound,
             len(solution),
-            self._number_of_objectives)
+            self._number_of_objectives,
+        )
         new_solution.variables = list(solution)[:]
         return new_solution
 
     def reset_initial_population_counter(self):
-        """ Resets the pointer to the next initial population element.
+        """Resets the pointer to the next initial population element.
         This strategy is used to overcome the unavailable seeding API in jMetal.
         """
         import random
+
         random.shuffle(self.initial_polulation)
         self.__next_ini_sol = 0
 
@@ -265,6 +269,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
 
     def build_operators(self):
         from .operators import build_ko_operators
+
         return build_ko_operators(self.problem)
 
 
@@ -278,7 +283,9 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
         self._number_of_objectives = len(self.problem.fevaluation)
         # Handle different bounder types for OU problems
         try:
-            if hasattr(self.problem.bounder, 'lower_bound') and isinstance(self.problem.bounder.lower_bound, (list, tuple)):
+            if hasattr(self.problem.bounder, "lower_bound") and isinstance(
+                self.problem.bounder.lower_bound, (list, tuple)
+            ):
                 self._number_of_variables = len(self.problem.bounder.lower_bound)
             else:
                 self._number_of_variables = 100  # Default fallback
@@ -299,15 +306,15 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     @property
     def name(self) -> str:
         return self.problem.get_name()
-        
+
     @property
     def number_of_objectives(self) -> int:
         return self._number_of_objectives
-        
+
     @property
     def number_of_variables(self) -> int:
         return self._number_of_variables
-        
+
     @property
     def number_of_constraints(self) -> int:
         return self._number_of_constraints
@@ -330,12 +337,14 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
             self.problem.bounder.lower_bound,
             self.problem.bounder.upper_bound,
             len(solution),
-            self._number_of_objectives)
+            self._number_of_objectives,
+        )
         new_solution.variables = list(solution)[:]
         return new_solution
 
     def reset_initial_population_counter(self):
         import random
+
         random.shuffle(self.initial_polulation)
         self.__next_ini_sol = 0
 
@@ -364,4 +373,5 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
 
     def build_operators(self):
         from .operators import build_ou_operators
+
         return build_ou_operators(self.problem)

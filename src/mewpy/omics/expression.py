@@ -24,20 +24,19 @@ Contributors: Paulo Carvalhais
 ##############################################################################
 """
 
+from itertools import combinations
 from typing import Tuple, Union
 
 import numpy as np
 import pandas as pd
-from itertools import combinations
 
-from mewpy.simulation import get_simulator, Simulator
+from mewpy.simulation import Simulator, get_simulator
 from mewpy.util.parsing import Boolean, GeneEvaluator, build_tree
 
 
 class ExpressionSet:
 
-    def __init__(self, identifiers: list, conditions: list,
-                 expression: np.array, p_values: np.array = None):
+    def __init__(self, identifiers: list, conditions: list, expression: np.array, p_values: np.array = None):
         """Expression set. The expression values are a numpy array with shape
         (len(identifiers) x len(conditions)).
 
@@ -52,20 +51,19 @@ class ExpressionSet:
         if expression.shape != (n, m):
             raise ValueError(
                 f"The shape of the expression {expression.shape} does not "
-                f"match the expression and conditions sizes ({n},{m})")
+                f"match the expression and conditions sizes ({n},{m})"
+            )
 
         self._identifiers = identifiers
-        self._identifier_index = {iden: idx for idx, iden in
-                                  enumerate(identifiers)}
+        self._identifier_index = {iden: idx for idx, iden in enumerate(identifiers)}
         self._conditions = [str(x) for x in conditions]
-        self._condition_index = {cond: idx for idx, cond in
-                                 enumerate(self._conditions)}
+        self._condition_index = {cond: idx for idx, cond in enumerate(self._conditions)}
         self._expression = expression
         self._p_values = p_values
 
     def shape(self):
         """Returns:
-            (tuple): the Expression dataset shape
+        (tuple): the Expression dataset shape
         """
         return self._expression.shape
 
@@ -94,11 +92,11 @@ class ExpressionSet:
             values = self[:, :]
 
         # format
-        form = kwargs.get('format', 'dict')
+        form = kwargs.get("format", "dict")
         if form and condition is not None:
-            if form == 'list':
+            if form == "list":
                 return values.tolist()
-            elif form == 'dict':
+            elif form == "dict":
                 return dict(zip(self._identifiers, values.tolist()))
             else:
                 return values
@@ -153,19 +151,15 @@ class ExpressionSet:
             expression = self._expression
             conditions = self._conditions
         else:
-            expression = np.concatenate((self._expression, self.p_values),
-                                        axis=1)
+            expression = np.concatenate((self._expression, self.p_values), axis=1)
             conditions = self._conditions + self.p_value_columns
 
-        return pd.DataFrame(expression,
-                            index=self._identifiers,
-                            columns=conditions)
+        return pd.DataFrame(expression, index=self._identifiers, columns=conditions)
 
     @property
     def p_value_columns(self):
-        """ Generate the p-value column names."""
-        return [f"{c[0]} {c[1]} p-value"
-                for c in combinations(self._conditions, 2)]
+        """Generate the p-value column names."""
+        return [f"{c[0]} {c[1]} p-value" for c in combinations(self._conditions, 2)]
 
     @property
     def p_values(self):
@@ -214,7 +208,7 @@ class ExpressionSet:
         for idx, iden in enumerate(self._identifiers):
             diff[iden] = []
             for i in range(1, len(self._conditions)):
-                start, end = self._expression[idx, i - 1: i + 1]
+                start, end = self._expression[idx, i - 1 : i + 1]
                 p_val = self.p_values[idx, i - 1]
                 if p_val <= p_value:
                     if start < end:
@@ -228,7 +222,7 @@ class ExpressionSet:
         return diff
 
     def minmax(self, condition=None):
-        """ Return the min and max values for the specified condition.
+        """Return the min and max values for the specified condition.
 
         Args:
             condition (str): str or int or None, optional (default None)
@@ -250,17 +244,22 @@ class ExpressionSet:
         """
         if function is None:
             import math
-            def function(x): return math.log(x, 2)
+
+            def function(x):
+                return math.log(x, 2)
+
         f = np.vectorize(function)
         self._expression = f(self._expression)
 
-    def quantile_pipeline(self,
-                          missing_values: float = None,
-                          n_neighbors: int = 5,
-                          weights: str = 'uniform',
-                          metric: str = 'nan_euclidean',
-                          n_quantiles: int = None,
-                          q: float = 0.33) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def quantile_pipeline(
+        self,
+        missing_values: float = None,
+        n_neighbors: int = 5,
+        weights: str = "uniform",
+        metric: str = "nan_euclidean",
+        n_quantiles: int = None,
+        q: float = 0.33,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Quantile preprocessing pipeline. It performs the following steps:
             1. KNN imputation of missing values
@@ -280,11 +279,9 @@ class ExpressionSet:
         :param q: Quantile to compute
         :return: Quantile preprocessed expression matrix, quantile expression binarized matrix
         """
-        expression = knn_imputation(self._expression,
-                                    missing_values=missing_values,
-                                    n_neighbors=n_neighbors,
-                                    weights=weights,
-                                    metric=metric)
+        expression = knn_imputation(
+            self._expression, missing_values=missing_values, n_neighbors=n_neighbors, weights=weights, metric=metric
+        )
         expression = quantile_transformation(expression, n_quantiles=n_quantiles)
 
         binary_expression = quantile_binarization(expression, q=q)
@@ -326,19 +323,19 @@ def gene_to_reaction_expression(model, gene_exp, and_func=min, or_func=max):
 
 class Preprocessing:
     """Formulation and implementation of preprocessing decisions.
-        (A) Types of gene mapping methods
-        (B) Types of thresholding approaches (global and local).
-        (C) Formulation of combinations of number of states (Global, Local)
-        (D) Decisions about the order in which thresholding and gene mapping
-        are performed.
-        For Order 1, gene expression is converted to reaction activity followed
-        by thresholding of reaction activity;
-        For Order 2, thresholding ofgene expression is followed by its
-        conversion to reaction activity.
+    (A) Types of gene mapping methods
+    (B) Types of thresholding approaches (global and local).
+    (C) Formulation of combinations of number of states (Global, Local)
+    (D) Decisions about the order in which thresholding and gene mapping
+    are performed.
+    For Order 1, gene expression is converted to reaction activity followed
+    by thresholding of reaction activity;
+    For Order 2, thresholding ofgene expression is followed by its
+    conversion to reaction activity.
 
-        [1]Anne Richelle,Chintan Joshi,Nathan E. Lewis, Assessing key decisions
-        for transcriptomic data integration in biochemical networks, PLOS, 2019
-        https://doi.org/10.1371/journal.pcbi.1007185
+    [1]Anne Richelle,Chintan Joshi,Nathan E. Lewis, Assessing key decisions
+    for transcriptomic data integration in biochemical networks, PLOS, 2019
+    https://doi.org/10.1371/journal.pcbi.1007185
     """
 
     def __init__(self, model: Simulator, data: ExpressionSet, **kwargs):
@@ -355,13 +352,10 @@ class Preprocessing:
         self._conf = kwargs
 
     def reactions_expression(self, condition, and_func=None, or_func=None):
-        exp = self.data.get_condition(condition, format='dict')
-        and_func = self._conf.get(
-            'and_func', min) if and_func is None else and_func
-        or_func = self._conf.get(
-            'or_func', max) if or_func is None else or_func
-        rxn_exp = gene_to_reaction_expression(
-            self.model, exp, and_func, or_func)
+        exp = self.data.get_condition(condition, format="dict")
+        and_func = self._conf.get("and_func", min) if and_func is None else and_func
+        or_func = self._conf.get("or_func", max) if or_func is None else or_func
+        rxn_exp = gene_to_reaction_expression(self.model, exp, and_func, or_func)
         # Removes None if maybe is none to evaluate GPRs
         res = {k: v for k, v in rxn_exp.items() if v is not None}
         return res
@@ -383,8 +377,7 @@ class Preprocessing:
             for cut in cutoff:
                 rxn_exp = self.reactions_expression(condition)
                 threshold = np.percentile(list(rxn_exp.values()), cut)
-                coeffs = {r_id: threshold - val for r_id,
-                          val in rxn_exp.items() if val < threshold}
+                coeffs = {r_id: threshold - val for r_id, val in rxn_exp.items() if val < threshold}
                 coef.append(coeffs)
                 thre.append(threshold)
             coeffs = tuple(coef)
@@ -392,19 +385,20 @@ class Preprocessing:
         else:
             rxn_exp = self.reactions_expression(condition)
             threshold = np.percentile(list(rxn_exp.values()), cutoff)
-            coeffs = {r_id: threshold - val for r_id,
-                      val in rxn_exp.items() if val < threshold}
+            coeffs = {r_id: threshold - val for r_id, val in rxn_exp.items() if val < threshold}
         return coeffs, threshold
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Preprocessing using KNNImputer and Quantile transformation/binarization
 # ----------------------------------------------------------------------------------------------------------------------
-def knn_imputation(expression: np.ndarray,
-                   missing_values: float = None,
-                   n_neighbors: int = 5,
-                   weights: str = 'uniform',
-                   metric: str = 'nan_euclidean') -> np.ndarray:
+def knn_imputation(
+    expression: np.ndarray,
+    missing_values: float = None,
+    n_neighbors: int = 5,
+    weights: str = "uniform",
+    metric: str = "nan_euclidean",
+) -> np.ndarray:
     """
     KNN imputation of missing values in the expression matrix. It uses the scikit-learn KNNImputer (Consult sklearn
     documentation for more information).
@@ -424,8 +418,10 @@ def knn_imputation(expression: np.ndarray,
         # noinspection PyPackageRequirements
         from sklearn.impute import KNNImputer
     except ImportError:
-        raise ImportError('The package scikit-learn is not installed. '
-                          'To preprocess gene expression data, please install scikit-learn (pip install scikit-learn).')
+        raise ImportError(
+            "The package scikit-learn is not installed. "
+            "To preprocess gene expression data, please install scikit-learn (pip install scikit-learn)."
+        )
 
     if missing_values is None:
         missing_values = np.nan
@@ -434,15 +430,12 @@ def knn_imputation(expression: np.ndarray,
         n_neighbors = 5
 
     if weights is None:
-        weights = 'uniform'
+        weights = "uniform"
 
     if metric is None:
-        metric = 'nan_euclidean'
+        metric = "nan_euclidean"
 
-    imputation = KNNImputer(missing_values=missing_values,
-                            n_neighbors=n_neighbors,
-                            weights=weights,
-                            metric=metric)
+    imputation = KNNImputer(missing_values=missing_values, n_neighbors=n_neighbors, weights=weights, metric=metric)
 
     return imputation.fit_transform(expression)
 
@@ -459,8 +452,10 @@ def quantile_transformation(expression: np.ndarray, n_quantiles: int = None) -> 
         # noinspection PyPackageRequirements
         from sklearn.preprocessing import quantile_transform
     except ImportError:
-        raise ImportError('The package scikit-learn is not installed. '
-                          'To preprocess gene expression data, please install scikit-learn (pip install scikit-learn).')
+        raise ImportError(
+            "The package scikit-learn is not installed. "
+            "To preprocess gene expression data, please install scikit-learn (pip install scikit-learn)."
+        )
 
     if n_quantiles is None:
         n_quantiles = expression.shape[1]

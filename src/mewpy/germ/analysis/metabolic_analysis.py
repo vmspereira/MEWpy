@@ -1,20 +1,23 @@
 from collections import defaultdict
-from typing import Union, TYPE_CHECKING, Dict, Tuple, Sequence, Optional
+from typing import TYPE_CHECKING, Dict, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 
 from mewpy.util.constants import ModelConstants
+
 from .analysis_utils import run_method_and_decode
 from .fba import FBA
 from .pfba import pFBA
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
-def slim_fba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-             objective: Union[str, Dict[str, float]] = None,
-             constraints: Dict[str, Tuple[float, float]] = None) -> Optional[float]:
+def slim_fba(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> Optional[float]:
     """
     A Flux Balance Analysis simulation of a metabolic model.
     A slim analysis produces a single and simple solution for the model. This method returns the objective value for the
@@ -38,9 +41,11 @@ def slim_fba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     return objective_value
 
 
-def slim_pfba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-              objective: Union[str, Dict[str, float]] = None,
-              constraints: Dict[str, Tuple[float, float]] = None) -> Optional[float]:
+def slim_pfba(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> Optional[float]:
     """
     A parsimonious Flux Balance Analysis simulation of a metabolic model.
     A slim analysis produces a single and simple solution for the model. This method returns the objective value for the
@@ -67,11 +72,13 @@ def slim_pfba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     return objective_value
 
 
-def fva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-        fraction: float = 1.0,
-        reactions: Sequence[str] = None,
-        objective: Union[str, Dict[str, float]] = None,
-        constraints: Dict[str, Tuple[float, float]] = None) -> pd.DataFrame:
+def fva(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    fraction: float = 1.0,
+    reactions: Sequence[str] = None,
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> pd.DataFrame:
     """
     Flux Variability Analysis (FVA) of a metabolic model.
     FVA is a method to determine the minimum and maximum fluxes for each reaction in a metabolic model.
@@ -93,7 +100,7 @@ def fva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
         constraints = {}
 
     if objective:
-        if hasattr(objective, 'keys'):
+        if hasattr(objective, "keys"):
             obj = next(iter(objective.keys()))
         else:
             obj = str(objective)
@@ -115,12 +122,14 @@ def fva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
         max_val, _ = run_method_and_decode(method=fba, objective={rxn: 1.0}, constraints=constraints, minimize=False)
         result[rxn].append(max_val)
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['minimum', 'maximum'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["minimum", "maximum"])
 
 
-def single_gene_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                         genes: Sequence[str] = None,
-                         constraints: Dict[str, Tuple[float, float]] = None) -> pd.DataFrame:
+def single_gene_deletion(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    genes: Sequence[str] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> pd.DataFrame:
     """
     Single gene deletion analysis of a metabolic model.
     Single gene deletion analysis is a method to determine the effect of deleting each gene in a metabolic model.
@@ -174,12 +183,14 @@ def single_gene_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryMode
 
         state[gene.id] = gene_coefficient
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['growth', 'status'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])
 
 
-def single_reaction_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                             reactions: Sequence[str] = None,
-                             constraints: Dict[str, Tuple[float, float]] = None) -> pd.DataFrame:
+def single_reaction_deletion(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    reactions: Sequence[str] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> pd.DataFrame:
     """
     Single reaction deletion analysis of a metabolic model.
     Single reaction deletion analysis is a method to determine the effect of deleting each reaction
@@ -206,4 +217,4 @@ def single_reaction_deletion(model: Union['Model', 'MetabolicModel', 'Regulatory
         solution, status = run_method_and_decode(method=fba, constraints={**constraints, **reaction_constraints})
         result[reaction] = [solution, status]
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['growth', 'status'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])

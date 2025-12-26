@@ -1,22 +1,31 @@
 from enum import Enum
 
+from .coregflux import CoRegFlux, predict_gene_expression
 from .fba import FBA
+from .integrated_analysis import (
+    find_conflicts,
+    ifva,
+    isingle_gene_deletion,
+    isingle_reaction_deletion,
+    isingle_regulator_deletion,
+    slim_coregflux,
+    slim_prom,
+    slim_rfba,
+    slim_srfba,
+)
+from .metabolic_analysis import fva, single_gene_deletion, single_reaction_deletion, slim_fba, slim_pfba
 from .pfba import pFBA
+from .prom import PROM, target_regulator_interaction_probability
+from .regulatory_analysis import regulatory_truth_table
 from .rfba import RFBA
 from .srfba import SRFBA
-from .prom import PROM, target_regulator_interaction_probability
-from .coregflux import CoRegFlux, predict_gene_expression
-from .metabolic_analysis import slim_fba, slim_pfba, fva, single_gene_deletion, single_reaction_deletion
-from .regulatory_analysis import regulatory_truth_table
-from .integrated_analysis import (slim_rfba, slim_srfba, slim_prom, slim_coregflux,
-                                  ifva, isingle_regulator_deletion, isingle_reaction_deletion, isingle_gene_deletion,
-                                  find_conflicts)
 
 
 class Analysis(Enum):
     """
     Enumeration of the available analysis methods.
     """
+
     FBA = FBA
     pFBA = pFBA
     RFBA = RFBA
@@ -35,7 +44,7 @@ class Analysis(Enum):
         return analysis in cls.__members__
 
     @classmethod
-    def get(cls, analysis: str, default=FBA) -> 'Analysis':
+    def get(cls, analysis: str, default=FBA) -> "Analysis":
         """
         Get the analysis class.
 

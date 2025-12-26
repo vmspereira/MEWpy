@@ -18,36 +18,38 @@
 ##############################################################################
 Cofactor Swap optimization Problem
 
-Author: Vitor Pereira 
+Author: Vitor Pereira
 ##############################################################################
 """
+from copy import deepcopy
+from typing import TYPE_CHECKING, List, Union
+
 from mewpy.problems.problem import AbstractKOProblem
 from mewpy.util.constants import COFACTORS
-
-from copy import deepcopy
-from typing import Union, TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from cobra.core import Model
     from reframed.core.cbmodel import CBModel
+
     from mewpy.optimization.evaluation import EvaluationFunction
 
-SWAPS = [[COFACTORS['NAD'], COFACTORS['NADH']],
-         [COFACTORS['NADP'], COFACTORS['NADPH']]]
-
+SWAPS = [[COFACTORS["NAD"], COFACTORS["NADH"]], [COFACTORS["NADP"], COFACTORS["NADPH"]]]
 
 
 class CofactorSwapProblem(AbstractKOProblem):
 
-    RX_SUFIX = '_SWAP'
+    RX_SUFIX = "_SWAP"
 
-    def __init__(self, model: Union["Model", "CBModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 compartments:List[str] = ['c'],
-                 **kwargs):
+    def __init__(
+        self,
+        model: Union["Model", "CBModel"],
+        fevaluation: List["EvaluationFunction"] = None,
+        compartments: List[str] = ["c"],
+        **kwargs,
+    ):
         """
         Optimize co-factor swapping
-        
+
         Implements a search for reactions that when swapped improve the given objectives.
         The approach:
 
@@ -70,62 +72,59 @@ class CofactorSwapProblem(AbstractKOProblem):
         self.swaps = None
         self.compartments = compartments
         self.rx_swap = dict()
-        
-        
+
     def _build_target_list(self):
         # identify the metabolites
         _swaps = []
         for c in self.compartments:
-            for [f1,f2] in SWAPS:
-                a = self.simulator.metabolite_by_formula(f1,c)
-                b = self.simulator.metabolite_by_formula(f2,c)
-                if a and b: _swaps.append([a,b])
+            for [f1, f2] in SWAPS:
+                a = self.simulator.metabolite_by_formula(f1, c)
+                b = self.simulator.metabolite_by_formula(f2, c)
+                if a and b:
+                    _swaps.append([a, b])
         swaps = tuple(_swaps)
+
         # search reactions
         def _search(mets):
             p = all(mets.get(m, False) for m in swaps[0])
             # remove biomasses
             q = all(mets.get(m, False) for m in swaps[1])
             return (p or q) and not (p and q)
+
         rxns = []
         for rx_id in self.simulator.reactions:
             mets = self.simulator.get_reaction(rx_id).stoichiometry
             if _search(mets):
                 rxns.append(rx_id)
-                
+
         # add reactions with swapped cofactors
         dswap = dict(zip(*swaps))
-        a,b = tuple(swaps[0])
-        
+        a, b = tuple(swaps[0])
+
         for rx_id in rxns:
             rx = self.simulator.get_reaction(rx_id)
             st = rx.stoichiometry.copy()
             if a not in st or b not in st:
                 continue
-            st[dswap[a]]=st.pop(a)
-            st[dswap[b]]=st.pop(b)
-            
-            new_id = rx_id+self.RX_SUFIX
+            st[dswap[a]] = st.pop(a)
+            st[dswap[b]] = st.pop(b)
+
+            new_id = rx_id + self.RX_SUFIX
             self.simulator.add_reaction(
-                new_id,
-                name=rx.name+" SWAP",
-                stoichiometry=st,
-                lb=0,
-                ub=0,
-                gpr=rx.gpr,
-                annotations=rx.annotations)
+                new_id, name=rx.name + " SWAP", stoichiometry=st, lb=0, ub=0, gpr=rx.gpr, annotations=rx.annotations
+            )
             self.rx_swap[rx_id] = new_id
         # define the modification target list
         # the list of reactions with swapped alternatives
         self.simulator.solver = None
         self._trg_list = list(self.rx_swap.keys())
-        
+
     def solution_to_constraints(self, candidate):
         constraints = {}
         for rx in candidate:
             # ko the original reaction
-            constraints[rx]=(0,0)
+            constraints[rx] = (0, 0)
             # define the bound for the cofactor swapped reaction
-            lb,ub = self.simulator.get_reaction_bounds(rx)
-            constraints[self.rx_swap[rx]]= (lb,ub)
+            lb, ub = self.simulator.get_reaction_bounds(rx)
+            constraints[self.rx_swap[rx]] = (lb, ub)
         return constraints

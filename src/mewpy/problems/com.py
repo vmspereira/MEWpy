@@ -20,14 +20,16 @@ Optimization Problems for Community models
 Author: Vitor Pereira
 ##############################################################################
 """
-from copy import deepcopy
-from warnings import warn
 from collections import OrderedDict
-from .problem import AbstractKOProblem
+from copy import deepcopy
+from typing import TYPE_CHECKING, List, Union
+from warnings import warn
+
 from mewpy.model import CommunityModel
 from mewpy.simulation import get_simulator
 from mewpy.simulation.simulation import Simulator
-from typing import TYPE_CHECKING, List, Union
+
+from .problem import AbstractKOProblem
 
 if TYPE_CHECKING:
     from cobra.core import Model
@@ -50,17 +52,16 @@ class CommunityKOProblem(AbstractKOProblem):
     :param list target: List of modification target reactions.
     :param list non_target: List of non target reactions. Not considered if a target list is provided.
     :param float scalefactor: A scaling factor to be used in the LP formulation.
-    
+
     """
 
-    def __init__(self, models: List[Union[Simulator, 'Model', 'CBModel']],
-                 fevaluation=[],
-                 copy_models: bool = False,
-                 **kwargs):
+    def __init__(
+        self, models: List[Union[Simulator, "Model", "CBModel"]], fevaluation=[], copy_models: bool = False, **kwargs
+    ):
 
         self.organisms = OrderedDict()
         self.model_ids = list({model.id for model in models})
-        self.flavor = kwargs.get('flavor', 'reframed')
+        self.flavor = kwargs.get("flavor", "reframed")
 
         if len(self.model_ids) < len(models):
             warn("Model ids are not unique, repeated models will be discarded.")
@@ -72,13 +73,10 @@ class CommunityKOProblem(AbstractKOProblem):
         self.cmodel = CommunityModel(list(self.organisms.values()), flavor=self.flavor)
         model = self.cmodel.merged_model
 
-        super(CommunityKOProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
-
+        super(CommunityKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
     def _build_target_list(self):
-        """Target organims, that is, organisms that may be removed from the community.
-        """
+        """Target organims, that is, organisms that may be removed from the community."""
         target = set(self.model_ids)
         if self.non_target is not None:
             target = target - set(self.non_target)
@@ -87,13 +85,13 @@ class CommunityKOProblem(AbstractKOProblem):
     def ext_reactions(self, organism):
         org_mets = set([v for k, v in self.cmodel.metabolite_map.items() if k[0] == organism])
         rxns = [v for k, v in self.cmodel.reaction_map.items() if k[0] == organism]
-        ext_mets = set([m for m in self.simulator.metabolites if self.simulator.get_metabolite(m).compartment == 'ext'])
+        ext_mets = set([m for m in self.simulator.metabolites if self.simulator.get_metabolite(m).compartment == "ext"])
         res = []
         for rxn in rxns:
             st = self.simulator.get_reaction(rxn).stoichiometry
             sub = set([k for k, v in st.items() if v < 0])
             prod = set([k for k, v in st.items() if v > 0])
-            if (len(sub-ext_mets) == 0 and len(prod-org_mets) == 0):
+            if len(sub - ext_mets) == 0 and len(prod - org_mets) == 0:
                 res.append(rxn)
         return res
 
@@ -107,5 +105,3 @@ class CommunityKOProblem(AbstractKOProblem):
             # ko biomass
             constraints[self.cmodel.organisms_biomass[org_id]] = 0
         return constraints
-
-

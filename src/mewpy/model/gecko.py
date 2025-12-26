@@ -39,14 +39,14 @@ from mewpy.util.constants import ModelConstants
 
 
 class ModelList(object):
-    '''Auxilary class to load predifined ecYeast7 models
-    '''
+    """Auxilary class to load predifined ecYeast7 models"""
 
     def __init__(self):
-        self.DATA_FILES = os.path.join(os.path.dirname(__file__), 'data')
-        self.PROTEINS_FILE = os.path.join(self.DATA_FILES, 'proteins.txt')
+        self.DATA_FILES = os.path.join(os.path.dirname(__file__), "data")
+        self.PROTEINS_FILE = os.path.join(self.DATA_FILES, "proteins.txt")
         self.model_files = dict(
-            (re.findall(r'_(.*).xml', f)[0], f) for f in os.listdir(self.DATA_FILES) if f.endswith('.xml'))
+            (re.findall(r"_(.*).xml", f)[0], f) for f in os.listdir(self.DATA_FILES) if f.endswith(".xml")
+        )
         self.models = {}
 
     def __getitem__(self, item):
@@ -66,9 +66,9 @@ class ModelList(object):
             try:
                 file_name = self.model_files[item]
                 if file_name not in self.models:
-                    model = load_cbmodel(os.path.join(os.path.dirname(__file__), 'data/{}'.format(file_name)))
+                    model = load_cbmodel(os.path.join(os.path.dirname(__file__), "data/{}".format(file_name)))
             except KeyError:
-                raise KeyError('model name must be one of {}'.format(', '.join(list(self.model_files))))
+                raise KeyError("model name must be one of {}".format(", ".join(list(self.model_files))))
 
         self.simplify_model(model)
         self.models[file_name] = model
@@ -77,7 +77,7 @@ class ModelList(object):
     def simplify_model(self, model):
         met_copy = AttrOrderedDict()
         for key, val in model.metabolites.items():
-            k = key.replace('__91__', '_').replace('__93__', '')
+            k = key.replace("__91__", "_").replace("__93__", "")
             val.id = k
             met_copy[k] = val
         model.metabolites = met_copy
@@ -85,7 +85,7 @@ class ModelList(object):
             stoi = model.reactions[rxn].stoichiometry
             nstoi = OrderedDict()
             for key, v in stoi.items():
-                k = key.replace('__91__', '_').replace('__93__', '')
+                k = key.replace("__91__", "_").replace("__93__", "")
                 nstoi[k] = v
             model.reactions[rxn].stoichiometry = nstoi
         for rxn in model.reactions.values():
@@ -131,12 +131,22 @@ class GeckoModel(CBModel):
 
     """
 
-    def __init__(self, model, protein_properties=None,
-                 sigma=0.46, c_base=0.3855, gam=36.6, amino_acid_polymerization_cost=37.7,
-                 carbohydrate_polymerization_cost=12.8, biomass_reaction_id=None,
-                 protein_reaction_id='r_4047', carbohydrate_reaction_id='r_4048',
-                 protein_pool_exchange_id='prot_pool_exchange', common_protein_pool_id='prot_pool_c',
-                 reaction_prefix=''):
+    def __init__(
+        self,
+        model,
+        protein_properties=None,
+        sigma=0.46,
+        c_base=0.3855,
+        gam=36.6,
+        amino_acid_polymerization_cost=37.7,
+        carbohydrate_polymerization_cost=12.8,
+        biomass_reaction_id=None,
+        protein_reaction_id="r_4047",
+        carbohydrate_reaction_id="r_4048",
+        protein_pool_exchange_id="prot_pool_exchange",
+        common_protein_pool_id="prot_pool_c",
+        reaction_prefix="",
+    ):
 
         # load predifined models
         model_list = ModelList()
@@ -145,10 +155,10 @@ class GeckoModel(CBModel):
         elif isinstance(model, CBModel):
             model_list.simplify_model(model)
         else:
-            raise ValueError('Model should be a string denomination or a CBModel instance')
+            raise ValueError("Model should be a string denomination or a CBModel instance")
 
         super(GeckoModel, self).__init__(model.id)
-    
+
         # import CBModel's data
         self.compartments = copy.deepcopy(model.compartments)
         self.metabolites = copy.deepcopy(model.metabolites)
@@ -194,8 +204,8 @@ class GeckoModel(CBModel):
         # Reaction identified as protein pool exchange
         if protein_pool_exchange_id in self.reactions.keys():
             self.protein_pool_exchange = self.reactions[protein_pool_exchange_id]
-        elif reaction_prefix+protein_pool_exchange_id in self.reactions.keys():
-            self.protein_pool_exchange = self.reactions[reaction_prefix+protein_pool_exchange_id]
+        elif reaction_prefix + protein_pool_exchange_id in self.reactions.keys():
+            self.protein_pool_exchange = self.reactions[reaction_prefix + protein_pool_exchange_id]
         else:
             self.protein_pool_exchange = None
             logging.warning(f"Could not find protein pool exchange reaction {protein_pool_exchange_id}")
@@ -240,7 +250,7 @@ class GeckoModel(CBModel):
         """
         # measurements should be quantitative fractions of the total measured proteins, normalized to unit-length
         fraction = fraction / fraction.sum()
-        fraction_measured = self.protein_properties.loc[list(fraction.index), 'abundance'].sum()
+        fraction_measured = self.protein_properties.loc[list(fraction.index), "abundance"].sum()
         p_measured = self.p_total * fraction_measured
         return fraction.apply(lambda x: x * p_measured)
 
@@ -277,8 +287,8 @@ class GeckoModel(CBModel):
 
         for protein_id, value in iteritems(self.measured_ggdw):
             try:
-                mmol_gdw = value / (self.protein_properties.loc[protein_id, 'mw'] / 1000)
-                rxn = self.reactions['prot_{}_exchange'.format(protein_id)]
+                mmol_gdw = value / (self.protein_properties.loc[protein_id, "mw"] / 1000)
+                rxn = self.reactions["prot_{}_exchange".format(protein_id)]
                 self.uniprot[rxn.id] = protein_id
             except KeyError:
                 pass
@@ -292,11 +302,12 @@ class GeckoModel(CBModel):
         self.fm_mass_fraction_matched = self.p_measured / self.p_total
         # 4. mass fraction of unmeasured proteins in the model over all proteins not matched to model
         self.fn_mass_fraction_unmeasured_matched = (
-            self.protein_properties.loc[list(self.unmeasured_proteins)].prod(axis=1).sum() /
-            self.protein_properties.prod(axis=1).sum()
+            self.protein_properties.loc[list(self.unmeasured_proteins)].prod(axis=1).sum()
+            / self.protein_properties.prod(axis=1).sum()
         )
-        self.f_mass_fraction_measured_matched_to_total = (
-            self.fn_mass_fraction_unmeasured_matched / (1 - self.fm_mass_fraction_matched))
+        self.f_mass_fraction_measured_matched_to_total = self.fn_mass_fraction_unmeasured_matched / (
+            1 - self.fm_mass_fraction_matched
+        )
         # 5. constrain unmeasured proteins by common pool
         self.constrain_pool()
         self.adjust_biomass_composition()
@@ -319,26 +330,28 @@ class GeckoModel(CBModel):
         #                             self.f_mass_fraction_measured_matched_to_total *
         #                             self.sigma_saturation_factor)
         # but this gives results more like reported:
-        self.fs_matched_adjusted = ((self.p_total - self.p_measured) *
-                                    self.f_mass_fraction_measured_matched_to_total *
-                                    self.sigma_saturation_factor)
+        self.fs_matched_adjusted = (
+            (self.p_total - self.p_measured)
+            * self.f_mass_fraction_measured_matched_to_total
+            * self.sigma_saturation_factor
+        )
         self.protein_pool_exchange.set_flux_bounds(0, self.fs_matched_adjusted)
 
         # 4. Remove other enzyme usage reactions and replace with pool exchange reactions
-        average_mmw = self.protein_properties['mw'].mean() / 1000.
+        average_mmw = self.protein_properties["mw"].mean() / 1000.0
         for protein_id in self.unmeasured_proteins:
-            prt = 'prot_{}_exchange'.format(protein_id)
+            prt = "prot_{}_exchange".format(protein_id)
             if prt in self.reactions:
                 to_remove.append(prt)
-            draw_reaction_id = 'draw_prot_{}'.format(protein_id)
+            draw_reaction_id = "draw_prot_{}".format(protein_id)
             if draw_reaction_id not in self.reactions.keys():
                 draw_rxn = CBReaction(draw_reaction_id)
                 # defines bounds
                 draw_rxn.set_flux_bounds(0, 1000)
                 self.uniprot[draw_rxn.id] = protein_id
-                protein_pool = self.metabolites['prot_{}_c'.format(protein_id)]
+                protein_pool = self.metabolites["prot_{}_c".format(protein_id)]
                 try:
-                    mmw = self.protein_properties.loc[protein_id, 'mw'] / 1000.
+                    mmw = self.protein_properties.loc[protein_id, "mw"] / 1000.0
                 except KeyError:
                     mmw = average_mmw
                 metabolites = {self.common_protein_pool.id: -mmw, protein_pool.id: 1}
@@ -356,28 +369,30 @@ class GeckoModel(CBModel):
 
         """
         for met in self.protein_reaction.stoichiometry:
-            is_prot = 'protein' in self.metabolites[met].name
+            is_prot = "protein" in self.metabolites[met].name
             if not is_prot:
                 coefficient = self.fp_fraction_protein * self.protein_reaction.stoichiometry[met]
                 self.protein_reaction.stoichiometry[met] = coefficient
 
         for met in self.carbohydrate_reaction.stoichiometry:
-            is_carb = 'carbohydrate' in self.metabolites[met].name
+            is_carb = "carbohydrate" in self.metabolites[met].name
             if not is_carb:
                 coefficient = self.fc_carbohydrate_content * self.carbohydrate_reaction.stoichiometry[met]
                 self.carbohydrate_reaction.stoichiometry[met] = coefficient
 
         for met in self.reactions[self.biomass_reaction].stoichiometry:
             sign = -1 if self.reactions[self.biomass_reaction].stoichiometry[met] < 0 else 1
-            is_atp = 'ATP' in self.metabolites[met].name
-            is_adp = 'ADP' in self.metabolites[met].name
-            is_h2o = 'H2O' in self.metabolites[met].name
-            is_h = 'H+' in self.metabolites[met].name
-            is_p = 'phosphate' in self.metabolites[met].name
+            is_atp = "ATP" in self.metabolites[met].name
+            is_adp = "ADP" in self.metabolites[met].name
+            is_h2o = "H2O" in self.metabolites[met].name
+            is_h = "H+" in self.metabolites[met].name
+            is_p = "phosphate" in self.metabolites[met].name
             if is_atp or is_adp or is_h2o or is_h or is_p:
-                coefficient = sign * (self.gam +
-                                      self.amino_acid_polymerization_cost * self.p_total +
-                                      self.carbohydrate_polymerization_cost * self.c_total)
+                coefficient = sign * (
+                    self.gam
+                    + self.amino_acid_polymerization_cost * self.p_total
+                    + self.carbohydrate_polymerization_cost * self.c_total
+                )
                 self.reactions[self.biomass_reaction].stoichiometry[met] = coefficient
 
     def adjust_pool_bounds(self, min_objective=0.05, inplace=False, tolerance=1e-9):
@@ -394,15 +409,14 @@ class GeckoModel(CBModel):
 
         """
         from reframed.solvers import solver_instance
+
         solver = solver_instance(self)
-        solver.add_constraint(
-            'constraint_objective', self.get_objective, sense='>', rhs=min_objective, update=False)
+        solver.add_constraint("constraint_objective", self.get_objective, sense=">", rhs=min_objective, update=False)
         for pool in self.individual_protein_exchanges:
-            solver.add_variable('pool_diff_' + pool.id, lb=0, update=False)
-            solver.add_variable('measured_bound_' + pool.id,
-                                lb=pool.upper_bound, ub=pool.upper_bound, update=False)
+            solver.add_variable("pool_diff_" + pool.id, lb=0, update=False)
+            solver.add_variable("measured_bound_" + pool.id, lb=pool.upper_bound, ub=pool.upper_bound, update=False)
         solver.update()
-        solution = solver.solve()
+        solver.solve()
         # with self.model as model:
         #    problem = model.problem
         #    constraint_objective = problem.Constraint(model.objective.expression, name='constraint_objective',
@@ -465,8 +479,9 @@ class GeckoModel(CBModel):
         :returns: frozenset, The set of proteins that have a defined separate pool exchange reaction.
 
         """
-        return frozenset(chain.from_iterable(re.findall(self.protein_exchange_re, rxn)
-                                             for rxn in self.protein_exchanges))
+        return frozenset(
+            chain.from_iterable(re.findall(self.protein_exchange_re, rxn) for rxn in self.protein_exchanges)
+        )
 
     @property
     def pool_proteins(self):
@@ -475,8 +490,9 @@ class GeckoModel(CBModel):
         :returns: frozenset, The set of proteins that have a defined draw reaction.
 
         """
-        return frozenset(chain.from_iterable(re.findall(self.pool_protein_exchange_re, rxn)
-                                             for rxn in self.protein_exchanges))
+        return frozenset(
+            chain.from_iterable(re.findall(self.pool_protein_exchange_re, rxn) for rxn in self.protein_exchanges)
+        )
 
     @property
     def individual_protein_exchanges(self):
@@ -485,10 +501,9 @@ class GeckoModel(CBModel):
         :returns: frozenset, Set of protein exchange reactions with individual pools
 
         """
-        prot_ex = frozenset(rxn for rxn in self.reactions.keys()
-                            if re.match(self.protein_exchange_re, rxn))
+        prot_ex = frozenset(rxn for rxn in self.reactions.keys() if re.match(self.protein_exchange_re, rxn))
         if self.protein_pool_exchange:
-            return (prot_ex - {self.protein_pool_exchange.id})
+            return prot_ex - {self.protein_pool_exchange.id}
         else:
             return prot_ex
 
@@ -499,10 +514,9 @@ class GeckoModel(CBModel):
         :returns: frozenset, Set of protein exchange reactions for single pool reactions.
 
         """
-        prot_ex = frozenset(rxn for rxn in self.reactions
-                            if re.match(self.pool_protein_exchange_re, rxn))
+        prot_ex = frozenset(rxn for rxn in self.reactions if re.match(self.pool_protein_exchange_re, rxn))
         if self.protein_pool_exchange:
-            return (prot_ex - {self.protein_pool_exchange.id})
+            return prot_ex - {self.protein_pool_exchange.id}
         else:
             return prot_ex
 
@@ -539,10 +553,10 @@ class GeckoModel(CBModel):
                 in_sub[p] = sub
             pairs = {}
             for k, s in in_sub.items():
-                revs = [r for r in s if '_REV' in r]
+                revs = [r for r in s if "_REV" in r]
                 if len(revs) > 0:
                     for r in revs:
-                        lrx = [a for a in s if r.replace('_REV', '') == a]
+                        lrx = [a for a in s if r.replace("_REV", "") == a]
                         lrx.append(r)
                         if len(lrx) == 2:
                             if k in pairs.keys():

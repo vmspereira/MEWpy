@@ -13,7 +13,7 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-""" 
+"""
 ##############################################################################
 Environment module
 Addapted from REFRAMED
@@ -25,28 +25,30 @@ from collections import OrderedDict
 from math import inf
 from types import FunctionType
 from warnings import warn
+
 from . import get_simulator
 
 
 class Environment(OrderedDict):
-    """ This class represents the exchange of compounds between an organism and the environment. """
+    """This class represents the exchange of compounds between an organism and the environment."""
 
     def __init__(self):
         OrderedDict.__init__(self)
 
     def __str__(self):
         entries = (f"{r_id}\t{lb}\t{ub}" for r_id, (lb, ub) in self.items())
-        return '\n'.join(entries)
+        return "\n".join(entries)
 
     def __repr__(self):
         return str(self)
-    
+
     def _repr_html_(self):
         import pandas as pd
+
         df = pd.DataFrame(self).T
-        df.columns=['lb','ub']
+        df.columns = ["lb", "ub"]
         return df.to_html()
-        
+
     def get_compounds(self, fmt_func=None):
         """
         Return the list of compounds in the growth medium for this environment.
@@ -60,11 +62,13 @@ class Environment(OrderedDict):
         """
 
         if fmt_func is None:
+
             def fmt_func(x):
-                if x[:2] == 'R_':
+                if x[:2] == "R_":
                     return x[5:-2]
                 else:
                     return x[3:-2]
+
         elif not isinstance(fmt_func, FunctionType):
             raise RuntimeError("fmt_func argument must be a string or function.")
 
@@ -114,12 +118,12 @@ class Environment(OrderedDict):
                     warn(msg)
                 else:
                     raise ValueError(msg)
-                    
+
         if not inplace:
             return constraints
 
     def simplify(self, inplace=False):
-        """ Keep only uptake reactions for the respective medium. """
+        """Keep only uptake reactions for the respective medium."""
 
         if inplace:
             env = self
@@ -156,7 +160,7 @@ class Environment(OrderedDict):
         return env
 
     @staticmethod
-    def from_compounds(compounds, fmt_func=None, max_uptake=10.0, prefix=''):
+    def from_compounds(compounds, fmt_func=None, max_uptake=10.0, prefix=""):
         """
         Initialize environment from list of medium compounds
         Arguments:
@@ -171,11 +175,16 @@ class Environment(OrderedDict):
         """
 
         if fmt_func is None:
+
             def fmt_func(x):
                 return f"{prefix}EX_{x}_e"
+
         elif isinstance(fmt_func, str):
             fmt_str = fmt_func
-            def fmt_func(x): return fmt_str.format(x)
+
+            def fmt_func(x):
+                return fmt_str.format(x)
+
         elif not isinstance(fmt_func, FunctionType):
             raise RuntimeError("fmt_func argument must be a string or function.")
 
@@ -193,9 +202,8 @@ class Environment(OrderedDict):
             Environment: environment from provided model
         """
 
-        
         sim = get_simulator(model)
-        
+
         env = Environment()
 
         for r_id in sim.get_exchange_reactions():
@@ -215,9 +223,9 @@ class Environment(OrderedDict):
         Returns:
             Environment: Default environment for provided model
         """
-        
+
         sim = get_simulator(model)
-        
+
         env = Environment()
 
         for r_id in sim.get_exchange_reactions():

@@ -1,25 +1,27 @@
-from typing import Union, Dict
+from typing import Dict, Union
 
 from mewpy.germ.analysis import FBA
-from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
-from mewpy.solvers import solver_instance
 
 
 class pFBA(FBA):
     """
     Parsimonious Flux Balance Analysis (pFBA) using pure simulator-based approach.
-    
+
     This implementation uses simulators as the foundation and minimizes total flux
     while maintaining optimal objective value.
     """
 
-    def __init__(self,
-                 model: Union[Model, MetabolicModel, RegulatoryModel],
-                 solver: Union[str, Solver, None] = None,
-                 build: bool = False,
-                 attach: bool = False):
+    def __init__(
+        self,
+        model: Union[Model, MetabolicModel, RegulatoryModel],
+        solver: Union[str, Solver, None] = None,
+        build: bool = False,
+        attach: bool = False,
+    ):
         """
         Parsimonious Flux Balance Analysis (pFBA) of a metabolic model.
         Pure simulator-based implementation.
@@ -48,10 +50,11 @@ class pFBA(FBA):
         :param constraints: Optional constraints to apply when finding optimal objective value
         """
         # Get simulator - support both RegulatoryExtension and legacy models
-        if hasattr(self.model, 'simulator'):
+        if hasattr(self.model, "simulator"):
             simulator = self.model.simulator
         else:
             from mewpy.simulation import get_simulator
+
             try:
                 simulator = get_simulator(self.model)
             except:
@@ -64,11 +67,7 @@ class pFBA(FBA):
         biomass_objective = {var.id: value for var, value in self.model.objective.items()}
 
         # Step 1: Solve FBA to get optimal objective value (with constraints if provided)
-        fba_solution = self._solver.solve(
-            linear=biomass_objective,
-            minimize=False,
-            constraints=constraints
-        )
+        fba_solution = self._solver.solve(linear=biomass_objective, minimize=False, constraints=constraints)
 
         if fba_solution.status != Status.OPTIMAL:
             raise RuntimeError(f"FBA failed with status: {fba_solution.status}")
@@ -80,7 +79,7 @@ class pFBA(FBA):
             constraint_value = fba_solution.fobj * fraction
 
         # Add biomass constraint to maintain optimal growth
-        self._solver.add_constraint('pfba_biomass_constraint', biomass_objective, '=', constraint_value)
+        self._solver.add_constraint("pfba_biomass_constraint", biomass_objective, "=", constraint_value)
         self._solver.update()
 
         # Step 3: Set up minimization objective (sum of absolute fluxes)
@@ -96,12 +95,11 @@ class pFBA(FBA):
                 neg_var = f"{r_id}_neg"
 
                 # Add auxiliary variables for absolute value
-                self._solver.add_variable(pos_var, 0, float('inf'), update=False)
-                self._solver.add_variable(neg_var, 0, float('inf'), update=False)
+                self._solver.add_variable(pos_var, 0, float("inf"), update=False)
+                self._solver.add_variable(neg_var, 0, float("inf"), update=False)
 
                 # Add constraint: r_id = pos_var - neg_var
-                self._solver.add_constraint(f"split_{r_id}",
-                                          {r_id: 1, pos_var: -1, neg_var: 1}, '=', 0, update=False)
+                self._solver.add_constraint(f"split_{r_id}", {r_id: 1, pos_var: -1, neg_var: 1}, "=", 0, update=False)
 
                 # Add to minimization objective
                 minimize_objective[pos_var] = 1
@@ -136,10 +134,10 @@ class pFBA(FBA):
             solver_kwargs = {}
 
         # Check if constraints are provided
-        current_constraints = solver_kwargs.get('constraints') if 'constraints' in solver_kwargs else None
+        current_constraints = solver_kwargs.get("constraints") if "constraints" in solver_kwargs else None
 
         # Get the constraints used during the last build (if any)
-        previous_constraints = getattr(self, '_build_constraints', None)
+        previous_constraints = getattr(self, "_build_constraints", None)
 
         # Need to rebuild if:
         # 1. fraction is provided
@@ -155,21 +153,16 @@ class pFBA(FBA):
         solver_kwargs_copy = solver_kwargs.copy()
 
         # Remove conflicting arguments that we set explicitly
-        solver_kwargs_copy.pop('linear', None)
-        solver_kwargs_copy.pop('minimize', None)
+        solver_kwargs_copy.pop("linear", None)
+        solver_kwargs_copy.pop("minimize", None)
 
         # Solve the parsimonious problem
-        solution = self.solver.solve(
-            linear=self._linear_objective,
-            minimize=self._minimize,
-            **solver_kwargs_copy
-        )
+        solution = self.solver.solve(linear=self._linear_objective, minimize=self._minimize, **solver_kwargs_copy)
 
         # Filter out auxiliary variables from solution if present
-        if hasattr(solution, 'values') and solution.values:
+        if hasattr(solution, "values") and solution.values:
             # Keep only original reaction variables (not _pos/_neg auxiliary ones)
-            filtered_values = {k: v for k, v in solution.values.items()
-                             if not ('_pos' in k or '_neg' in k)}
+            filtered_values = {k: v for k, v in solution.values.items() if not ("_pos" in k or "_neg" in k)}
             # Create a new solution with filtered values
             solution.values = filtered_values
 

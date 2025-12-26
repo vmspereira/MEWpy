@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Union, Tuple
+from typing import TYPE_CHECKING, Tuple, Union
 
 if TYPE_CHECKING:
     from mewpy.germ.variables import Variable
@@ -20,7 +20,7 @@ def initialize_coefficients(coefficients: Union[Tuple[float, ...], None]) -> Tup
         return tuple(coefficients)
 
 
-def coefficients_setter(instance: 'Variable', value: Union[Tuple[float, float], Tuple[float], float]):
+def coefficients_setter(instance: "Variable", value: Union[Tuple[float, float], Tuple[float], float]):
     """
     Setter for the coefficients attribute of a variable.
     :param instance: the variable instance
@@ -40,15 +40,15 @@ def coefficients_setter(instance: 'Variable', value: Union[Tuple[float, float], 
         value = tuple(value)
 
     else:
-        raise ValueError('Invalid value for coefficients')
+        raise ValueError("Invalid value for coefficients")
 
     # if it is a reaction, bounds must be set
-    if hasattr(instance, '_bounds'):
+    if hasattr(instance, "_bounds"):
         instance._bounds = value
 
     # if it is a metabolite, the bounds coefficient of the exchange reaction must be returned
-    elif hasattr(instance, 'exchange_reaction'):
-        if hasattr(instance.exchange_reaction, '_bounds'):
+    elif hasattr(instance, "exchange_reaction"):
+        if hasattr(instance.exchange_reaction, "_bounds"):
             instance.exchange_reaction._bounds = value
 
     else:

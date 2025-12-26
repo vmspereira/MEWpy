@@ -20,23 +20,21 @@ Kinetic Modeling Module
 Authors: Vitor Pereira
 ##############################################################################
 """
-from mewpy.util.parsing import Arithmetic, build_tree, Latex
-from mewpy.util.utilities import AttrDict
-from collections import OrderedDict
 import warnings
-import numpy as np
+from collections import OrderedDict
 from math import *
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
+import numpy as np
+
+from mewpy.util.parsing import Arithmetic, Latex, build_tree
+from mewpy.util.utilities import AttrDict
 
 
 class Compartment(object):
-    """ class for modeling compartments."""
+    """class for modeling compartments."""
 
-    def __init__(self,
-                 comp_id: str,
-                 name: str = None,
-                 external: bool = False,
-                 size: float = 1.0):
+    def __init__(self, comp_id: str, name: str = None, external: bool = False, size: float = 1.0):
         """
         Arguments:
             comp_id (str): a valid unique identifier
@@ -58,12 +56,9 @@ class Compartment(object):
 
 
 class Metabolite(object):
-    """ class for modeling metabolites. """
+    """class for modeling metabolites."""
 
-    def __init__(self,
-                 met_id: str,
-                 name: str = None,
-                 compartment: str = None):
+    def __init__(self, met_id: str, name: str = None, compartment: str = None):
         """
         Arguments:
             met_id (str): a valid unique identifier
@@ -82,10 +77,7 @@ class Metabolite(object):
         return str(self)
 
 
-def calculate_yprime(y,
-                     rate: np.array,
-                     substrates: List[str],
-                     products: List[str]):
+def calculate_yprime(y, rate: np.array, substrates: List[str], products: List[str]):
     """
     It takes the numpy array for y_prime,
     and adds or subtracts the amount in rate to all the substrates or products listed
@@ -121,13 +113,9 @@ def check_positive(y_prime: List[float]):
 
 
 class Rule(object):
-    """Base class for kinetic rules.
-    """
+    """Base class for kinetic rules."""
 
-    def __init__(self,
-                 r_id: str,
-                 law: str,
-                 parameters: Dict[str, float] = dict()):
+    def __init__(self, r_id: str, law: str, parameters: Dict[str, float] = dict()):
         """Creates a new rule
 
         Args:
@@ -174,18 +162,14 @@ class Rule(object):
     def get_parameters(self):
         return self.parameters
 
-    def replace(self, 
-                parameters: Dict[str, Any] = None, 
-                local:bool=True,
-                infix:bool=True,
-                latex:bool=False):
+    def replace(self, parameters: Dict[str, Any] = None, local: bool = True, infix: bool = True, latex: bool = False):
         """Replaces parameters with values taken from a dictionary.
         If no parameter are given for replacement, returns the string representation of the rule
         built from the parsing tree.
 
         Args:
             parameters (dict, optional): Replacement dictionary. Defaults to None.
-            local (bool, optional): use parameter values defined in the rule 
+            local (bool, optional): use parameter values defined in the rule
         Returns:
             str: the kinetic rule.
         """
@@ -207,33 +191,36 @@ class Rule(object):
         param.update(parameters)
 
         if len(param.keys()) != len(self.parse_parameters()):
-            s = set(self.parse_parameters())-set(param.keys())
+            s = set(self.parse_parameters()) - set(param.keys())
             raise ValueError(f"Values missing for parameters: {s}")
         t = self.replace(param)
         rate = eval(t)
         return rate
 
     def __str__(self):
-        return self.law.replace(' ', '')
+        return self.law.replace(" ", "")
 
     def __repr__(self):
-        return self.replace().replace(' ', '')
+        return self.replace().replace(" ", "")
 
     def _repr_latex_(self):
-        s,_ = self.tree.to_latex()
+        s, _ = self.tree.to_latex()
         return "$$ %s $$" % (s)
+
 
 class KineticReaction(Rule):
 
-    def __init__(self,
-                 r_id: str,
-                 law: str,
-                 name: str = None,
-                 stoichiometry: dict = {},
-                 parameters: dict = {},
-                 modifiers: list = [],
-                 reversible: bool = True,
-                 functions:dict={}):
+    def __init__(
+        self,
+        r_id: str,
+        law: str,
+        name: str = None,
+        stoichiometry: dict = {},
+        parameters: dict = {},
+        modifiers: list = [],
+        reversible: bool = True,
+        functions: dict = {},
+    ):
         """Kinetic reaction rule.
 
         Args:
@@ -253,8 +240,7 @@ class KineticReaction(Rule):
         self.parameter_distributions = {}
         self.reversible = reversible
         self._model = None
-        self.functions = {k:v[1] for k,v in functions.items()}
-
+        self.functions = {k: v[1] for k, v in functions.items()}
 
     @property
     def tree(self):
@@ -310,7 +296,7 @@ class KineticReaction(Rule):
         r_map.update(m)
 
         self
-        
+
         return self.replace(r_map, local=local)
 
     def calculate_rate(self, substrates={}, parameters={}):
@@ -324,7 +310,7 @@ class KineticReaction(Rule):
         # user defined
         param.update(substrates)
         param.update(parameters)
-        s = set(self.parse_parameters())-set(param.keys())
+        s = set(self.parse_parameters()) - set(param.keys())
         if s:
             # check for missing parameters distributions
             r = s - set(self.parameter_distributions.keys())
@@ -358,22 +344,20 @@ class KineticReaction(Rule):
         return y_prime
 
     def set_parameter_defaults_to_mean(self):
-        """Sets not defined parameters to the median of a distribution.
-        """
+        """Sets not defined parameters to the median of a distribution."""
         for name in self.parameter_distributions:
             if name not in self.parameters:
-                if (type(self.parameter_distributions[name]) == list or
-                        type(self.parameter_distributions[name]) == tuple):
-                    self.parameters[name] = (self.parameter_distributions[name][0] +
-                                             self.parameter_distributions[name][1]) / 2
+                if isinstance(self.parameter_distributions[name], (list, tuple)):
+                    self.parameters[name] = (
+                        self.parameter_distributions[name][0] + self.parameter_distributions[name][1]
+                    ) / 2
                 else:
                     self.parameters[name] = self.parameter_distributions[name].mean()
 
 
 class ODEModel:
     def __init__(self, model_id):
-        """ ODE Model.
-        """
+        """ODE Model."""
         self.id = model_id
         self.metabolites = OrderedDict()
         self.compartments = OrderedDict()
@@ -387,7 +371,7 @@ class ODEModel:
         self.variable_params = OrderedDict()
         self.assignment_rules = OrderedDict()
         self.function_definition = OrderedDict()
-        
+
         self._func_str = None
         self._constants = None
         self._m_r_lookup = None
@@ -396,7 +380,7 @@ class ODEModel:
         self._func_str = None
 
     def add_compartment(self, compartment, replace=True):
-        """ Add a compartment to the model.
+        """Add a compartment to the model.
         Arguments:
             compartment (Compartment): compartment to add
             replace (bool): replace previous compartment with same id (default: True)
@@ -406,7 +390,7 @@ class ODEModel:
         self.compartments[compartment.id] = compartment
 
     def add_metabolite(self, metabolite, replace=True):
-        """ Add a metabolite to the model.
+        """Add a metabolite to the model.
         Arguments:
             metabolite (Metabolite): metabolite to add
             replace (bool): replace previous metabolite with same id (default: True)
@@ -416,8 +400,10 @@ class ODEModel:
             raise RuntimeError(f"Metabolite {metabolite.id} already exists.")
 
         if metabolite.compartment not in self.compartments:
-            raise RuntimeError(f"Metabolite {metabolite.id} \
-                has invalid compartment {metabolite.compartment}.")
+            raise RuntimeError(
+                f"Metabolite {metabolite.id} \
+                has invalid compartment {metabolite.compartment}."
+            )
 
         self.metabolites[metabolite.id] = metabolite
 
@@ -430,34 +416,36 @@ class ODEModel:
 
     def get_reaction(self, r_id):
         if r_id not in self.ratelaws:
-            raise ValueError(f'Unknown reaction {r_id}')
+            raise ValueError(f"Unknown reaction {r_id}")
         r = self.ratelaws[r_id]
-        d = {'id': r_id,
-             'name': r.name,
-             'stoichiometry': r.stoichiometry,
-             'law': r.law,
-             'reversible': r.reversible,
-             'parameters': r.parameters,
-             'modifiers': r.modifiers
-             }
+        d = {
+            "id": r_id,
+            "name": r.name,
+            "stoichiometry": r.stoichiometry,
+            "law": r.law,
+            "reversible": r.reversible,
+            "parameters": r.parameters,
+            "modifiers": r.modifiers,
+        }
         return AttrDict(d)
 
     def get_metabolite(self, m_id):
         if m_id not in self.metabolites:
-            raise ValueError(f'Unknown metabolite {m_id}')
-        d = {'id': m_id,
-             'name': self.metabolites[m_id].name,
-             'compartment': self.metabolites[m_id].compartment,
-             'formula': self.metabolites[m_id].metadata.get('FORMULA', ''),
-             'charge': self.metabolites[m_id].metadata.get('CHARGE', ''),
-             'y0': self.concentrations[m_id]
-             }
+            raise ValueError(f"Unknown metabolite {m_id}")
+        d = {
+            "id": m_id,
+            "name": self.metabolites[m_id].name,
+            "compartment": self.metabolites[m_id].compartment,
+            "formula": self.metabolites[m_id].metadata.get("FORMULA", ""),
+            "charge": self.metabolites[m_id].metadata.get("CHARGE", ""),
+            "y0": self.concentrations[m_id],
+        }
         return AttrDict(d)
 
     def find(self, pattern=None, sort=False):
         """A user friendly method to find reactionsin the model.
 
-        :param pattern: The pattern which can be a regular expression, 
+        :param pattern: The pattern which can be a regular expression,
             defaults to None in which case all entries are listed.
         :type pattern: str, optional
         :param sort: if the search results should be sorted, defaults to False
@@ -468,8 +456,9 @@ class ODEModel:
         values = list(self.reactions.keys())
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -478,6 +467,7 @@ class ODEModel:
             values.sort()
 
         import pandas as pd
+
         data = [self.get_reaction(x) for x in values]
 
         if data:
@@ -493,7 +483,7 @@ class ODEModel:
     def find_metabolites(self, pattern=None, sort=False):
         """A user friendly method to find metabolites in the model.
 
-        :param pattern: The pattern which can be a regular expression, 
+        :param pattern: The pattern which can be a regular expression,
             defaults to None in which case all entries are listed.
         :type pattern: str, optional
         :param sort: if the search results should be sorted, defaults to False
@@ -504,8 +494,9 @@ class ODEModel:
         values = list(self.metabolites.keys())
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -514,6 +505,7 @@ class ODEModel:
             values.sort()
 
         import pandas as pd
+
         data = [self.get_metabolite(x) for x in values]
 
         if data:
@@ -552,7 +544,7 @@ class ODEModel:
         if r_id in self.ratelaws.keys():
             return self.ratelaws[r_id]
         else:
-            raise ValueError('Reaction has no rate law.')
+            raise ValueError("Reaction has no rate law.")
 
     def set_assignment_rule(self, p_id: str, rule: Rule):
         if p_id in self.variable_params or p_id in self.metabolites:
@@ -579,7 +571,7 @@ class ODEModel:
 
                 full_id = f"{p_id}"
                 if full_id in constants:
-                    warnings.warn(f'renaming {p_id} to {r_id}_{p_id}')
+                    warnings.warn(f"renaming {p_id} to {r_id}_{p_id}")
                     full_id = f"{r_id}_{p_id}"
                     law.rename_parameter(f"{p_id}", f"{r_id}_{p_id}")
                 constants[full_id] = value
@@ -597,7 +589,7 @@ class ODEModel:
         return self._m_r_lookup
 
     def print_balance(self, m_id, factors=None):
-        """Returns a string representation of the mass balance equation 
+        """Returns a string representation of the mass balance equation
            of a metabolite
 
         Args:
@@ -616,19 +608,14 @@ class ODEModel:
             v = coeff * f if coeff > 0 else coeff
             terms.append(f"{v:+g} * r['{r_id}']")
 
-        if (f == 0 or
-            len(terms) == 0 or
-            (self.metabolites[m_id].constant and
-             self.metabolites[m_id].boundary
-             )):
+        if f == 0 or len(terms) == 0 or (self.metabolites[m_id].constant and self.metabolites[m_id].boundary):
             expr = "0"
         else:
             expr = f"1/p['{c_id}'] * ({' '.join(terms)})"
         return expr
 
     def get_parameters(self, exclude_compartments=False):
-        """Returns a dictionary of the model parameters
-        """
+        """Returns a dictionary of the model parameters"""
         if not self._constants:
             self.merge_constants()
         parameters = self._constants.copy()
@@ -640,7 +627,7 @@ class ODEModel:
     def find_parameters(self, pattern=None, sort=False):
         """A user friendly method to find parameters in the model.
 
-        :param pattern: The pattern which can be a regular expression, 
+        :param pattern: The pattern which can be a regular expression,
             defaults to None in which case all entries are listed.
         :type pattern: str, optional
         :param sort: if the search results should be sorted, defaults to False
@@ -652,8 +639,9 @@ class ODEModel:
         values = list(params.keys())
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -662,20 +650,20 @@ class ODEModel:
             values.sort()
 
         import pandas as pd
+
         data = [(x, params[x]) for x in values]
 
         if data:
-            df = pd.DataFrame(data, columns=['Parameter', 'Value'])
+            df = pd.DataFrame(data, columns=["Parameter", "Value"])
             df = df.set_index(df.columns[0])
         else:
             df = pd.DataFrame()
         return df
 
-
     def find_functions(self, pattern=None, sort=False):
         """A user friendly method to find functions in the model.
 
-        :param pattern: The pattern which can be a regular expression, 
+        :param pattern: The pattern which can be a regular expression,
             defaults to None in which case all entries are listed.
         :type pattern: str, optional
         :param sort: if the search results should be sorted, defaults to False
@@ -687,8 +675,9 @@ class ODEModel:
         values = list(params.keys())
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -697,16 +686,15 @@ class ODEModel:
             values.sort()
 
         import pandas as pd
-        data = [(x, ','.join(params[x][0]), str(params[x][1])) for x in values]
+
+        data = [(x, ",".join(params[x][0]), str(params[x][1])) for x in values]
 
         if data:
-            df = pd.DataFrame(data, columns=['Name', 'Arguments','Body'])
+            df = pd.DataFrame(data, columns=["Name", "Arguments", "Body"])
             df = df.set_index(df.columns[0])
         else:
             df = pd.DataFrame()
         return df
-
-
 
     def deriv(self, t, y):
         """
@@ -714,15 +702,15 @@ class ODEModel:
 
         For each step when the model is run, the rate for each reaction is calculated
         and changes in substrates and products calculated.
-        These are returned by this function as y_prime, which are added to y which is 
+        These are returned by this function as y_prime, which are added to y which is
         returned by run_model
 
         Args:
             t : time, not used in this function but required
-            y (list): ordered list of substrate values (the order 
-            is the same as the metabolites order) at this current timepoint. 
+            y (list): ordered list of substrate values (the order
+            is the same as the metabolites order) at this current timepoint.
                Has the same order as self.run_model_species_names
-               
+
         Returns:
             y_prime - ordered list the same as y, y_prime is the new set of y's for this timepoint.
         """
@@ -730,13 +718,13 @@ class ODEModel:
         m_y = OrderedDict(zip(self.metabolites, y))
         yprime = np.zeros(len(y))
         for _, reaction in self.ratelaws.items():
-            yprime += reaction.reaction(m_y, self.get_parameters(),p)
+            yprime += reaction.reaction(m_y, self.get_parameters(), p)
         return yprime.tolist()
 
     def build_ode(self, factors: dict = None, local: bool = False) -> str:
-        """ 
+        """
         Auxiliary function to build the ODE as a string
-        to be evaluated by eval, as an alternative to deriv. 
+        to be evaluated by eval, as an alternative to deriv.
         Allows the inclusion of factors to be applied to the parameters
 
         Args:
@@ -744,7 +732,7 @@ class ODEModel:
             local (bool): enforces the usage of parameter values defined within
             the reactions
         Returns:
-            func_str the right-hand side of the system. 
+            func_str the right-hand side of the system.
         """
 
         m = {m_id: f"x[{i}]" for i, m_id in enumerate(self.metabolites)}
@@ -753,26 +741,29 @@ class ODEModel:
         v = {p_id: f"v['{p_id}']" for p_id in self.variable_params}
         rmap = OrderedDict({**m, **c, **p, **v})
 
-        parsed_rates = {r_id: ratelaw.parse_law(rmap, local=local)
-                        for r_id, ratelaw in self.ratelaws.items()}
+        parsed_rates = {r_id: ratelaw.parse_law(rmap, local=local) for r_id, ratelaw in self.ratelaws.items()}
 
         r = {r_id: f"({parsed_rates[r_id]})" for r_id in self.ratelaws.keys()}
 
         rmap.update(r)
 
-        rate_exprs = [' '*4+"r['{}'] = {}".format(r_id, parsed_rates[r_id])
-                      for r_id in self.ratelaws.keys()]
+        rate_exprs = [" " * 4 + "r['{}'] = {}".format(r_id, parsed_rates[r_id]) for r_id in self.ratelaws.keys()]
 
         # TODO: review factores....
-        balances = [' '*8 + self.print_balance(m_id, factors=factors) for m_id in self.metabolites]
+        balances = [" " * 8 + self.print_balance(m_id, factors=factors) for m_id in self.metabolites]
 
-        func = 'def ode_func(t, x, r, p, v)'
-        func_str = func+':\n\n' + \
-            '\n'.join(rate_exprs) + '\n\n' + \
-            '    dxdt = [\n' + \
-            ',\n'.join(balances) + '\n' + \
-            '    ]\n\n' + \
-            '    return dxdt\n'
+        func = "def ode_func(t, x, r, p, v)"
+        func_str = (
+            func
+            + ":\n\n"
+            + "\n".join(rate_exprs)
+            + "\n\n"
+            + "    dxdt = [\n"
+            + ",\n".join(balances)
+            + "\n"
+            + "    ]\n\n"
+            + "    return dxdt\n"
+        )
 
         self._func_str = func_str
         return self._func_str
@@ -796,8 +787,8 @@ class ODEModel:
         v = self.variable_params.copy()
         r = r_dict if r_dict is not None else dict()
 
-        np.seterr(divide='ignore', invalid='ignore')
+        np.seterr(divide="ignore", invalid="ignore")
         exec(self.build_ode(factors), globals())
-        ode_func = eval('ode_func')
-        
+        ode_func = eval("ode_func")
+
         return lambda t, y: ode_func(t, y, r, p, v)

@@ -1,4 +1,4 @@
-from typing import Union, List, Iterable
+from typing import Iterable, List, Union
 
 from mewpy.solvers.solver import VarType
 
@@ -7,13 +7,14 @@ from .linear_utils import Node
 
 class VariableContainer:
 
-    def __init__(self,
-                 name: str,
-                 sub_variables: List[str],
-                 lbs: List[Union[int, float]],
-                 ubs: List[Union[int, float]],
-                 variables_type: List[VarType]):
-
+    def __init__(
+        self,
+        name: str,
+        sub_variables: List[str],
+        lbs: List[Union[int, float]],
+        ubs: List[Union[int, float]],
+        variables_type: List[VarType],
+    ):
         """
 
         Internal use only
@@ -55,9 +56,9 @@ class VariableContainer:
         return len(self.sub_variables)
 
     def __str__(self):
-        return f'Variable {self.name}'
+        return f"Variable {self.name}"
 
-    def __eq__(self, other: 'VariableContainer'):
+    def __eq__(self, other: "VariableContainer"):
         return self.name == other.name
 
     def __hash__(self):
@@ -89,10 +90,10 @@ class VariableContainer:
 
     def items(self):
 
-        return ((var, (lb, ub, var_type)) for var, lb, ub, var_type in zip(self.sub_variables,
-                                                                           self.lbs,
-                                                                           self.ubs,
-                                                                           self.variables_type))
+        return (
+            (var, (lb, ub, var_type))
+            for var, lb, ub, var_type in zip(self.sub_variables, self.lbs, self.ubs, self.variables_type)
+        )
 
     def to_node(self):
 
@@ -101,12 +102,7 @@ class VariableContainer:
 
 class ConstraintContainer:
 
-    def __init__(self,
-                 name,
-                 coefs,
-                 lbs,
-                 ubs):
-
+    def __init__(self, name, coefs, lbs, ubs):
         """
 
         Internal use only
@@ -149,9 +145,9 @@ class ConstraintContainer:
         return len(self.coefs)
 
     def __str__(self):
-        return f'Constraint {self.name}'
+        return f"Constraint {self.name}"
 
-    def __eq__(self, other: 'ConstraintContainer'):
+    def __eq__(self, other: "ConstraintContainer"):
         return self.name == other.name
 
     def __hash__(self):

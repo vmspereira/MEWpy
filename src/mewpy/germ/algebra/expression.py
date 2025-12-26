@@ -1,28 +1,25 @@
 from itertools import product
-from typing import Dict, Union, TYPE_CHECKING, Callable, Any, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Type, Union
 
 import pandas as pd
 
-from .algebra_utils import solution_decode, _walk
+from .algebra_utils import _walk, solution_decode
 from .parsing import tokenize
-from .symbolic import NoneAtom, Symbolic, Symbol
+from .symbolic import NoneAtom, Symbol, Symbolic
 
 if TYPE_CHECKING:
-    from mewpy.germ.variables import Gene, Metabolite, Reaction, Regulator, Interaction, Target, Variable
+    from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target, Variable
 
 
 class Expression:
 
-    def __init__(self,
-                 symbolic: Symbolic = None,
-                 variables: Dict[str, Union['Gene',
-                                            'Interaction',
-                                            'Metabolite',
-                                            'Reaction',
-                                            'Regulator',
-                                            'Target',
-                                            'Variable']] = None):
-
+    def __init__(
+        self,
+        symbolic: Symbolic = None,
+        variables: Dict[
+            str, Union["Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "Variable"]
+        ] = None,
+    ):
         """
         Expression allows high-level programming of symbolic algebra (logic and math)
         using GERM model variables (e.g. Gene, Interaction, Metabolite, Reaction, Regulator, Target, etc).
@@ -50,12 +47,9 @@ class Expression:
             variables = {}
 
         self._symbolic: Symbolic = symbolic
-        self._variables: Dict[str, Union['Gene',
-                                         'Interaction',
-                                         'Metabolite',
-                                         'Reaction',
-                                         'Regulator',
-                                         'Target']] = variables
+        self._variables: Dict[str, Union["Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]] = (
+            variables
+        )
 
         self._link_variables_to_symbols()
 
@@ -64,7 +58,7 @@ class Expression:
         for symbol in self.symbols.values():
 
             if symbol.name not in self._variables:
-                raise ValueError('Expression set with incorrect variables or symbolic expression')
+                raise ValueError("Expression set with incorrect variables or symbolic expression")
 
             else:
                 symbol.model_variable = self._variables[symbol.name]
@@ -81,7 +75,7 @@ class Expression:
         return self._symbolic
 
     @property
-    def variables(self) -> Dict[str, Union['Gene', 'Interaction', 'Metabolite', 'Reaction', 'Regulator', 'Target']]:
+    def variables(self) -> Dict[str, Union["Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]]:
         """
         Variables dictionary property
         :return: A copy of the GERM model variables dictionary
@@ -92,13 +86,9 @@ class Expression:
     # Static setters
     # -----------------------------------------------------------------------------
     @variables.setter
-    def variables(self, value: Dict[str, Union['Gene',
-                                               'Interaction',
-                                               'Metabolite',
-                                               'Reaction',
-                                               'Regulator',
-                                               'Target']]):
-
+    def variables(
+        self, value: Dict[str, Union["Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]]
+    ):
         """
         Variables setter
         :param value: A dictionary of GERM model variables. The GERM model variables that must be associated
@@ -114,8 +104,7 @@ class Expression:
     # Dynamic attributes
     # -----------------------------------------------------------------------------
     @property
-    def symbols(self) -> Dict[str, 'Symbol']:
-
+    def symbols(self) -> Dict[str, "Symbol"]:
         """
         Symbols property.
         :return: A dictionary containing all symbols in the symbolic algebra expression
@@ -172,7 +161,6 @@ class Expression:
         return self.symbolic.__next__()
 
     def walk(self, reverse=False):
-
         """
         Iterate/walk over Symbolic algebra expression yielding Symbolic-type symbols or operators.
         Parent operators are iterated first by default.
@@ -183,14 +171,15 @@ class Expression:
 
         return _walk(self.symbolic, reverse)
 
-    def __call__(self,
-                 values: Dict[str, float],
-                 coefficient: float = None,
-                 operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
-                 missing_value: float = 0.0,
-                 decoder: dict = None,
-                 **kwargs) -> Any:
-
+    def __call__(
+        self,
+        values: Dict[str, float],
+        coefficient: float = None,
+        operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
+        missing_value: float = 0.0,
+        decoder: dict = None,
+        **kwargs,
+    ) -> Any:
         """
         Evaluate a Symbolic algebra expression based on
         the coefficients/values of the Symbolic symbols - GERM model variables.
@@ -213,21 +202,24 @@ class Expression:
 
         :return: The solution of the Symbolic expression evaluation as int, float or Any type.
         """
-        return self.evaluate(values=values,
-                             coefficient=coefficient,
-                             operators=operators,
-                             missing_value=missing_value,
-                             decoder=decoder,
-                             **kwargs)
+        return self.evaluate(
+            values=values,
+            coefficient=coefficient,
+            operators=operators,
+            missing_value=missing_value,
+            decoder=decoder,
+            **kwargs,
+        )
 
-    def evaluate(self,
-                 values: Dict[str, float],
-                 coefficient: float = None,
-                 operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
-                 missing_value: float = 0.0,
-                 decoder: dict = None,
-                 **kwargs) -> Any:
-
+    def evaluate(
+        self,
+        values: Dict[str, float],
+        coefficient: float = None,
+        operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
+        missing_value: float = 0.0,
+        decoder: dict = None,
+        **kwargs,
+    ) -> Any:
         """
         Evaluate a Symbolic algebra expression based on
         the coefficients/values of the Symbolic symbols - GERM model variables.
@@ -266,12 +258,14 @@ class Expression:
 
             return res
 
-    def truth_table(self,
-                    values: Dict[str, float] = None,
-                    strategy: str = 'max',
-                    coefficient: float = None,
-                    operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
-                    decoder: Dict[Any, Any] = None) -> pd.DataFrame:
+    def truth_table(
+        self,
+        values: Dict[str, float] = None,
+        strategy: str = "max",
+        coefficient: float = None,
+        operators: Union[Dict[Type[Symbolic], Callable], Dict[Type[Symbolic], Any]] = None,
+        decoder: Dict[Any, Any] = None,
+    ) -> pd.DataFrame:
         """
         It calculates the truth table for this expression. The truth table is composed by the combination of values
         taken by empty, numeric and symbolic variables available in the algebra expression.
@@ -312,34 +306,30 @@ class Expression:
                 if var.is_metabolite() and var.exchange_reaction is not None and var.exchange_reaction.id in values:
                     state[var_id] = values[var.exchange_reaction.id]
                 else:
-                    if strategy == 'max':
+                    if strategy == "max":
                         state[var_id] = max(var.coefficients)
-                    elif strategy == 'min':
+                    elif strategy == "min":
                         state[var_id] = min(var.coefficients)
                     else:
                         state[var_id] = var.coefficients
 
         truth_table = []
-        if strategy in ('max', 'min'):
-            state['result'] = self.evaluate(values=state,
-                                            coefficient=coefficient,
-                                            operators=operators,
-                                            decoder=decoder)
+        if strategy in ("max", "min"):
+            state["result"] = self.evaluate(values=state, coefficient=coefficient, operators=operators, decoder=decoder)
             truth_table.append(state)
 
-        elif strategy == 'all':
+        elif strategy == "all":
             variables = list(self.variables.keys())
 
             for mid_state in product(*state.values()):
                 mid_state = dict(list(zip(variables, mid_state)))
 
-                mid_state['result'] = self.evaluate(values=mid_state,
-                                                    coefficient=coefficient,
-                                                    operators=operators,
-                                                    decoder=decoder)
+                mid_state["result"] = self.evaluate(
+                    values=mid_state, coefficient=coefficient, operators=operators, decoder=decoder
+                )
                 truth_table.append(mid_state)
 
         else:
-            raise ValueError('coefficients must be max, min or all')
+            raise ValueError("coefficients must be max, min or all")
 
         return pd.DataFrame(truth_table)

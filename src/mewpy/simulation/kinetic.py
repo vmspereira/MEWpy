@@ -20,34 +20,35 @@ Kinetic simulation module
 Author: Vitor Pereira
 ##############################################################################
 """
-from multiprocessing import Process, Manager
-from collections import OrderedDict
-from mewpy.simulation.simulation import SimulationResult, SimulationInterface
-from mewpy.model.kinetic import ODEModel
-from mewpy.solvers import (KineticConfigurations,
-                           SolverConfigurations,
-                           ODEStatus,
-                           ode_solver_instance,
-                           get_default_ode_solver)
 import warnings
+from collections import OrderedDict
+from multiprocessing import Manager, Process
+from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+
 import numpy as np
-from typing import List, Dict, Tuple, Union, TYPE_CHECKING
+
+from mewpy.model.kinetic import ODEModel
+from mewpy.simulation.simulation import SimulationInterface, SimulationResult
+from mewpy.solvers import (
+    KineticConfigurations,
+    ODEStatus,
+    SolverConfigurations,
+    get_default_ode_solver,
+    ode_solver_instance,
+)
 
 if TYPE_CHECKING:
     import pandas
 
 
-def kinetic_solve(model: ODEModel,
-                  y0: List[float],
-                  time_steps: List[float],
-                  parameters: Dict[str, float] = None,
-                  factors: Dict[str, float] = None
-                  ) -> Tuple[ODEStatus,
-                             Dict['str', float],
-                             Dict['str', float],
-                             List[float],
-                             List[float]]:
-    """Kinetic solve method that invokes an available ODE solver. 
+def kinetic_solve(
+    model: ODEModel,
+    y0: List[float],
+    time_steps: List[float],
+    parameters: Dict[str, float] = None,
+    factors: Dict[str, float] = None,
+) -> Tuple[ODEStatus, Dict["str", float], Dict["str", float], List[float], List[float]]:
+    """Kinetic solve method that invokes an available ODE solver.
 
     :param model: The kinetic model
     :type model: ODEModel
@@ -63,7 +64,7 @@ def kinetic_solve(model: ODEModel,
     :rtype: _type_
     """
 
-    rates = OrderedDict()    
+    rates = OrderedDict()
     f = model.get_ode(r_dict=rates, params=parameters, factors=factors)
     solver = ode_solver_instance(f, KineticConfigurations.SOLVER_METHOD)
 
@@ -75,17 +76,19 @@ def kinetic_solve(model: ODEModel,
                 return ODEStatus.ERROR, {}, {}
 
         # values bellow solver precision will be set to 0
-        rates.update({k: 0 for k, v in rates.items() if (
-                    v < SolverConfigurations.ABSOLUTE_TOL
-                    and v > - SolverConfigurations.ABSOLUTE_TOL)})
+        rates.update(
+            {
+                k: 0
+                for k, v in rates.items()
+                if (v < SolverConfigurations.ABSOLUTE_TOL and v > -SolverConfigurations.ABSOLUTE_TOL)
+            }
+        )
         conc = OrderedDict(zip(model.metabolites.keys(), C))
-        
+
         return ODEStatus.OPTIMAL, rates, conc, t, y
-        
-    except Exception as e:
+
+    except Exception:
         return ODEStatus.ERROR, None, None, None, None
-    
-    
 
 
 class KineticThread(Process):
@@ -94,12 +97,14 @@ class KineticThread(Process):
     with thread.join(timeout)
     """
 
-    def __init__(self,
-                 model: ODEModel,
-                 initial_concentrations: List[float] = None,
-                 time_steps: List[float] = None,
-                 parameters: Dict[str, float] = None,
-                 factors: Dict[str, float] = None) -> None:
+    def __init__(
+        self,
+        model: ODEModel,
+        initial_concentrations: List[float] = None,
+        time_steps: List[float] = None,
+        parameters: Dict[str, float] = None,
+        factors: Dict[str, float] = None,
+    ) -> None:
         """
         TSolves the ODE inside a thread enabling to impose a timeout limit
         with thread.join(timeout)
@@ -124,7 +129,7 @@ class KineticThread(Process):
         self.time_steps = time_steps
 
         self.result = Manager().dict()
-        self.result['status'] = None
+        self.result["status"] = None
         self.result["rates"] = None
         self.result["concentrations"] = None
         self.result["t"] = None
@@ -132,31 +137,31 @@ class KineticThread(Process):
 
     def run(self):
         try:
-            status, rates, concentrations, t, y = kinetic_solve(self.model,
-                                                                self.initial_concentrations,
-                                                                self.time_steps,
-                                                                self.parameters,
-                                                                self.factors)
-            self.result['status'] = status
+            status, rates, concentrations, t, y = kinetic_solve(
+                self.model, self.initial_concentrations, self.time_steps, self.parameters, self.factors
+            )
+            self.result["status"] = status
             self.result["rates"] = rates
             self.result["concentrations"] = concentrations
             self.result["t"] = t
             self.result["y"] = y
         except Exception:
-            warnings.warn('Timeout')
+            warnings.warn("Timeout")
         return
 
 
 class KineticSimulationResult(SimulationResult):
 
-    def __init__(self,
-                 model: ODEModel,
-                 status: ODEStatus,
-                 factors: Dict[str, float] = None,
-                 rates: Dict[str, float] = None,
-                 concentrations: List[float] = None,
-                 t: List[float] = None,
-                 y: List[float] = None) -> None:
+    def __init__(
+        self,
+        model: ODEModel,
+        status: ODEStatus,
+        factors: Dict[str, float] = None,
+        rates: Dict[str, float] = None,
+        concentrations: List[float] = None,
+        t: List[float] = None,
+        y: List[float] = None,
+    ) -> None:
         """Result class of a kinetic simulation
 
         :param model: The kinetic model
@@ -181,9 +186,9 @@ class KineticSimulationResult(SimulationResult):
         self.y = y
         if concentrations:
             self.m_indexes = {k: v for v, k in enumerate(concentrations.keys())}
-        else: 
+        else:
             self.m_indexes = None
-            
+
     def get_y(self, m_id):
         if m_id in self.m_indexes:
             return np.array(self.y).T[:, self.m_indexes[m_id]]
@@ -198,14 +203,16 @@ class KineticSimulationResult(SimulationResult):
         :return: the steady-state metabolite concentrations
         :rtype: _type_
         """
-        if format and format == 'df':
+        if format and format == "df":
             import pandas as pd
+
             return pd.DataFrame(self.concentrations)
         else:
             return self.concentrations
 
     def plot(self, met: List[str] = None, size: Tuple[int, int] = None):
         import matplotlib.pyplot as plt
+
         if size:
             plt.rcParams["figure.figsize"] = size
         if not met:
@@ -215,8 +222,7 @@ class KineticSimulationResult(SimulationResult):
         elif isinstance(met, list) and len(met) <= 4:
             _mets = met
         else:
-            raise ValueError('fluxes should be a reaction identifier,' 
-                             'a list of reaction identifiers or None.')
+            raise ValueError("fluxes should be a reaction identifier," "a list of reaction identifiers or None.")
         ax = plt.subplot()
         if len(_mets) != 2:
             for k in _mets:
@@ -224,26 +230,28 @@ class KineticSimulationResult(SimulationResult):
             if len(_mets) == 1:
                 ax.set_ylabel(self.model.get_metabolite(_mets[0]).name)
             else:
-                ax.set_ylabel('Concentrations')
+                ax.set_ylabel("Concentrations")
                 plt.legend()
         else:
             ax.plot(self.t, self.get_y(_mets[0]), label=_mets[0])
             ax2 = plt.twinx(ax)
-            ax2.plot(self.t, self.get_y(_mets[1]), label=_mets[1], color='r')
-            ax.set_ylabel(self.model.get_metabolite(_mets[0]).name, color='b')
-            ax2.set_ylabel(self.model.get_metabolite(_mets[1]).name, color='r')
+            ax2.plot(self.t, self.get_y(_mets[1]), label=_mets[1], color="r")
+            ax.set_ylabel(self.model.get_metabolite(_mets[0]).name, color="b")
+            ax2.set_ylabel(self.model.get_metabolite(_mets[1]).name, color="r")
 
-        ax.set_xlabel('Time')
+        ax.set_xlabel("Time")
         return ax
 
 
 class KineticSimulation(SimulationInterface):
 
-    def __init__(self,
-                 model: ODEModel,
-                 parameters: Dict[str, float] = None,
-                 t_points: List[float] = [0, 1e9],
-                 timeout: int = KineticConfigurations.SOLVER_TIMEOUT) -> None:
+    def __init__(
+        self,
+        model: ODEModel,
+        parameters: Dict[str, float] = None,
+        t_points: List[float] = [0, 1e9],
+        timeout: int = KineticConfigurations.SOLVER_TIMEOUT,
+    ) -> None:
         """Class that runs kinetic simulations
 
         :param model: The kinetic model
@@ -257,7 +265,7 @@ class KineticSimulation(SimulationInterface):
         :type timeout: int, optional
         """
         if not isinstance(model, ODEModel):
-            raise ValueError('model is not an instance of ODEModel.')
+            raise ValueError("model is not an instance of ODEModel.")
         self.model = model
         self.t_points = t_points
         self.timeout = timeout
@@ -287,11 +295,13 @@ class KineticSimulation(SimulationInterface):
         """Returns the time point or span."""
         return self.t_points
 
-    def simulate(self,
-                 parameters: Dict[str, float] = None,
-                 initcon: Dict[str,float] = None,
-                 factors: Dict[str, float] = None,
-                 t_points: List[float] = None) -> KineticSimulationResult:
+    def simulate(
+        self,
+        parameters: Dict[str, float] = None,
+        initcon: Dict[str, float] = None,
+        factors: Dict[str, float] = None,
+        t_points: List[float] = None,
+    ) -> KineticSimulationResult:
         """
         Solve an initial value problem for a system of ODEs.
 
@@ -319,36 +329,34 @@ class KineticSimulation(SimulationInterface):
         time_steps = t_points if t_points else self.get_time_points()
 
         if len(time_steps) == 2:
-            time_steps = np.linspace(time_steps[0],
-                                     time_steps[1],
-                                     num=SolverConfigurations.N_STEPS,
-                                     endpoint=True)
+            time_steps = np.linspace(time_steps[0], time_steps[1], num=SolverConfigurations.N_STEPS, endpoint=True)
 
         if self.timeout:
             try:
-                th = KineticThread(self.model,
-                                   initial_concentrations=initConcentrations,
-                                   time_steps=time_steps,
-                                   parameters=params,
-                                   factors=_factors)
+                th = KineticThread(
+                    self.model,
+                    initial_concentrations=initConcentrations,
+                    time_steps=time_steps,
+                    parameters=params,
+                    factors=_factors,
+                )
 
                 th.start()
                 th.join(self.timeout)
-                status = th.result['status']
-                sstateRates = th.result['rates']
-                sstateConc = th.result['concentrations']
-                t = th.result['t']
-                y = th.result['y']
+                status = th.result["status"]
+                sstateRates = th.result["rates"]
+                sstateConc = th.result["concentrations"]
+                t = th.result["t"]
+                y = th.result["y"]
             except AssertionError as e:
                 raise AssertionError(f"{str(e)}. Installing ray for multiprocessing will solve this issue.")
             except Exception as e:
                 warnings.warn(str(e))
         else:
-            status, sstateRates, sstateConc, t, y = kinetic_solve(self.model,
-                                                                  initConcentrations,
-                                                                  time_steps,
-                                                                  params,
-                                                                  _factors)
+            status, sstateRates, sstateConc, t, y = kinetic_solve(
+                self.model, initConcentrations, time_steps, params, _factors
+            )
 
-        return KineticSimulationResult(self.model, status, factors=_factors, rates=sstateRates,
-                                       concentrations=sstateConc, t=t, y=y)
+        return KineticSimulationResult(
+            self.model, status, factors=_factors, rates=sstateRates, concentrations=sstateConc, t=t, y=y
+        )
