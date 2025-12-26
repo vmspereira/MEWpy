@@ -76,8 +76,30 @@ def sc_score(community, environment=None, min_growth=0.1, n_solutions=100, verbo
             r_id = community.reaction_map[(org_id, rxn)]
             if r_id == community.organisms_biomass[org_id]:
                 continue
-            solver.add_constraint("c_{}_lb".format(r_id), {r_id: 1, org_var: bigM}, ">", 0, update=False)
-            solver.add_constraint("c_{}_ub".format(r_id), {r_id: 1, org_var: -bigM}, "<", 0, update=False)
+
+            # Get original reaction bounds from the organism model
+            original_rxn = sim.get_reaction(rxn)
+            lb = original_rxn.lb
+            ub = original_rxn.ub
+
+            # Use bigM if bounds are infinite
+            if isinf(lb) or lb < -bigM:
+                lb = -bigM
+            if isinf(ub) or ub > bigM:
+                ub = bigM
+
+            # Add Big-M constraints to turn off reactions when organism is absent
+            # Formulation: lb * y_k <= v <= ub * y_k
+            # When y_k = 0: forces v = 0 (reaction off)
+            # When y_k = 1: allows v in [lb, ub] (reaction on)
+
+            if lb < 0:  # Can have negative flux
+                # v >= lb * y_k  =>  v - lb * y_k >= 0
+                solver.add_constraint("c_{}_lb".format(r_id), {r_id: 1, org_var: -lb}, ">", 0, update=False)
+
+            if ub > 0:  # Can have positive flux
+                # v <= ub * y_k  =>  v - ub * y_k <= 0
+                solver.add_constraint("c_{}_ub".format(r_id), {r_id: 1, org_var: -ub}, "<", 0, update=False)
 
     solver.update()
 
