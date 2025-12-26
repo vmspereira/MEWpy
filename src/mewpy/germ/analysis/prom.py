@@ -129,11 +129,7 @@ class PROM(_RegulatoryAnalysisBase):
         solver_constrains = solver_kwargs.get('constraints', {})
 
         # Get reaction bounds from simulator
-        prom_constraints = {}
-        for rxn_id in self.model.reactions:
-            rxn_data = self.model.get_reaction(rxn_id)
-            prom_constraints[rxn_id] = (rxn_data.get('lb', ModelConstants.REACTION_LOWER_BOUND),
-                                       rxn_data.get('ub', ModelConstants.REACTION_UPPER_BOUND))
+        prom_constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
 
         genes = self.model.genes
         state = {gene: 1 for gene in genes}
@@ -152,16 +148,14 @@ class PROM(_RegulatoryAnalysisBase):
 
         # GPR evaluation using changed gene state
         inactive_reactions = {}
-        for rxn_id in target_reactions.keys():
-            gpr = self.model.get_parsed_gpr(rxn_id)
-
-            if gpr.is_none:
+        for reaction in target_reactions.values():
+            if reaction.gpr.is_none:
                 continue
 
-            if gpr.evaluate(values=state):
+            if reaction.gpr.evaluate(values=state):
                 continue
 
-            inactive_reactions[rxn_id] = rxn_id
+            inactive_reactions[reaction.id] = reaction
 
         # For each target regulated by the regulator
         for target in regulator.yield_targets():
@@ -195,10 +189,8 @@ class PROM(_RegulatoryAnalysisBase):
                 # Wild-type flux value
                 wt_flux = reference[reaction.id]
 
-                # Get reaction bounds from simulator
-                rxn_data = self.model.get_reaction(reaction.id)
-                reaction_lower_bound = rxn_data.get('lb', ModelConstants.REACTION_LOWER_BOUND)
-                reaction_upper_bound = rxn_data.get('ub', ModelConstants.REACTION_UPPER_BOUND)
+                # Get reaction bounds
+                reaction_lower_bound, reaction_upper_bound = reaction.bounds
 
                 # Update flux bounds according to probability flux
                 if wt_flux < 0:

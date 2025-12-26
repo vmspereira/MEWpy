@@ -121,11 +121,7 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         result = CoRegResult()
 
         # Get reaction constraints from simulator
-        constraints = {}
-        for rxn_id in self.model.reactions:
-            rxn_data = self.model.get_reaction(rxn_id)
-            constraints[rxn_id] = (rxn_data.get('lb', ModelConstants.REACTION_LOWER_BOUND),
-                                  rxn_data.get('ub', ModelConstants.REACTION_UPPER_BOUND))
+        constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
 
         if metabolites:
             # Update coregflux constraints using metabolite concentrations
@@ -229,11 +225,15 @@ class CoRegFlux(_RegulatoryAnalysisBase):
             solver_kwargs = {}
 
         # Build metabolites and biomass objects
-        if metabolites is not None:
-            metabolites = build_metabolites(model=self.model, metabolites=metabolites)
+        if metabolites is None:
+            metabolites = {}
+        metabolites = build_metabolites(model=self.model, metabolites=metabolites)
 
-        if biomass is not None:
-            biomass = build_biomass(model=self.model, biomass=biomass)
+        if biomass is None:
+            # Calculate initial growth rate if not provided
+            _, growth_rate = _run_and_decode(self, solver_kwargs=solver_kwargs)
+            biomass = growth_rate
+        biomass = build_biomass(model=self.model, biomass=biomass)
 
         # Handle single vs dynamic simulation
         if isinstance(initial_state, dict):
