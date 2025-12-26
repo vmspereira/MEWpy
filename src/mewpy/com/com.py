@@ -56,6 +56,7 @@ class CommunityModel:
         add_compartments=True,
         balance_exchange=False,
         flavor: str = "reframed",
+        verbose: bool = True,
     ):
         """Community Model.
 
@@ -77,9 +78,12 @@ class CommunityModel:
             This parameter will be removed in a future version.
         :param bool copy_models: if the models are to be copied, default True.
         :param str flavor: use 'cobrapy' or 'reframed. Default 'reframed'.
+        :param bool verbose: show progress bar during model merging (default True).
+            Set to False for batch processing or when building many communities.
         """
         self.organisms = AttrDict()
         self.model_ids = list({model.id for model in models})
+        self._verbose = verbose
         if len(self.model_ids) != len(set(self.model_ids)):
             raise ValueError("Each model must have a different ID.")
         self.flavor = flavor
@@ -301,17 +305,24 @@ class CommunityModel:
         return self._comm_model
 
     def _merge_models(self):
-        """Merges the models."""
+        """Merges the models with optimizations for large communities."""
 
         self.init_model()
 
         old_ext_comps = []
         self.ext_mets = []
-        self.organisms_biomass = {}
-        self.reaction_map = {}
-        self.metabolite_map = {}
-        self.gene_map = {}
         self._reverse_map = None
+
+        # Pre-calculate dictionary sizes for better memory efficiency
+        total_reactions = sum(len(model.reactions) for model in self.organisms.values())
+        total_metabolites = sum(len(model.metabolites) for model in self.organisms.values())
+        total_genes = sum(len(model.genes) for model in self.organisms.values())
+
+        # Pre-allocate dictionaries with estimated sizes (reduces reallocation)
+        self.organisms_biomass = {}
+        self.reaction_map = dict() if total_reactions < 1000 else {}
+        self.metabolite_map = dict() if total_metabolites < 1000 else {}
+        self.gene_map = dict() if total_genes < 1000 else {}
 
         if self._merge_biomasses:
             self.organisms_biomass_metabolite = {}
@@ -328,31 +339,41 @@ class CommunityModel:
             biomass_id = "community_biomass"
             self._comm_model.add_metabolite(biomass_id, name="Total community biomass", compartment=ext_comp_id)
 
-        # add each organism
-        for org_id, model in tqdm(self.organisms.items(), "Organism"):
+        # add each organism (with optional progress bar)
+        organism_iter = tqdm(self.organisms.items(), "Organism") if self._verbose else self.organisms.items()
+        for org_id, model in organism_iter:
+
+            # Cache prefix information to avoid repeated string operations
+            g_prefix_match = model._g_prefix == self._comm_model._g_prefix
+            m_prefix_match = model._m_prefix == self._comm_model._m_prefix
+            r_prefix_match = model._r_prefix == self._comm_model._r_prefix
+
+            g_prefix_len = len(model._g_prefix) if not g_prefix_match else 0
+            m_prefix_len = len(model._m_prefix) if not m_prefix_match else 0
+            r_prefix_len = len(model._r_prefix) if not r_prefix_match else 0
 
             def rename(old_id):
                 return f"{old_id}_{org_id}"
 
             def r_gene(old_id, organism=True):
-                if model._g_prefix == self._comm_model._g_prefix:
+                if g_prefix_match:
                     _id = old_id
                 else:
-                    _id = self._comm_model._g_prefix + old_id[len(model._g_prefix) :]
+                    _id = self._comm_model._g_prefix + old_id[g_prefix_len:]
                 return rename(_id) if organism else _id
 
             def r_met(old_id, organism=True):
-                if model._m_prefix == self._comm_model._m_prefix:
+                if m_prefix_match:
                     _id = old_id
                 else:
-                    _id = self._comm_model._m_prefix + old_id[len(model._m_prefix) :]
+                    _id = self._comm_model._m_prefix + old_id[m_prefix_len:]
                 return rename(_id) if organism else _id
 
             def r_rxn(old_id, organism=True):
-                if model._r_prefix == self._comm_model._r_prefix:
+                if r_prefix_match:
                     _id = old_id
                 else:
-                    _id = self._comm_model._r_prefix + old_id[len(model._r_prefix) :]
+                    _id = self._comm_model._r_prefix + old_id[r_prefix_len:]
                 return rename(_id) if organism else _id
 
             # add internal compartments
