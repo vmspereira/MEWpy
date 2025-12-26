@@ -240,7 +240,7 @@ def mu_score(
     return scores
 
 
-def mp_score(community, environment=None, abstol=1e-3):
+def mp_score(community, environment=None, abstol=1e-6):
     """
     Discover metabolites which species can produce in community
     Zelezniak A. et al, Metabolic dependencies drive species co-occurrence in diverse microbial communities (PNAS 2015)

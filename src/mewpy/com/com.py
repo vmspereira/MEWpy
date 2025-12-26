@@ -210,12 +210,14 @@ class CommunityModel:
             self._reverse_map.update({v: k for k, v in self.gene_map.items()})
             return self._reverse_map
 
-    def get_organisms_biomass(self):
-        return self.organisms_biomass
-
     def set_abundance(self, abundances: Dict[str, float], rebuild=False):
         if not self._merge_biomasses:
             raise ValueError("The community model has no merged biomass equation")
+        # Validate organism IDs
+        invalid_orgs = set(abundances.keys()) - set(self.organisms.keys())
+        if invalid_orgs:
+            raise ValueError(f"Unknown organism IDs: {invalid_orgs}. "
+                             f"Valid organisms are: {set(self.organisms.keys())}")
         if any([x < 0 for x in abundances.values()]):
             raise ValueError("All abundance value need to be non negative.")
         if sum(list(abundances.values())) == 0:

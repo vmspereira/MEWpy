@@ -258,17 +258,48 @@ def build_problem(community, growth=1, bigM=None):
     return solver
 
 
-def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30, abs_tol=1e-3, constraints=None):
+def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30,
+                  abs_tol=1e-6, rel_tol=1e-4, constraints=None, raise_on_fail=False):
+    """
+    Binary search to find maximum community growth rate.
+
+    Args:
+        solver: Solver instance with update_growth method
+        objective: Objective dictionary
+        obj_frac: Fraction of optimal growth to use (default 1.0)
+        minimize: Whether to minimize objective (default False)
+        max_iters: Maximum iterations (default 30)
+        abs_tol: Absolute tolerance for convergence (default 1e-6)
+        rel_tol: Relative tolerance for convergence (default 1e-4, i.e., 0.01%)
+        constraints: Additional constraints
+        raise_on_fail: Raise exception on non-convergence (default False for backward compatibility)
+
+    Returns:
+        Solution object
+
+    Raises:
+        RuntimeError: If raise_on_fail=True and binary search does not converge
+        ValueError: If community has no feasible growth (all attempts infeasible)
+    """
     previous_value = 0
     value = 1
     fold = 2
     feasible = False
     last_feasible = 0
+    converged = False
 
     for i in range(max_iters):
         diff = value - previous_value
 
-        if diff < abs_tol:
+        # Check convergence with both absolute and relative tolerance
+        # Use absolute tolerance for small growth rates, relative for large
+        if last_feasible > 0:
+            rel_diff = abs(diff) / last_feasible
+            if abs(diff) < abs_tol or rel_diff < rel_tol:
+                converged = True
+                break
+        elif abs(diff) < abs_tol:
+            converged = True
             break
 
         if feasible:
@@ -285,14 +316,29 @@ def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30, a
 
         feasible = sol.status == Status.OPTIMAL
 
+    # Check if we found any feasible solution
+    if last_feasible == 0:
+        raise ValueError("Community has no viable growth rate (all attempts infeasible). "
+                         "Check that organisms can grow and have compatible metabolic capabilities.")
+
+    # Final solve at optimal growth rate
     if feasible:
         solver.update_growth(obj_frac * value)
     else:
         solver.update_growth(obj_frac * last_feasible)
     sol = solver.solve(objective, minimize=minimize, constraints=constraints)
 
-    if i == max_iters - 1:
-        warn("Max iterations exceeded.")
+    # Handle non-convergence
+    if not converged:
+        msg = (f"Binary search did not converge in {max_iters} iterations. "
+               f"Last feasible growth: {last_feasible:.6f}, "
+               f"difference: {abs(diff):.2e}, "
+               f"relative difference: {abs(diff)/last_feasible if last_feasible > 0 else 'N/A'}. "
+               f"Consider increasing max_iters or adjusting tolerance.")
+        if raise_on_fail:
+            raise RuntimeError(msg)
+        else:
+            warn(msg)
 
     return sol
 
