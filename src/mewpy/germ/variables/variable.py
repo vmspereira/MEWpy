@@ -1,12 +1,12 @@
-from typing import Any, Union, Type, TYPE_CHECKING, List, Set, Tuple, Dict, Iterable
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set, Tuple, Type, Union
 
+from mewpy.germ.models.serialization import Serializer, serialize
 from mewpy.util.history import HistoryManager, recorder
-from mewpy.germ.models.serialization import serialize, Serializer
 
 # Preventing circular dependencies that only happen due to type checking
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
     from mewpy.germ.algebra import Expression, Symbolic
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
     from .gene import Gene
     from .interaction import Interaction
@@ -38,12 +38,13 @@ class MetaVariable(type):
         6. It adds polymorphic constructors to the dynamic Variable class based on the types of the base classes
         7. It adds type checkers to the dynamic Variable class based on the types of the base classes
     """
+
     factories = {}
 
     def __new__(mcs, name, bases, attrs, **kwargs):
 
         # if it is the variable factory, only registration is done
-        factory = kwargs.get('factory', False)
+        factory = kwargs.get("factory", False)
 
         if factory:
             cls = super(MetaVariable, mcs).__new__(mcs, name, bases, attrs)
@@ -53,19 +54,19 @@ class MetaVariable(type):
             return cls
 
         # Dynamic typing being used. In this case, a proper name and variable type must be provided
-        dynamic = kwargs.get('dynamic', False)
+        dynamic = kwargs.get("dynamic", False)
         if dynamic:
             names = [base.variable_type for base in bases]
 
-            name = ''.join([name.title() for name in names])
-            name += 'Variable'
+            name = "".join([name.title() for name in names])
+            name += "Variable"
 
-            kwargs['variable_type'] = '-'.join(names)
+            kwargs["variable_type"] = "-".join(names)
 
         # The variable type is always added to the subclasses. If it is not given upon subclass creation,
         # the subclass name is to be used
-        variable_type = kwargs.get('variable_type', name.lower())
-        attrs['variable_type'] = variable_type
+        variable_type = kwargs.get("variable_type", name.lower())
+        attrs["variable_type"] = variable_type
 
         return super(MetaVariable, mcs).__new__(mcs, name, bases, attrs)
 
@@ -73,56 +74,56 @@ class MetaVariable(type):
 
         super().__init__(name, bases, attrs)
 
-        factory = kwargs.get('factory', False)
+        factory = kwargs.get("factory", False)
         if factory:
             # collection of all attributes that must be serialized for a particular class or subclass
             attributes = cls.get_serializable_attributes(attrs)
 
-            attrs['_attributes_registry']['variable'] = attributes
+            attrs["_attributes_registry"]["variable"] = attributes
 
             # Skip further building of the Variable factory
             return
 
         # Dynamic typing being used. In this case, all children have already been constructed, so everything can be
         # skipped
-        dynamic = kwargs.get('dynamic', False)
+        dynamic = kwargs.get("dynamic", False)
         if dynamic:
             return
 
         # Several attributes and methods must be added automatically to the Variable factory children based on the
         # variable type.
-        variable_type = attrs['variable_type']
+        variable_type = attrs["variable_type"]
 
         for base in bases:
 
             factory = MetaVariable.factories.get(base.__name__)
 
-            if factory and hasattr(cls, 'variable_type'):
+            if factory and hasattr(cls, "variable_type"):
 
                 # if some class inherits from the Variable factory, it must be registered in the factory for type
                 # checking
                 if cls.variable_type not in factory.get_registry():
-                    raise TypeError(f'{cls.variable_type} does not inherit from Variable')
+                    raise TypeError(f"{cls.variable_type} does not inherit from Variable")
 
                 # If set otherwise upon class creation, all subclasses of the Variable factory will contribute to
                 # their parent factory with an alternative initializer. The polymorphic constructor, e.g. from_{
                 # variable_type}, is added to the Variable factory
-                constructor = kwargs.get('constructor', True)
+                constructor = kwargs.get("constructor", True)
 
                 if constructor:
                     # noinspection PyProtectedMember
                     var_type_initializer = Variable._from(cls)
-                    setattr(factory, f'from_{variable_type}', var_type_initializer)
+                    setattr(factory, f"from_{variable_type}", var_type_initializer)
 
                 # If set otherwise upon class creation, all subclasses of the Variable factory will contribute to
                 # their parent factory with a declared type checker. The type checker, e.g. is_{variable_type},
                 # is added to the Variable factory
-                checker = kwargs.get('checker', True)
+                checker = kwargs.get("checker", True)
 
                 if checker:
                     # noinspection PyProtectedMember
                     var_type_checker = Variable._is(variable_type)
-                    setattr(factory, f'is_{variable_type}', var_type_checker)
+                    setattr(factory, f"is_{variable_type}", var_type_checker)
 
                 # collection of all attributes that must be serialized for a particular class or sub class
                 attributes = cls.get_serializable_attributes(attrs)
@@ -150,10 +151,13 @@ class MetaVariable(type):
 
         for name, method in attrs.items():
 
-            if hasattr(method, 'fget'):
+            if hasattr(method, "fget"):
 
-                if hasattr(method.fget, 'serialize') and hasattr(method.fget, 'deserialize') and hasattr(method.fget,
-                                                                                                         'pickle'):
+                if (
+                    hasattr(method.fget, "serialize")
+                    and hasattr(method.fget, "deserialize")
+                    and hasattr(method.fget, "pickle")
+                ):
                     attributes[name] = (method.fget.serialize, method.fget.deserialize, method.fget.pickle)
 
         return attributes
@@ -197,7 +201,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # Factory management
     # -----------------------------------------------------------------------------
     _registry = {}
-    _attributes_registry = {'variable': {}}
+    _attributes_registry = {"variable": {}}
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -212,12 +216,12 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         super(Variable, cls).__init_subclass__(**kwargs)
 
         # the child type
-        variable_type = getattr(cls, 'variable_type', cls.__name__.lower())
+        variable_type = getattr(cls, "variable_type", cls.__name__.lower())
 
         cls.register_type(variable_type, cls)
 
     @staticmethod
-    def get_registry() -> Dict[str, Type['Variable']]:
+    def get_registry() -> Dict[str, Type["Variable"]]:
         """
         Returns the registry of the Variable factory.
 
@@ -237,7 +241,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         return Variable._attributes_registry.copy()
 
     @staticmethod
-    def register_type(variable_type: str, child: Type['Variable']):
+    def register_type(variable_type: str, child: Type["Variable"]):
         """
         Registers a child in the registry of the Variable factory.
 
@@ -263,11 +267,11 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         :return:
         """
 
-        if hasattr(child, 'variable_type'):
+        if hasattr(child, "variable_type"):
             Variable._attributes_registry[child.variable_type] = attributes
 
         elif child is Variable:
-            Variable._attributes_registry['variable'] = attributes
+            Variable._attributes_registry["variable"] = attributes
 
     @property
     def attributes(self) -> Dict[str, Tuple[str, str, str]]:
@@ -279,7 +283,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         """
         class_attributes = self.get_attributes_registry()
 
-        attributes = class_attributes['variable'].copy()
+        attributes = class_attributes["variable"].copy()
 
         for variable_type in self.types:
 
@@ -292,13 +296,15 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # Factory polymorphic constructor
     # -----------------------------------------------------------------------------
     @classmethod
-    def factory(cls, *args: str) -> Union[Type['Variable'],
-                                          Type['Gene'],
-                                          Type['Interaction'],
-                                          Type['Metabolite'],
-                                          Type['Reaction'],
-                                          Type['Regulator'],
-                                          Type['Target']]:
+    def factory(cls, *args: str) -> Union[
+        Type["Variable"],
+        Type["Gene"],
+        Type["Interaction"],
+        Type["Metabolite"],
+        Type["Reaction"],
+        Type["Regulator"],
+        Type["Target"],
+    ]:
         """
         It creates a dynamic Variable class from a list of types.
         All types must be registered in the Variable factory.
@@ -321,7 +327,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         if len(types) == 1:
             return types[0]
 
-        _Variable = MetaVariable('Variable', types, {}, dynamic=True)
+        _Variable = MetaVariable("Variable", types, {}, dynamic=True)
 
         return _Variable
 
@@ -329,13 +335,9 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # Factory polymorphic initializer
     # -----------------------------------------------------------------------------
     @classmethod
-    def from_types(cls, types: Iterable[str], **kwargs) -> Union['Variable',
-                                                                 'Gene',
-                                                                 'Interaction',
-                                                                 'Metabolite',
-                                                                 'Reaction',
-                                                                 'Regulator',
-                                                                 'Target']:
+    def from_types(
+        cls, types: Iterable[str], **kwargs
+    ) -> Union["Variable", "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]:
         """
         It creates a variable instance from a list of types and a dictionary of attributes.
         All types must be registered in the Variable factory so the factory can create a dynamic Variable class.
@@ -389,12 +391,13 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # Base initializer
     # -----------------------------------------------------------------------------
 
-    def __init__(self,
-                 identifier: Any,
-                 name: str = None,
-                 aliases: Set[str] = None,
-                 model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None):
-
+    def __init__(
+        self,
+        identifier: Any,
+        name: str = None,
+        aliases: Set[str] = None,
+        model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None,
+    ):
         """
         Variable is the most base type of all variables in MEWpy,
         such as gene, interaction, metabolite, reaction, regulator and target, among others.
@@ -427,7 +430,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
             model = None
 
         if not name:
-            name = ''
+            name = ""
 
         self._id = identifier
         self._aliases = aliases
@@ -450,7 +453,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
 
         for variable_type in self.types:
             if variable_type not in registry:
-                raise ValueError(f'{variable_type} is not registered as subclass of {self.__class__.__name__}')
+                raise ValueError(f"{variable_type} is not registered as subclass of {self.__class__.__name__}")
 
     # -----------------------------------------------------------------------------
     # Built-in
@@ -465,11 +468,13 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         """
         It returns an HTML dict representation of the variable.
         """
-        html_dict = {'Identifier': self.id,
-                     'Name': self.name,
-                     'Aliases': ', '.join(self.aliases),
-                     'Model': self.model.id if self.model else None,
-                     'Types': ', '.join(self.types)}
+        html_dict = {
+            "Identifier": self.id,
+            "Name": self.name,
+            "Aliases": ", ".join(self.aliases),
+            "Model": self.model.id if self.model else None,
+            "Types": ", ".join(self.types),
+        }
         return html_dict
 
     def _repr_html_(self):
@@ -479,12 +484,12 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         html_dict = self._variable_to_html()
 
         for type_ in self.types:
-            method = getattr(self, f'_{type_}_to_html', lambda: {})
+            method = getattr(self, f"_{type_}_to_html", lambda: {})
             html_dict.update(method())
 
-        html_representation = ''
+        html_representation = ""
         for key, value in html_dict.items():
-            html_representation += f'<tr><th>{key}</th><td>{value}</td></tr>'
+            html_representation += f"<tr><th>{key}</th><td>{value}</td></tr>"
 
         return f"""
             <table>
@@ -495,7 +500,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # -----------------------------------------------------------------------------
     # Variable type manager
     # -----------------------------------------------------------------------------
-    @serialize('types', None)
+    @serialize("types", None)
     @property
     def types(self) -> Set[str]:
         """
@@ -508,7 +513,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # Static attributes
     # -----------------------------------------------------------------------------
 
-    @serialize('id', None, '_id')
+    @serialize("id", None, "_id")
     @property
     def id(self) -> Any:
         """
@@ -517,7 +522,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         """
         return self._id
 
-    @serialize('name', 'name', '_name')
+    @serialize("name", "name", "_name")
     @property
     def name(self) -> str:
         """
@@ -526,7 +531,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         """
         return self._name
 
-    @serialize('aliases', 'aliases', '_aliases')
+    @serialize("aliases", "aliases", "_aliases")
     @property
     def aliases(self) -> Set[str]:
         """
@@ -536,7 +541,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         return self._aliases
 
     @property
-    def model(self) -> Union['Model', 'MetabolicModel', 'RegulatoryModel']:
+    def model(self) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
         """
         It returns the model to which the variable belongs.
         Note that variables do not need to be directly associated with a model.
@@ -556,7 +561,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         :return:
         """
         if not value:
-            value = ''
+            value = ""
 
         self._name = value
 
@@ -574,7 +579,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         self._aliases = value
 
     @model.setter
-    def model(self, value: Union['Model', 'MetabolicModel', 'RegulatoryModel']):
+    def model(self, value: Union["Model", "MetabolicModel", "RegulatoryModel"]):
         """
         It sets the model to which the variable belongs.
         This setter does not perform any check or action in the model.
@@ -688,10 +693,12 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
     # -----------------------------------------------------------------------------
     # Operations/Manipulations
     # -----------------------------------------------------------------------------
-    def update(self,
-               name: str = None,
-               aliases: Set[str] = None,
-               model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None):
+    def update(
+        self,
+        name: str = None,
+        aliases: Set[str] = None,
+        model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None,
+    ):
         """
         It updates the attributes of the variable.
         :param name: the name of the variable
@@ -714,14 +721,16 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
 
     # The following polymorphic initializers are just registered here to avoid type checking errors
     @classmethod
-    def from_gene(cls,
-                  identifier: Any,
-                  name: str = None,
-                  aliases: set = None,
-                  model: 'Model' = None,
-                  coefficients: Union[Set[Union[int, float]], List[Union[int, float]], Tuple[Union[int, float]]] = None,
-                  active_coefficient: Union[int, float] = None,
-                  reactions: Dict[str, 'Reaction'] = None) -> 'Gene':
+    def from_gene(
+        cls,
+        identifier: Any,
+        name: str = None,
+        aliases: set = None,
+        model: "Model" = None,
+        coefficients: Union[Set[Union[int, float]], List[Union[int, float]], Tuple[Union[int, float]]] = None,
+        active_coefficient: Union[int, float] = None,
+        reactions: Dict[str, "Reaction"] = None,
+    ) -> "Gene":
         """
         It creates a gene from the given parameters.
         :param identifier: the identifier of the gene
@@ -736,13 +745,15 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         ...
 
     @classmethod
-    def from_interaction(cls,
-                         identifier: Any,
-                         name: str = None,
-                         aliases: set = None,
-                         model: 'Model' = None,
-                         target: 'Target' = None,
-                         regulatory_events: Dict[Union[float, int], 'Expression'] = None) -> 'Interaction':
+    def from_interaction(
+        cls,
+        identifier: Any,
+        name: str = None,
+        aliases: set = None,
+        model: "Model" = None,
+        target: "Target" = None,
+        regulatory_events: Dict[Union[float, int], "Expression"] = None,
+    ) -> "Interaction":
         """
         It creates an interaction from the given parameters.
         :param identifier: the identifier of the interaction
@@ -756,15 +767,17 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         ...
 
     @classmethod
-    def from_metabolite(cls,
-                        identifier: Any,
-                        name: str = None,
-                        aliases: set = None,
-                        model: 'Model' = None,
-                        charge: int = None,
-                        compartment: str = None,
-                        formula: str = None,
-                        reactions: Dict[str, 'Reaction'] = None) -> 'Metabolite':
+    def from_metabolite(
+        cls,
+        identifier: Any,
+        name: str = None,
+        aliases: set = None,
+        model: "Model" = None,
+        charge: int = None,
+        compartment: str = None,
+        formula: str = None,
+        reactions: Dict[str, "Reaction"] = None,
+    ) -> "Metabolite":
         """
         It creates a metabolite from the given parameters.
         :param identifier: the identifier of the metabolite
@@ -780,14 +793,16 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         ...
 
     @classmethod
-    def from_reaction(cls,
-                      identifier: Any,
-                      name: str = None,
-                      aliases: set = None,
-                      model: 'Model' = None,
-                      bounds: Tuple[Union[float, int], Union[float, int]] = None,
-                      stoichiometry: Dict['Metabolite', Union[float, int]] = None,
-                      gpr: 'Expression' = None) -> 'Reaction':
+    def from_reaction(
+        cls,
+        identifier: Any,
+        name: str = None,
+        aliases: set = None,
+        model: "Model" = None,
+        bounds: Tuple[Union[float, int], Union[float, int]] = None,
+        stoichiometry: Dict["Metabolite", Union[float, int]] = None,
+        gpr: "Expression" = None,
+    ) -> "Reaction":
         """
         It creates a reaction from the given parameters.
         :param identifier: the identifier of the reaction
@@ -802,14 +817,16 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         ...
 
     @classmethod
-    def from_regulator(cls,
-                       identifier: Any,
-                       name: str = None,
-                       aliases: set = None,
-                       model: 'Model' = None,
-                       coefficients: Set[Union[float, int]] = None,
-                       active_coefficient: Union[float, int] = None,
-                       interactions: Dict[str, 'Interaction'] = None) -> 'Regulator':
+    def from_regulator(
+        cls,
+        identifier: Any,
+        name: str = None,
+        aliases: set = None,
+        model: "Model" = None,
+        coefficients: Set[Union[float, int]] = None,
+        active_coefficient: Union[float, int] = None,
+        interactions: Dict[str, "Interaction"] = None,
+    ) -> "Regulator":
         """
         It creates a regulator from the given parameters.
         :param identifier: the identifier of the regulator
@@ -824,14 +841,16 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         ...
 
     @classmethod
-    def from_target(cls,
-                    identifier: Any,
-                    name: str = None,
-                    aliases: set = None,
-                    model: 'Model' = None,
-                    coefficients: Set[Union[float, int]] = None,
-                    active_coefficient: Union[float, int] = None,
-                    interaction: 'Interaction' = None) -> 'Target':
+    def from_target(
+        cls,
+        identifier: Any,
+        name: str = None,
+        aliases: set = None,
+        model: "Model" = None,
+        coefficients: Set[Union[float, int]] = None,
+        active_coefficient: Union[float, int] = None,
+        interaction: "Interaction" = None,
+    ) -> "Target":
         """
         It creates a target from the given parameters.
         :param identifier: the identifier of the target
@@ -907,9 +926,11 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
 # -----------------------------------------------------------------------------
 # Helper methods
 # -----------------------------------------------------------------------------
-def variables_from_symbolic(symbolic: 'Symbolic',
-                            types: Union[Set[str], List[str], Tuple[str]],
-                            model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None) -> Dict[str, 'Variable']:
+def variables_from_symbolic(
+    symbolic: "Symbolic",
+    types: Union[Set[str], List[str], Tuple[str]],
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None,
+) -> Dict[str, "Variable"]:
     """
     It returns the variables of the given type from the given symbolic expression.
     :param symbolic: the symbolic expression to parse and extract the variables from
@@ -933,25 +954,19 @@ def variables_from_symbolic(symbolic: 'Symbolic',
                 for variable_type in types:
 
                     if not variable.is_a(variable_type):
-                        raise TypeError(f'{symbol.name} is not a {variable_type} in model {model.id}')
+                        raise TypeError(f"{symbol.name} is not a {variable_type} in model {model.id}")
 
         else:
-            variable = Variable.from_types(identifier=symbol.name,
-                                           types=types,
-                                           model=model)
+            variable = Variable.from_types(identifier=symbol.name, types=types, model=model)
 
         variables[variable.id] = variable
 
     return variables
 
 
-def build_variable(types: Iterable[str], kwargs: Dict[str, Any]) -> Union['Variable',
-                                                                          'Gene',
-                                                                          'Interaction',
-                                                                          'Metabolite',
-                                                                          'Reaction',
-                                                                          'Regulator',
-                                                                          'Target']:
+def build_variable(
+    types: Iterable[str], kwargs: Dict[str, Any]
+) -> Union["Variable", "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]:
     """
     It builds a variable from the given types and keyword arguments. Check the `Variable.from_types()` method for more
     details.

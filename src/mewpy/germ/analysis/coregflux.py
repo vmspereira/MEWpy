@@ -4,24 +4,33 @@ CoRegFlux - Clean Implementation
 This module implements CoRegFlux using RegulatoryExtension only.
 No backwards compatibility with legacy GERM models.
 """
-from typing import TYPE_CHECKING, Union, Dict, Sequence, List, Tuple
+
+from typing import TYPE_CHECKING, Dict, List, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
+from mewpy.germ.analysis.analysis_utils import (
+    CoRegBiomass,
+    CoRegMetabolite,
+    CoRegResult,
+    biomass_yield_to_rate,
+    build_biomass,
+    build_metabolites,
+    gene_state_constraints,
+    metabolites_constraints,
+    system_state_update,
+)
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
-from mewpy.germ.analysis.analysis_utils import biomass_yield_to_rate, \
-    CoRegMetabolite, CoRegBiomass, metabolites_constraints, gene_state_constraints, system_state_update, \
-    build_metabolites, build_biomass, CoRegResult
+from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.germ.solution import DynamicSolution
 from mewpy.germ.variables import Gene, Target
-from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
 from mewpy.util.constants import ModelConstants
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
 def _run_and_decode(lp, additional_constraints=None, solver_kwargs=None):
@@ -30,11 +39,9 @@ def _run_and_decode(lp, additional_constraints=None, solver_kwargs=None):
         solver_kwargs = {}
 
     if additional_constraints:
-        solver_kwargs['constraints'] = {**solver_kwargs.get('constraints', {}), **additional_constraints}
+        solver_kwargs["constraints"] = {**solver_kwargs.get("constraints", {}), **additional_constraints}
 
-    solution = lp.solver.solve(linear=lp._linear_objective,
-                              minimize=lp._minimize,
-                              **solver_kwargs)
+    solution = lp.solver.solve(linear=lp._linear_objective, minimize=lp._minimize, **solver_kwargs)
 
     reactions = lp.model.reactions
 
@@ -56,11 +63,13 @@ def result_to_solution(result: CoRegResult, model: RegulatoryExtension, to_solve
     if to_solver:
         return Solution(status=Status.OPTIMAL, fobj=result.objective_value, values=result.values)
 
-    solution = Solution(objective_value=result.objective_value,
-                       values=result.values,
-                       status=Status.OPTIMAL,
-                       method='CoRegFlux',
-                       model=model)
+    solution = Solution(
+        objective_value=result.objective_value,
+        values=result.values,
+        status=Status.OPTIMAL,
+        method="CoRegFlux",
+        model=model,
+    )
 
     solution.metabolites = {key: met.concentration for key, met in result.metabolites.items()}
     solution.biomass = result.biomass.biomass_yield
@@ -81,11 +90,9 @@ class CoRegFlux(_RegulatoryAnalysisBase):
     For more details: https://dx.doi.org/10.1186%2Fs12918-017-0507-0
     """
 
-    def __init__(self,
-                 model: RegulatoryExtension,
-                 solver: Union[str, Solver] = None,
-                 build: bool = False,
-                 attach: bool = False):
+    def __init__(
+        self, model: RegulatoryExtension, solver: Union[str, Solver] = None, build: bool = False, attach: bool = False
+    ):
         """
         Initialize CoRegFlux with a RegulatoryExtension model.
 
@@ -96,15 +103,17 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         """
         super().__init__(model=model, solver=solver, build=build, attach=attach)
 
-    def next_state(self,
-                  solver_kwargs: Dict = None,
-                  state: Dict[str, float] = None,
-                  metabolites: Dict[str, CoRegMetabolite] = None,
-                  biomass: CoRegBiomass = None,
-                  time_step: float = None,
-                  soft_plus: float = 0,
-                  tolerance: float = ModelConstants.TOLERANCE,
-                  scale: bool = False) -> CoRegResult:
+    def next_state(
+        self,
+        solver_kwargs: Dict = None,
+        state: Dict[str, float] = None,
+        metabolites: Dict[str, CoRegMetabolite] = None,
+        biomass: CoRegBiomass = None,
+        time_step: float = None,
+        soft_plus: float = 0,
+        tolerance: float = ModelConstants.TOLERANCE,
+        scale: bool = False,
+    ) -> CoRegResult:
         """
         Compute the next state of the system given the current state and time step.
 
@@ -125,19 +134,20 @@ class CoRegFlux(_RegulatoryAnalysisBase):
 
         if metabolites:
             # Update coregflux constraints using metabolite concentrations
-            constraints = metabolites_constraints(constraints=constraints,
-                                                 metabolites=metabolites,
-                                                 biomass=biomass,
-                                                 time_step=time_step)
+            constraints = metabolites_constraints(
+                constraints=constraints, metabolites=metabolites, biomass=biomass, time_step=time_step
+            )
 
         if state:
             # Update coregflux bounds using gene state
-            constraints = gene_state_constraints(model=self.model,
-                                                constraints=constraints,
-                                                state=state,
-                                                soft_plus=soft_plus,
-                                                tolerance=tolerance,
-                                                scale=scale)
+            constraints = gene_state_constraints(
+                model=self.model,
+                constraints=constraints,
+                state=state,
+                soft_plus=soft_plus,
+                tolerance=tolerance,
+                scale=scale,
+            )
 
         # Retrieve the FBA simulation from the inferred constraints
         values, objective_value = _run_and_decode(self, additional_constraints=constraints, solver_kwargs=solver_kwargs)
@@ -145,28 +155,32 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         result.objective_value = objective_value
 
         # Update the system state by solving an Euler step for metabolites and biomass
-        next_biomass, next_metabolites = system_state_update(model=self.model,
-                                                            flux_state=values,
-                                                            metabolites=metabolites,
-                                                            biomass=biomass,
-                                                            time_step=time_step,
-                                                            biomass_fn=biomass_yield_to_rate)
+        next_biomass, next_metabolites = system_state_update(
+            model=self.model,
+            flux_state=values,
+            metabolites=metabolites,
+            biomass=biomass,
+            time_step=time_step,
+            biomass_fn=biomass_yield_to_rate,
+        )
 
         result.metabolites = next_metabolites
         result.biomass = next_biomass
         result.constraints = constraints
         return result
 
-    def _dynamic_optimize(self,
-                         to_solver: bool = False,
-                         solver_kwargs: Dict = None,
-                         initial_state: Sequence[Dict[str, float]] = None,
-                         metabolites: Dict[str, CoRegMetabolite] = None,
-                         biomass: CoRegBiomass = None,
-                         time_steps: Sequence[float] = None,
-                         soft_plus: float = 0,
-                         tolerance: float = ModelConstants.TOLERANCE,
-                         scale: bool = False) -> Union[DynamicSolution, Dict[float, Solution]]:
+    def _dynamic_optimize(
+        self,
+        to_solver: bool = False,
+        solver_kwargs: Dict = None,
+        initial_state: Sequence[Dict[str, float]] = None,
+        metabolites: Dict[str, CoRegMetabolite] = None,
+        biomass: CoRegBiomass = None,
+        time_steps: Sequence[float] = None,
+        soft_plus: float = 0,
+        tolerance: float = ModelConstants.TOLERANCE,
+        scale: bool = False,
+    ) -> Union[DynamicSolution, Dict[float, Solution]]:
         """Dynamic optimization over multiple time steps."""
         solutions = []
 
@@ -174,14 +188,16 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         for i_initial_state, time_step in zip(initial_state, time_steps):
             time_step_diff = time_step - previous_time_step
 
-            next_state = self.next_state(solver_kwargs=solver_kwargs,
-                                        state=i_initial_state,
-                                        metabolites=metabolites,
-                                        biomass=biomass,
-                                        time_step=time_step_diff,
-                                        soft_plus=soft_plus,
-                                        tolerance=tolerance,
-                                        scale=scale)
+            next_state = self.next_state(
+                solver_kwargs=solver_kwargs,
+                state=i_initial_state,
+                metabolites=metabolites,
+                biomass=biomass,
+                time_step=time_step_diff,
+                soft_plus=soft_plus,
+                tolerance=tolerance,
+                scale=scale,
+            )
 
             solution = result_to_solution(result=next_state, model=self.model, to_solver=to_solver)
             solutions.append(solution)
@@ -191,18 +207,20 @@ class CoRegFlux(_RegulatoryAnalysisBase):
 
             previous_time_step = time_step
 
-        return DynamicSolution(solutions=solutions, method='CoRegFlux')
+        return DynamicSolution(solutions=solutions, method="CoRegFlux")
 
-    def optimize(self,
-                initial_state: Union[Dict[str, float], Sequence[Dict[str, float]]] = None,
-                metabolites: Dict[str, Union[float, CoRegMetabolite]] = None,
-                biomass: Union[float, CoRegBiomass] = None,
-                time_steps: Union[float, Sequence[float]] = None,
-                soft_plus: float = 0,
-                tolerance: float = ModelConstants.TOLERANCE,
-                scale: bool = False,
-                to_solver: bool = False,
-                solver_kwargs: Dict = None) -> Union[Solution, DynamicSolution]:
+    def optimize(
+        self,
+        initial_state: Union[Dict[str, float], Sequence[Dict[str, float]]] = None,
+        metabolites: Dict[str, Union[float, CoRegMetabolite]] = None,
+        biomass: Union[float, CoRegBiomass] = None,
+        time_steps: Union[float, Sequence[float]] = None,
+        soft_plus: float = 0,
+        tolerance: float = ModelConstants.TOLERANCE,
+        scale: bool = False,
+        to_solver: bool = False,
+        solver_kwargs: Dict = None,
+    ) -> Union[Solution, DynamicSolution]:
         """
         Solve the CoRegFlux problem.
 
@@ -241,14 +259,16 @@ class CoRegFlux(_RegulatoryAnalysisBase):
             if time_steps is None:
                 time_steps = 0.1
 
-            result = self.next_state(solver_kwargs=solver_kwargs,
-                                    state=initial_state,
-                                    metabolites=metabolites,
-                                    biomass=biomass,
-                                    time_step=time_steps,
-                                    soft_plus=soft_plus,
-                                    tolerance=tolerance,
-                                    scale=scale)
+            result = self.next_state(
+                solver_kwargs=solver_kwargs,
+                state=initial_state,
+                metabolites=metabolites,
+                biomass=biomass,
+                time_step=time_steps,
+                soft_plus=soft_plus,
+                tolerance=tolerance,
+                scale=scale,
+            )
 
             return result_to_solution(result=result, model=self.model, to_solver=to_solver)
 
@@ -257,21 +277,23 @@ class CoRegFlux(_RegulatoryAnalysisBase):
             if time_steps is None:
                 time_steps = np.linspace(0, 1, len(initial_state))
 
-            return self._dynamic_optimize(to_solver=to_solver,
-                                         solver_kwargs=solver_kwargs,
-                                         initial_state=initial_state,
-                                         metabolites=metabolites,
-                                         biomass=biomass,
-                                         time_steps=time_steps,
-                                         soft_plus=soft_plus,
-                                         tolerance=tolerance,
-                                         scale=scale)
+            return self._dynamic_optimize(
+                to_solver=to_solver,
+                solver_kwargs=solver_kwargs,
+                initial_state=initial_state,
+                metabolites=metabolites,
+                biomass=biomass,
+                time_steps=time_steps,
+                soft_plus=soft_plus,
+                tolerance=tolerance,
+                scale=scale,
+            )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Gene Expression Prediction
 # ----------------------------------------------------------------------------------------------------------------------
-def _get_target_regulators(gene: Union['Gene', 'Target'] = None) -> List[str]:
+def _get_target_regulators(gene: Union["Gene", "Target"] = None) -> List[str]:
     """
     Return the list of regulators of a target gene.
 
@@ -287,10 +309,9 @@ def _get_target_regulators(gene: Union['Gene', 'Target'] = None) -> List[str]:
     return []
 
 
-def _filter_influence_and_expression(interactions: Dict[str, List[str]],
-                                     influence: pd.DataFrame,
-                                     expression: pd.DataFrame,
-                                     experiments: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _filter_influence_and_expression(
+    interactions: Dict[str, List[str]], influence: pd.DataFrame, expression: pd.DataFrame, experiments: pd.DataFrame
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Filter influence, expression and experiments matrices to keep only targets and their regulators.
 
@@ -310,18 +331,19 @@ def _filter_influence_and_expression(interactions: Dict[str, List[str]],
     return influence, expression, experiments
 
 
-def _predict_experiment(interactions: Dict[str, List[str]],
-                        influence: pd.DataFrame,
-                        expression: pd.DataFrame,
-                        experiment: pd.Series) -> pd.Series:
+def _predict_experiment(
+    interactions: Dict[str, List[str]], influence: pd.DataFrame, expression: pd.DataFrame, experiment: pd.Series
+) -> pd.Series:
     """Predict gene expression for a single experiment using linear regression."""
     try:
         # noinspection PyPackageRequirements
         from sklearn.linear_model import LinearRegression
     except ImportError:
-        raise ImportError('The package sklearn is not installed. '
-                         'To compute the probability of target-regulator interactions, please install sklearn '
-                         '(pip install sklearn).')
+        raise ImportError(
+            "The package sklearn is not installed. "
+            "To compute the probability of target-regulator interactions, please install sklearn "
+            "(pip install sklearn)."
+        )
 
     predictions = {}
 
@@ -360,10 +382,9 @@ def _predict_experiment(interactions: Dict[str, List[str]],
     return pd.Series(predictions)
 
 
-def predict_gene_expression(model: RegulatoryExtension,
-                            influence: pd.DataFrame,
-                            expression: pd.DataFrame,
-                            experiments: pd.DataFrame) -> pd.DataFrame:
+def predict_gene_expression(
+    model: RegulatoryExtension, influence: pd.DataFrame, expression: pd.DataFrame, experiments: pd.DataFrame
+) -> pd.DataFrame:
     """
     Predict gene expression in experiments using co-expression of regulators.
 
@@ -387,17 +408,15 @@ def predict_gene_expression(model: RegulatoryExtension,
     """
     # Filter only gene expression and influences data of metabolic genes in the model
     interactions = {target.id: _get_target_regulators(target) for target in model.yield_targets()}
-    influence, expression, experiments = _filter_influence_and_expression(interactions=interactions,
-                                                                          influence=influence,
-                                                                          expression=expression,
-                                                                          experiments=experiments)
+    influence, expression, experiments = _filter_influence_and_expression(
+        interactions=interactions, influence=influence, expression=expression, experiments=experiments
+    )
 
     predictions = []
     for column in experiments.columns:
-        experiment_prediction = _predict_experiment(interactions=interactions,
-                                                   influence=influence,
-                                                   expression=expression,
-                                                   experiment=experiments[column])
+        experiment_prediction = _predict_experiment(
+            interactions=interactions, influence=influence, expression=expression, experiment=experiments[column]
+        )
         predictions.append(experiment_prediction)
 
     predictions = pd.concat(predictions, axis=1)

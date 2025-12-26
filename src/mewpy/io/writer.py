@@ -1,14 +1,16 @@
 from pathlib import Path
-from typing import Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Type, Union
 
 from .builder import Builder
 from .engines import Engines
 
 if TYPE_CHECKING:
-    from .engines.engine import Engine
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
     from cobra import Model as CobraModel
     from reframed import CBModel as ReframedModel
+
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+
+    from .engines.engine import Engine
 
 
 class Writer(Builder):
@@ -30,12 +32,14 @@ class Writer(Builder):
     For writing files in stages, multiple writers must be created and the director must be used to merge all the
     writers into a single model
     """
-    def __init__(self,
-                 engine: Union[Type['Engine'], Engines],
-                 io: Union[str, Path, 'CobraModel', 'ReframedModel'],
-                 model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                 config: dict = None):
 
+    def __init__(
+        self,
+        engine: Union[Type["Engine"], Engines],
+        io: Union[str, Path, "CobraModel", "ReframedModel"],
+        model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+        config: dict = None,
+    ):
         """
         Write a given model type into a file of any type.
 
@@ -53,13 +57,13 @@ class Writer(Builder):
 
         """
         if not engine:
-            raise ValueError('Nothing to write. Please provide an engine')
+            raise ValueError("Nothing to write. Please provide an engine")
 
         if not io:
-            raise ValueError('Nothing to write. Please provide a path, file handler or model')
+            raise ValueError("Nothing to write. Please provide a path, file handler or model")
 
         if not model:
-            raise ValueError('Nothing to write. Please provide a GERM model')
+            raise ValueError("Nothing to write. Please provide a GERM model")
 
         if isinstance(io, Path):
             io = str(io)
@@ -71,7 +75,7 @@ class Writer(Builder):
             engine = Engines.get(old_engine)
 
             if engine is None:
-                raise ValueError(f'{old_engine} is not supported. See available engines at {Engines}')
+                raise ValueError(f"{old_engine} is not supported. See available engines at {Engines}")
 
         engine = engine.value
 

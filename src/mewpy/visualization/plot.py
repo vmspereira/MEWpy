@@ -15,7 +15,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Plotter 
+Plotter
 Author: Vitor Pereira
 ##############################################################################
 """
@@ -28,11 +28,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 class Plot:
 
-    def __init__(self,
-                 plot_title='Pareto Aproximation',
-                 reference_front=None,
-                 reference_point=None,
-                 axis_labels=None):
+    def __init__(self, plot_title="Pareto Aproximation", reference_front=None, reference_point=None, axis_labels=None):
         """
         :param plot_title: Title of the graph.
         :param axis_labels: List of axis labels.
@@ -47,7 +43,7 @@ class Plot:
 
     @staticmethod
     def get_points(solutions):
-        """ Get points for each solution of the front.
+        """Get points for each solution of the front.
 
         :param solutions: List of solutions where each solution is a list of fitness values
         :return: Pandas dataframe with one column for each objective and one row for each solution.
@@ -56,8 +52,8 @@ class Plot:
         points = pd.DataFrame(p)
         return points, points.shape[1]
 
-    def plot(self, front, label='', normalize=False, filename=None, format='eps'):
-        """ Plot any arbitrary number of fronts in 2D, 3D or p-coords.
+    def plot(self, front, label="", normalize=False, filename=None, format="eps"):
+        """Plot any arbitrary number of fronts in 2D, 3D or p-coords.
 
         :param front: Pareto front or a list of them.
         :param label: Pareto front title or a list of them.
@@ -72,7 +68,7 @@ class Plot:
             label = [label]
 
         if len(front) != len(label):
-            raise Exception('Number of fronts and labels must be the same')
+            raise Exception("Number of fronts and labels must be the same")
 
         dimension = len(front[0][0])
 
@@ -83,8 +79,8 @@ class Plot:
         else:
             self.pcoords(front, normalize, filename, format)
 
-    def two_dim(self, fronts, labels=None, filename=None, format='eps'):
-        """ Plot any arbitrary number of fronts in 2D.
+    def two_dim(self, fronts, labels=None, filename=None, format="eps"):
+        """Plot any arbitrary number of fronts in 2D.
 
         :param fronts: List of fronts (containing solutions).
         :param labels: List of fronts title (if any).
@@ -102,32 +98,32 @@ class Plot:
             points, _ = self.get_points(fronts[i])
 
             ax = fig.add_subplot(n, n, i + 1)
-            points.plot(kind='scatter', x=0, y=1, ax=ax, s=10, color='#236FA4', alpha=1.0)
+            points.plot(kind="scatter", x=0, y=1, ax=ax, s=10, color="#236FA4", alpha=1.0)
 
             if labels:
                 ax.set_title(labels[i])
 
             if self.reference_front:
-                reference.plot(x=0, y=1, ax=ax, color='k', legend=False)
+                reference.plot(x=0, y=1, ax=ax, color="k", legend=False)
 
             if self.reference_point:
                 for point in self.reference_point:
-                    plt.plot([point[0]], [point[1]], marker='o', markersize=5, color='r')
-                    plt.axvline(x=point[0], color='r', linestyle=':')
-                    plt.axhline(y=point[1], color='r', linestyle=':')
+                    plt.plot([point[0]], [point[1]], marker="o", markersize=5, color="r")
+                    plt.axvline(x=point[0], color="r", linestyle=":")
+                    plt.axhline(y=point[1], color="r", linestyle=":")
 
             if self.axis_labels:
                 plt.xlabel(self.axis_labels[0])
                 plt.ylabel(self.axis_labels[1])
 
         if filename:
-            plt.savefig(filename + '.' + format, format=format, dpi=200)
+            plt.savefig(filename + "." + format, format=format, dpi=200)
 
         plt.show()
         plt.close(fig)
 
-    def three_dim(self, fronts, labels=None, filename=None, format='eps'):
-        """ Plot any arbitrary number of fronts in 3D.
+    def three_dim(self, fronts, labels=None, filename=None, format="eps"):
+        """Plot any arbitrary number of fronts in 3D.
 
         :param fronts: List of fronts (containing solutions).
         :param labels: List of fronts title (if any).
@@ -138,18 +134,22 @@ class Plot:
         fig.suptitle(self.plot_title, fontsize=16)
 
         for i, _ in enumerate(fronts):
-            ax = fig.add_subplot(n, n, i + 1, projection='3d')
-            ax.scatter([s.objectives[0] for s in fronts[i]],
-                       [s.objectives[1] for s in fronts[i]],
-                       [s.objectives[2] for s in fronts[i]])
+            ax = fig.add_subplot(n, n, i + 1, projection="3d")
+            ax.scatter(
+                [s.objectives[0] for s in fronts[i]],
+                [s.objectives[1] for s in fronts[i]],
+                [s.objectives[2] for s in fronts[i]],
+            )
 
             if labels:
                 ax.set_title(labels[i])
 
             if self.reference_front:
-                ax.scatter([s.objectives[0] for s in self.reference_front],
-                           [s.objectives[1] for s in self.reference_front],
-                           [s.objectives[2] for s in self.reference_front])
+                ax.scatter(
+                    [s.objectives[0] for s in self.reference_front],
+                    [s.objectives[1] for s in self.reference_front],
+                    [s.objectives[2] for s in self.reference_front],
+                )
 
             if self.reference_point:
                 # todo
@@ -161,13 +161,13 @@ class Plot:
             ax.locator_params(nbins=4)
 
         if filename:
-            plt.savefig(filename + '.' + format, format=format, dpi=1000)
+            plt.savefig(filename + "." + format, format=format, dpi=1000)
 
         plt.show()
         plt.close(fig)
 
-    def pcoords(self, fronts, normalize=False, filename=None, format='eps'):
-        """ Plot any arbitrary number of fronts in parallel coordinates.
+    def pcoords(self, fronts, normalize=False, filename=None, format="eps"):
+        """Plot any arbitrary number of fronts in parallel coordinates.
 
         :param fronts: List of fronts (containing solutions).
         :param filename: Output filename.
@@ -191,7 +191,7 @@ class Plot:
                 ax.set_xticklabels(self.axis_labels)
 
         if filename:
-            plt.savefig(filename + '.' + format, format=format, dpi=1000)
+            plt.savefig(filename + "." + format, format=format, dpi=1000)
 
         plt.show()
         plt.close(fig)
@@ -199,11 +199,7 @@ class Plot:
 
 class StreamingPlot:
 
-    def __init__(self,
-                 plot_title='Pareto Approximation',
-                 reference_front=None,
-                 reference_point=None,
-                 axis_labels=None):
+    def __init__(self, plot_title="Pareto Approximation", reference_front=None, reference_point=None, axis_labels=None):
         """
         :param plot_title: Title of the graph.
         :param axis_labels: List of axis labels.
@@ -221,6 +217,7 @@ class StreamingPlot:
         self.dimension = None
 
         import warnings
+
         warnings.filterwarnings("ignore", ".*GUI is implemented.*")
 
         self.fig, self.ax = plt.subplots()
@@ -238,11 +235,12 @@ class StreamingPlot:
         # If any reference point, plot
         if self.reference_point:
             for point in self.reference_point:
-                self.scp, = self.ax.plot(*[[p] for p in point], c='r', ls='None', marker='*', markersize=3)
+                (self.scp,) = self.ax.plot(*[[p] for p in point], c="r", ls="None", marker="*", markersize=3)
 
         # Plot data
-        self.sc, = self.ax.plot(*[points[column].tolist() for column in points.columns.values],
-                                ls='None', marker='o', markersize=4)
+        (self.sc,) = self.ax.plot(
+            *[points[column].tolist() for column in points.columns.values], ls="None", marker="o", markersize=4
+        )
 
         # dominated points
         # if dominated:
@@ -255,7 +253,7 @@ class StreamingPlot:
 
     def update(self, front, dominated=None, reference_point=None, text=None):
         if self.sc is None:
-            raise Exception('Figure is none')
+            raise Exception("Figure is none")
 
         points, dimension = Plot.get_points(front)
 
@@ -275,7 +273,7 @@ class StreamingPlot:
         if reference_point:
             self.scp.set_data([p[0] for p in reference_point], [p[1] for p in reference_point])
 
-        #if text is not None:
+        # if text is not None:
         #    self.fig.title(text, fontsize=10)
 
         # Re-align the axis
@@ -296,8 +294,8 @@ class StreamingPlot:
 
         if dimension == 2:
             # Stylize axis
-            self.ax.spines['top'].set_visible(False)
-            self.ax.spines['right'].set_visible(False)
+            self.ax.spines["top"].set_visible(False)
+            self.ax.spines["right"].set_visible(False)
             self.ax.get_xaxis().tick_bottom()
             self.ax.get_yaxis().tick_left()
             if self.axis_labels:
@@ -305,23 +303,23 @@ class StreamingPlot:
                 plt.ylabel(self.axis_labels[1])
         elif dimension == 3:
             self.ax = Axes3D(self.fig)
-            self.ax.autoscale(enable=True, axis='both')
+            self.ax.autoscale(enable=True, axis="both")
             if self.axis_labels:
                 self.ax.set_xlabel(self.axis_labels[0])
                 self.ax.set_ylabel(self.axis_labels[1])
                 self.ax.set_zlabel(self.axis_labels[2])
         else:
-            raise Exception('Dimension must be either 2 or 3')
+            raise Exception("Dimension must be either 2 or 3")
 
         self.ax.set_autoscale_on(True)
         self.ax.autoscale_view(True, True, True)
 
         # Style options
-        self.ax.grid(color='#f0f0f5', linestyle='-', linewidth=0.5, alpha=0.5)
+        self.ax.grid(color="#f0f0f5", linestyle="-", linewidth=0.5, alpha=0.5)
 
 
 def pause(interval):
-    backend = plt.rcParams['backend']
+    backend = plt.rcParams["backend"]
 
     if backend in matplotlib.rcsetup.interactive_bk:
         figManager = matplotlib._pylab_helpers.Gcf.get_active()

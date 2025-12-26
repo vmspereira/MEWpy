@@ -15,14 +15,15 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from math import inf
+
+from mewpy.simulation import SStatus, get_simulator
 from mewpy.solvers import solver_instance
-from mewpy.simulation import get_simulator, SStatus
 
 
 def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None):
     """
     Modified versions of the Parsimonious Flux Balance Analysis allowing to minimize
-    the sum of enzyme usage instead of the sum of reaction flux rates when a model includes 
+    the sum of enzyme usage instead of the sum of reaction flux rates when a model includes
     enzymatic constraints, such as GECKO and sMOMENT formulations.
 
     If the model defines protein constraints, and no set of reactions are defined,
@@ -60,7 +61,7 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
     for r_id in sim.reactions:
         lb, _ = sim.get_reaction_bounds(r_id)
         if lb < 0:
-            pos, neg = r_id + '_p', r_id + '_n'
+            pos, neg = r_id + "_p", r_id + "_n"
             solver.add_variable(pos, 0, inf, update=False)
             solver.add_variable(neg, 0, inf, update=False)
     solver.update()
@@ -68,11 +69,9 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
     for r_id in sim.reactions:
         lb, _ = sim.get_reaction_bounds(r_id)
         if lb < 0:
-            pos, neg = r_id + '_p', r_id + '_n'
-            solver.add_constraint(
-                'c' + pos, {r_id: -1, pos: 1}, '>', 0, update=False)
-            solver.add_constraint(
-                'c' + neg, {r_id: 1, neg: 1}, '>', 0, update=False)
+            pos, neg = r_id + "_p", r_id + "_n"
+            solver.add_constraint("c" + pos, {r_id: -1, pos: 1}, ">", 0, update=False)
+            solver.add_constraint("c" + neg, {r_id: 1, neg: 1}, ">", 0, update=False)
 
     solver.update()
 
@@ -83,10 +82,9 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
         return pre_solution
 
     if obj_frac is None:
-        solver.add_constraint('obj', objective, '=', pre_solution.objective_value)
+        solver.add_constraint("obj", objective, "=", pre_solution.objective_value)
     else:
-        solver.add_constraint('obj', objective, '>',
-                              obj_frac * pre_solution.objective_value)
+        solver.add_constraint("obj", objective, ">", obj_frac * pre_solution.objective_value)
 
     solver.update()
 
@@ -107,7 +105,7 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
         for r_id in reactions:
             lb, _ = sim.get_reaction_bounds(r_id)
             if lb < 0:
-                pos, neg = r_id + '_p', r_id + '_n'
+                pos, neg = r_id + "_p", r_id + "_n"
                 sobjective[pos] = 1
                 sobjective[neg] = 1
             else:

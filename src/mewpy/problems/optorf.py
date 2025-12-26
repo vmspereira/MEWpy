@@ -1,21 +1,24 @@
-from typing import Union, Dict, Iterable, Tuple, TYPE_CHECKING, Sequence
 from io import TextIOWrapper
+from typing import TYPE_CHECKING, Dict, Iterable, Sequence, Tuple, Union
 
 from cobra import Model as Cobra_Model
 from reframed import CBModel as Reframed_Model
-from mewpy.io import Reader, Engines, read_model
+
+from mewpy.io import Engines, Reader, read_model
+
 from .problem import AbstractKOProblem
 
-
 if TYPE_CHECKING:
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
     from mewpy.optimization import EvaluationFunction
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
 
 
-def load_optorf(regulatory_model: Union[str, TextIOWrapper, Reader],
-                metabolic_model: Union[str, TextIOWrapper, Cobra_Model, Reframed_Model, Reader],
-                config: dict = None,
-                warnings: bool = False):
+def load_optorf(
+    regulatory_model: Union[str, TextIOWrapper, Reader],
+    metabolic_model: Union[str, TextIOWrapper, Cobra_Model, Reframed_Model, Reader],
+    config: dict = None,
+    warnings: bool = False,
+):
     """
     The standard method to load an OptORF problem.
     A OptORF problem is a KO strain optimization problem
@@ -52,16 +55,14 @@ def load_optorf(regulatory_model: Union[str, TextIOWrapper, Reader],
             file_name = regulatory_model.name
 
         else:
-            raise ImportError('Invalid file type')
+            raise ImportError("Invalid file type")
 
         engine = Engines.BooleanRegulatoryCSV
 
-        if file_name.endswith('.xml') or file_name.endswith('.sbml'):
+        if file_name.endswith(".xml") or file_name.endswith(".sbml"):
             engine = Engines.RegulatorySBML
 
-        regulatory_model = Reader(engine=engine,
-                                  io=regulatory_model,
-                                  **config)
+        regulatory_model = Reader(engine=engine, io=regulatory_model, **config)
 
     if not isinstance(metabolic_model, Reader):
 
@@ -82,23 +83,22 @@ def load_optorf(regulatory_model: Union[str, TextIOWrapper, Reader],
             engine = Engines.ReframedModel
 
         else:
-            raise ImportError('Invalid file type')
+            raise ImportError("Invalid file type")
 
-        metabolic_model = Reader(engine=engine,
-                                 io=metabolic_model,
-                                 **config)
+        metabolic_model = Reader(engine=engine, io=metabolic_model, **config)
 
     return read_model(regulatory_model, metabolic_model, warnings=warnings)
 
 
 class OptORFProblem(AbstractKOProblem):
 
-    def __init__(self,
-                 model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                 fevaluation: Sequence['EvaluationFunction'],
-                 initial_state: Dict[str, float] = None,
-                 **kwargs):
-
+    def __init__(
+        self,
+        model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+        fevaluation: Sequence["EvaluationFunction"],
+        initial_state: Dict[str, float] = None,
+        **kwargs,
+    ):
         """
         OptORF problem using the RFBA implementation analysis.
         The OptORF approach is based on gene and regulator deletion to identify optimization strategies.
@@ -108,8 +108,10 @@ class OptORFProblem(AbstractKOProblem):
         For more details consult: https://doi.org/10.1186/1752-0509-4-53
         """
         if isinstance(model, (Cobra_Model, Reframed_Model)):
-            raise ValueError(f'OptORF is not available for a model of type {type(model)}.'
-                             f'Please use load_optorf() to retrieve an integrated GERM model')
+            raise ValueError(
+                f"OptORF is not available for a model of type {type(model)}."
+                f"Please use load_optorf() to retrieve an integrated GERM model"
+            )
 
         super(OptORFProblem, self).__init__(model, fevaluation, **kwargs)
 
@@ -129,12 +131,17 @@ class OptORFProblem(AbstractKOProblem):
         """
         # Target list is the combination of genes and regulators available into the mewpy integrated model
 
-        regulators = [regulator.id for regulator in self.model.yield_regulators()
-                      if not regulator.is_reaction() and not regulator.is_metabolite()]
-        targets = [target.id for target in self.model.yield_targets()
-                   if not target.is_reaction() and not target.is_metabolite()]
-        genes = [gene.id for gene in self.model.yield_genes()
-                 if not gene.is_reaction() and not gene.is_metabolite()]
+        regulators = [
+            regulator.id
+            for regulator in self.model.yield_regulators()
+            if not regulator.is_reaction() and not regulator.is_metabolite()
+        ]
+        targets = [
+            target.id
+            for target in self.model.yield_targets()
+            if not target.is_reaction() and not target.is_metabolite()
+        ]
+        genes = [gene.id for gene in self.model.yield_genes() if not gene.is_reaction() and not gene.is_metabolite()]
 
         self._trg_list = list(set.union(set(regulators), set(targets), set(genes)))
 

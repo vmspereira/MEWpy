@@ -3,12 +3,14 @@ Comprehensive tests for RegulatoryExtension class.
 
 Tests factory methods, regulatory network management, and integration with analysis methods.
 """
-import pytest
+
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 class TestRegulatoryExtensionFactoryMethods:
@@ -18,9 +20,9 @@ class TestRegulatoryExtensionFactoryMethods:
         """Test from_sbml() with metabolic model only."""
         from mewpy.germ.models import RegulatoryExtension
 
-        model_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core.xml'
+        model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
 
-        model = RegulatoryExtension.from_sbml(str(model_path), flavor='reframed')
+        model = RegulatoryExtension.from_sbml(str(model_path), flavor="reframed")
 
         assert model is not None
         assert len(model.reactions) > 0
@@ -31,15 +33,11 @@ class TestRegulatoryExtensionFactoryMethods:
         """Test from_sbml() with metabolic + regulatory network."""
         from mewpy.germ.models import RegulatoryExtension
 
-        model_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core.xml'
-        reg_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core_trn.csv'
+        model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
+        reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         model = RegulatoryExtension.from_sbml(
-            str(model_path),
-            str(reg_path),
-            regulatory_format='csv',
-            sep=',',
-            flavor='reframed'
+            str(model_path), str(reg_path), regulatory_format="csv", sep=",", flavor="reframed"
         )
 
         assert model is not None
@@ -51,18 +49,14 @@ class TestRegulatoryExtensionFactoryMethods:
     def test_from_model_cobrapy(self):
         """Test from_model() with COBRApy model."""
         import cobra
+
         from mewpy.germ.models import RegulatoryExtension
 
-        model_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core.xml'
-        reg_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core_trn.csv'
+        model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
+        reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         cobra_model = cobra.io.read_sbml_model(str(model_path))
-        model = RegulatoryExtension.from_model(
-            cobra_model,
-            str(reg_path),
-            regulatory_format='csv',
-            sep=','
-        )
+        model = RegulatoryExtension.from_model(cobra_model, str(reg_path), regulatory_format="csv", sep=",")
 
         assert model is not None
         assert len(model.reactions) > 0
@@ -77,15 +71,11 @@ class TestRegulatoryExtensionAPI:
         """Create an integrated model for testing."""
         from mewpy.germ.models import RegulatoryExtension
 
-        model_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core.xml'
-        reg_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core_trn.csv'
+        model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
+        reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         return RegulatoryExtension.from_sbml(
-            str(model_path),
-            str(reg_path),
-            regulatory_format='csv',
-            sep=',',
-            flavor='reframed'
+            str(model_path), str(reg_path), regulatory_format="csv", sep=",", flavor="reframed"
         )
 
     def test_yield_interactions_returns_tuples(self, integrated_model):
@@ -101,7 +91,7 @@ class TestRegulatoryExtensionAPI:
 
         int_id, interaction = first
         assert isinstance(int_id, str)
-        assert hasattr(interaction, 'target')
+        assert hasattr(interaction, "target")
 
     def test_yield_regulators_returns_tuples(self, integrated_model):
         """Test that yield_regulators() returns (id, regulator) tuples."""
@@ -148,15 +138,11 @@ class TestRegulatoryExtensionWithAnalysis:
         """Create an integrated model for testing."""
         from mewpy.germ.models import RegulatoryExtension
 
-        model_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core.xml'
-        reg_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core_trn.csv'
+        model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
+        reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         return RegulatoryExtension.from_sbml(
-            str(model_path),
-            str(reg_path),
-            regulatory_format='csv',
-            sep=',',
-            flavor='reframed'
+            str(model_path), str(reg_path), regulatory_format="csv", sep=",", flavor="reframed"
         )
 
     def test_fba_analysis(self, integrated_model):
@@ -200,14 +186,14 @@ class TestBackwardsCompatibility:
 
     def test_analysis_with_legacy_model(self):
         """Test that analysis methods work with legacy read_model()."""
-        from mewpy.io import Reader, Engines, read_model
         from mewpy.germ.analysis import FBA
+        from mewpy.io import Engines, Reader, read_model
 
-        model_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core.xml'
-        reg_path = Path(__file__).parent.parent / 'examples' / 'models' / 'germ' / 'e_coli_core_trn.csv'
+        model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
+        reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         metabolic_reader = Reader(Engines.MetabolicSBML, str(model_path))
-        regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, str(reg_path), sep=',')
+        regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, str(reg_path), sep=",")
 
         legacy_model = read_model(metabolic_reader, regulatory_reader, warnings=False)
 
@@ -219,5 +205,5 @@ class TestBackwardsCompatibility:
         assert solution.objective_value is not None or solution.fobj is not None
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

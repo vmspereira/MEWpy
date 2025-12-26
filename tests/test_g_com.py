@@ -9,6 +9,7 @@ class TestCommReframed(unittest.TestCase):
     def setUp(self):
         """Set up - Uses COBRApy models which work properly with community model construction"""
         from cobra.io.sbml import read_sbml_model
+
         from mewpy.model import CommunityModel
 
         model1 = read_sbml_model(EC_CORE_MODEL)
@@ -68,6 +69,7 @@ class TestCommCobra(TestCommReframed):
     def setUp(self):
         """Set up"""
         from cobra.io.sbml import read_sbml_model
+
         from mewpy.model import CommunityModel
 
         model1 = read_sbml_model(EC_CORE_MODEL)

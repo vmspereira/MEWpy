@@ -1,11 +1,13 @@
 from collections import defaultdict
-from typing import Union, TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Tuple, Union
 
 from mewpy.germ.models import Model
+
 from .engines import JSON, MetabolicSBML
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+
     from .builder import Builder
     from .reader import Reader
     from .writer import Writer
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 
 class Director:
 
-    def __init__(self, *builders: Union['Builder', 'Reader', 'Writer']):
+    def __init__(self, *builders: Union["Builder", "Reader", "Writer"]):
         """
         Director is responsible for managing builders. It gives instructions to the builders on how to read or write
         a multi-type model properly
@@ -25,14 +27,14 @@ class Director:
         self._builders = builders
 
     @property
-    def builders(self) -> Tuple[Union['Builder', 'Reader', 'Writer']]:
+    def builders(self) -> Tuple[Union["Builder", "Reader", "Writer"]]:
         """
         Returns the builders associated with this director
         :return: tuple of builders
         """
         return self._builders
 
-    def read(self) -> Union['Model', 'RegulatoryModel', 'MetabolicModel']:
+    def read(self) -> Union["Model", "RegulatoryModel", "MetabolicModel"]:
         """
         Reading a GERM model, namely metabolic, regulatory or both encoded into one or more file types.
         Reading is performed step-wise according to the builders order.
@@ -47,7 +49,7 @@ class Director:
             engine = builder.engine
 
             # First, opening the resource in read mode
-            engine.open(mode='r')
+            engine.open(mode="r")
 
             # Second, retrieving the model type
             types.add(engine.model_type)
@@ -70,7 +72,7 @@ class Director:
             engine.close()
 
         # Fifth, the model is created, as we now know the model types.
-        model = Model.from_types(types=types, identifier='model')
+        model = Model.from_types(types=types, identifier="model")
         model_id = None
         model_name = None
 
@@ -121,7 +123,6 @@ class Director:
         return model
 
     def write(self):
-
         """
         Writing a GERM model, namely metabolic, regulatory or both to one or more file types.
         Writing is performed step-wise according to the builders order.
@@ -132,7 +133,7 @@ class Director:
             engine = builder.engine
 
             # First, opening the resource in write mode
-            engine.open(mode='w')
+            engine.open(mode="w")
 
             # Second, writing the model to the file
             engine.write()

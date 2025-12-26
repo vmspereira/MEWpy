@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Dict, Iterable, Union
+from typing import TYPE_CHECKING, Dict, Iterable, List, Union
 
 import pandas as pd
 
@@ -14,7 +14,8 @@ class MultiSolution:
     This object can be exported into a pandas DataFrame or Summary-like object
     using the to_frame(), to_summary() methods, respectively.
     """
-    def __init__(self, *solutions: 'Solution'):
+
+    def __init__(self, *solutions: "Solution"):
         """
         A MultiSolution object is a collection of Solution objects.
         It can be used to compare different simulation methods or to compare the same method with different parameters.
@@ -26,13 +27,13 @@ class MultiSolution:
             _solutions = {}
 
             for solution in solutions:
-                setattr(self, f'{solution.method}', solution)
+                setattr(self, f"{solution.method}", solution)
                 _solutions[solution.method] = solution
 
         self._solutions = _solutions
 
     @property
-    def solutions(self) -> Dict[str, 'Solution']:
+    def solutions(self) -> Dict[str, "Solution"]:
         """
         Returns a dict of Solution objects by the method name
         :return: a dict of Solution objects by the method name
@@ -51,7 +52,7 @@ class MultiSolution:
             frames.append(solution.to_frame().frame)
             columns.append(method)
 
-        df = pd.concat(frames, axis=1, join='outer', keys=columns)
+        df = pd.concat(frames, axis=1, join="outer", keys=columns)
 
         return df
 
@@ -67,15 +68,15 @@ class MultiSolution:
             frames.append(solution.to_summary().frame)
             columns.append(method)
 
-        df = pd.concat(frames, axis=1, join='outer', keys=columns)
+        df = pd.concat(frames, axis=1, join="outer", keys=columns)
 
         return df
 
     def __repr__(self):
-        return 'MultiSolution'
+        return "MultiSolution"
 
     def __str__(self):
-        return 'MultiSolution:' ','.join([method for method in self._solutions])
+        return "MultiSolution:" ",".join([method for method in self._solutions])
 
 
 # TODO: methods stubs and type hinting
@@ -85,7 +86,8 @@ class DynamicSolution:
     It is similar to the MultiSolution object, but it is used to store the results of a dynamic simulation using the
     time point rather than the method name.
     """
-    def __init__(self, *solutions: 'Solution', time: Iterable = None):
+
+    def __init__(self, *solutions: "Solution", time: Iterable = None):
         """
         A DynamicSolution object is a collection of Solution objects.
         It is similar to the MultiSolution object, but it is used to store the results of a dynamic simulation using the
@@ -107,14 +109,14 @@ class DynamicSolution:
                 time = list(time)
 
             for t, solution in zip(time, solutions):
-                setattr(self, f't_{t}', solution)
-                _solutions[f't_{t}'] = solution
+                setattr(self, f"t_{t}", solution)
+                _solutions[f"t_{t}"] = solution
 
         self._solutions = _solutions
         self._time = time
 
     @property
-    def solutions(self) -> Dict[str, 'Solution']:
+    def solutions(self) -> Dict[str, "Solution"]:
         """
         Returns a dict of Solution objects by the time point
         :return: a dict of Solution objects by the time point
@@ -133,7 +135,7 @@ class DynamicSolution:
             frames.append(solution.to_frame().frame)
             columns.append(time)
 
-        df = pd.concat(frames, axis=1, join='outer', keys=columns)
+        df = pd.concat(frames, axis=1, join="outer", keys=columns)
 
         return df
 
@@ -149,15 +151,15 @@ class DynamicSolution:
             frames.append(solution.to_summary().frame)
             columns.append(time)
 
-        df = pd.concat(frames, axis=1, join='outer', keys=columns)
+        df = pd.concat(frames, axis=1, join="outer", keys=columns)
 
         return df
 
     def __repr__(self):
-        return 'DynamicSolution'
+        return "DynamicSolution"
 
     def __str__(self):
-        return 'DynamicSolution:' ','.join([time for time in self._solutions])
+        return "DynamicSolution:" ",".join([time for time in self._solutions])
 
 
 # TODO: methods stubs and type hinting
@@ -166,9 +168,8 @@ class KOSolution:
     A KOSolution object is a collection of Solution objects.
     It is similar to the MultiSolution object, but it is used to store the results of a KO simulations.
     """
-    def __init__(self,
-                 solutions: Union[List['Solution'], Dict[str, 'Solution']],
-                 kos: List[str] = None):
+
+    def __init__(self, solutions: Union[List["Solution"], Dict[str, "Solution"]], kos: List[str] = None):
         """
         A KOSolution object is a collection of Solution objects.
         It is similar to the MultiSolution object, but it is used to store the results of a KO simulations.
@@ -199,14 +200,14 @@ class KOSolution:
                     solutions = list(solutions.values())
 
             for ko, solution in zip(kos, solutions):
-                setattr(self, f'ko_{ko}', solution)
-                _solutions[f'ko_{ko}'] = solution
+                setattr(self, f"ko_{ko}", solution)
+                _solutions[f"ko_{ko}"] = solution
 
         self._solutions = _solutions
         self._time = kos
 
     @property
-    def solutions(self) -> Dict[str, 'Solution']:
+    def solutions(self) -> Dict[str, "Solution"]:
         """
         Returns a dict of Solution objects by the KO name
         :return: a dict of Solution objects by the KO name
@@ -225,7 +226,7 @@ class KOSolution:
             frames.append(solution.to_frame().frame)
             columns.append(ko)
 
-        df = pd.concat(frames, axis=1, join='outer', keys=columns)
+        df = pd.concat(frames, axis=1, join="outer", keys=columns)
 
         return df
 
@@ -241,12 +242,12 @@ class KOSolution:
             frames.append(solution.to_summary().frame)
             columns.append(ko)
 
-        df = pd.concat(frames, axis=1, join='outer', keys=columns)
+        df = pd.concat(frames, axis=1, join="outer", keys=columns)
 
         return df
 
     def __repr__(self):
-        return 'KOSolution'
+        return "KOSolution"
 
     def __str__(self):
-        return 'KOSolution:' ','.join([time for time in self._solutions])
+        return "KOSolution:" ",".join([time for time in self._solutions])

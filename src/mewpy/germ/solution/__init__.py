@@ -1,1 +1,1 @@
-from .multi_solution import MultiSolution, DynamicSolution, KOSolution
+from .multi_solution import DynamicSolution, KOSolution, MultiSolution

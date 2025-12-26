@@ -19,11 +19,14 @@ Author: Vítor Pereira
 ##############################################################################
 """
 
-from .simulator import get_simulator, get_container
-from .simulation import Simulator, SimulationMethod, SStatus, SimulationResult
+# isort: off
+# Import order matters to avoid circular imports
+from .simulator import get_container, get_simulator
+from .simulation import SimulationMethod, SimulationResult, Simulator, SStatus
 from .environment import Environment
 from .sglobal import __MEWPY_sim_solvers__
 
+# isort: on
 
 default_solver = None
 
@@ -38,7 +41,7 @@ def get_default_solver():
     if default_solver:
         return default_solver
 
-    solver_order = ['cplex', 'gurobi', 'glpk']
+    solver_order = ["cplex", "gurobi", "glpk"]
 
     for solver in solver_order:
         if solver in __MEWPY_sim_solvers__:
@@ -52,7 +55,7 @@ def get_default_solver():
 
 
 def set_default_solver(solvername):
-    """ Sets default solver.
+    """Sets default solver.
     Arguments:
         solvername : (str) solver name (currently available: 'gurobi', 'cplex')
     """
@@ -65,9 +68,9 @@ def set_default_solver(solvername):
         # implementation to the selected solver
         try:
             import mewpy.solvers as msolvers
+
             msolvers.set_default_solver(solvername)
         except:
             pass
     else:
         raise RuntimeError(f"Solver {solvername} not available.")
-

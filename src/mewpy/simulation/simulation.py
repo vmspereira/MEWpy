@@ -13,7 +13,7 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-""" 
+"""
 ##############################################################################
 Defines an interface for the simulators, objects that wrap metabolic phenotipe
 simulation toolboxes.
@@ -21,26 +21,27 @@ simulation toolboxes.
 Author: Vitor Pereira
 ##############################################################################
 """
-from abc import abstractmethod, ABC
+import math
+from abc import ABC, abstractmethod
 from collections import OrderedDict
+from copy import deepcopy
 from enum import Enum
+from typing import List, Union
+
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from copy import deepcopy
-import math
 
 from ..util.parsing import evaluate_expression_tree
 from ..util.process import cpu_count
 
-from typing import List, Union
 
 class SimulationMethod(Enum):
-    FBA = 'FBA'
-    pFBA = 'pFBA'
-    MOMA = 'MOMA'
-    lMOMA = 'lMOMA'
-    ROOM = 'ROOM'
-    NONE = 'NONE'
+    FBA = "FBA"
+    pFBA = "pFBA"
+    MOMA = "MOMA"
+    lMOMA = "lMOMA"
+    ROOM = "ROOM"
+    NONE = "NONE"
 
     def __eq__(self, other):
         """Overrides equal to enable string name comparison.
@@ -58,19 +59,20 @@ class SimulationMethod(Enum):
 
     def __hash__(self):
         return hash(self.name)
-    
+
     def __str__(self) -> str:
         return self.name
 
 
 class SStatus(Enum):
-    """ Enumeration of possible solution status. """
-    OPTIMAL = 'Optimal'
-    UNKNOWN = 'Unknown'
-    SUBOPTIMAL = 'Suboptimal'
-    UNBOUNDED = 'Unbounded'
-    INFEASIBLE = 'Infeasible'
-    INF_OR_UNB = 'Infeasible or Unbounded'
+    """Enumeration of possible solution status."""
+
+    OPTIMAL = "Optimal"
+    UNKNOWN = "Unknown"
+    SUBOPTIMAL = "Suboptimal"
+    UNBOUNDED = "Unbounded"
+    INFEASIBLE = "Infeasible"
+    INF_OR_UNB = "Infeasible or Unbounded"
 
     def __repr__(self):
         return self.name
@@ -93,13 +95,12 @@ class SimulationInterface(ABC):
 
 class ModelContainer(ABC):
     """Interface for Model container.
-       Provides an abstraction from models implementations.
+    Provides an abstraction from models implementations.
     """
 
-    _r_prefix = ''
-    _m_prefix = ''
-    _g_prefix = ''
-
+    _r_prefix = ""
+    _m_prefix = ""
+    _g_prefix = ""
 
     @property
     def reactions(self):
@@ -156,7 +157,7 @@ class ModelContainer(ABC):
 
     def get_reaction_metabolites(self, r_id):
         rxn = self.get_reaction(r_id)
-        return rxn['stoichiometry']
+        return rxn["stoichiometry"]
 
     def get_substrates(self, rxn_id):
         met = self.get_reaction_metabolites(rxn_id)
@@ -177,7 +178,7 @@ class ModelContainer(ABC):
         :returns: A string representation of the reaction GPR if exists None otherwise.
         """
         rxn = self.get_reaction(rxn_id)
-        return rxn['gpr']
+        return rxn["gpr"]
 
     def summary(self):
         print(f"Metabolites: {len(self.metabolites)}")
@@ -199,40 +200,48 @@ class Simulator(ModelContainer, SimulationInterface):
         :returns: A SimulationResult.
 
         """
-        method = kwargs.get('method',None)
+        method = kwargs.get("method", None)
         if method and callable(method):
             new_kwargs = {k: v for k, v in kwargs.items() if k in ["method"]}
-            return self._simulate_callable(method=method,*args,**new_kwargs)
+            return self._simulate_callable(method=method, *args, **new_kwargs)
         else:
-            return self._simulate(self,*args, **kwargs)
-    
+            return self._simulate(self, *args, **kwargs)
+
     def _simulate_callable(self, method, *args, **kwargs):
         if not callable(method):
             raise ValueError(f"The method {method} is not callable.")
-        simulation_result = method(self,*args, **kwargs)
+        simulation_result = method(self, *args, **kwargs)
         return simulation_result
 
-
-    def _simulate(self,*args, **kwargs):
+    def _simulate(self, *args, **kwargs):
         """Abstract method to run a phenotype simulation.
 
         :returns: A SimulationResult.
 
         """
         raise NotImplementedError
-    
 
     @abstractmethod
     def FVA(self, reactions=None, obj_frac=0, constraints=None, loopless=False, internal=None, solver=None):
-        """ Abstract method to run Flux Variability Analysis (FVA).
+        """Abstract method to run Flux Variability Analysis (FVA).
 
         :returns: A dictionary of flux range values.
 
         """
         raise NotImplementedError
 
-    def simulate_mp(self, objective=None, method=SimulationMethod.FBA, maximize=True, constraints_list=None,
-                    reference=None, solver=None, jobs=None, desc="Parallel Simulation", **kwargs):
+    def simulate_mp(
+        self,
+        objective=None,
+        method=SimulationMethod.FBA,
+        maximize=True,
+        constraints_list=None,
+        reference=None,
+        solver=None,
+        jobs=None,
+        desc="Parallel Simulation",
+        **kwargs,
+    ):
         """Parallel phenotype simulations.
 
         :param (dict) objective: The simulations objective. If none, the model objective is considered.
@@ -242,15 +251,28 @@ class Simulator(ModelContainer, SimulationInterface):
         :param (dict) reference: A dictionary of reaction flux values.
         :param (Solver) solver: An instance of the solver.
         :param (int) jobs: The number of parallel jobs.
-        :param (str) desc: Description to present in tdqm. 
+        :param (str) desc: Description to present in tdqm.
         """
         constraints_list = [None] if not constraints_list else constraints_list
         jobs = jobs if jobs else cpu_count()
         print(f"Using {jobs} jobs")
         from ..util.utilities import tqdm_joblib
-        with tqdm_joblib(tqdm(desc=desc, total=len(constraints_list))) as progress_bar:
-            res = Parallel(n_jobs=jobs)(delayed(simulate)(self.model, self.environmental_conditions, objective, method,
-                                                          maximize, constraints, reference, solver, **kwargs) for constraints in constraints_list)
+
+        with tqdm_joblib(tqdm(desc=desc, total=len(constraints_list))):
+            res = Parallel(n_jobs=jobs)(
+                delayed(simulate)(
+                    self.model,
+                    self.environmental_conditions,
+                    objective,
+                    method,
+                    maximize,
+                    constraints,
+                    reference,
+                    solver,
+                    **kwargs,
+                )
+                for constraints in constraints_list
+            )
         return res
 
     @abstractmethod
@@ -272,7 +294,7 @@ class Simulator(ModelContainer, SimulationInterface):
     def metabolite_reaction_lookup(self, force_recalculate=False):
         raise NotImplementedError
 
-    def find(self, pattern=None, sort=False, find_in='r'):
+    def find(self, pattern=None, sort=False, find_in="r"):
         """A user friendly method to find metabolites, reactions or genes in the model.
 
         :param pattern: The pattern which can be a regular expression, defaults to None in which case all entries are listed.
@@ -284,16 +306,17 @@ class Simulator(ModelContainer, SimulationInterface):
         :return: the search results
         :rtype: pandas dataframe
         """
-        if find_in == 'm':
+        if find_in == "m":
             values = self.metabolites
-        elif find_in == 'g':
+        elif find_in == "g":
             values = self.genes
         else:
             values = self.reactions
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -302,9 +325,10 @@ class Simulator(ModelContainer, SimulationInterface):
             values.sort()
 
         import pandas as pd
-        if find_in == 'm':
+
+        if find_in == "m":
             data = [self.get_metabolite(x) for x in values]
-        elif find_in == 'g':
+        elif find_in == "g":
             data = [self.get_gene(x) for x in values]
         else:
             data = [self.get_reaction(x) for x in values]
@@ -317,36 +341,38 @@ class Simulator(ModelContainer, SimulationInterface):
         return df
 
     def find_genes(self, pattern=None, sort=False):
-        return self.find(pattern=pattern, sort=sort, find_in='g')
+        return self.find(pattern=pattern, sort=sort, find_in="g")
 
     def find_metabolites(self, pattern=None, sort=False):
-        return self.find(pattern=pattern, sort=sort, find_in='m')
+        return self.find(pattern=pattern, sort=sort, find_in="m")
 
-    def find_metabolite_by_formula(self,formula:Union[str,List[str]]):
+    def find_metabolite_by_formula(self, formula: Union[str, List[str]]):
         from mewpy.util.utilities import elements
-        formulas = [formula] if isinstance(formula,str) else formula  
-        elems =[elements(f) for f in formulas] 
+
+        formulas = [formula] if isinstance(formula, str) else formula
+        elems = [elements(f) for f in formulas]
         mets = []
         for met in self.metabolites:
             f = self.get_metabolite(met).formula
             if elements(f) in elems:
-                    mets.append(met)
+                mets.append(met)
         if mets:
             return self.find_metabolites(mets)
-        
-    def metabolite_by_formula(self,formula:str, compartment='c'):
+
+    def metabolite_by_formula(self, formula: str, compartment="c"):
         from mewpy.util.utilities import elements
+
         elem = elements(formula)
         for met in self.metabolites:
             m = self.get_metabolite(met)
             f = m.formula
             c = m.compartment
-            if elements(f)==elem and c==compartment:
+            if elements(f) == elem and c == compartment:
                 return met
         return None
-        
+
     def find_reactions(self, pattern=None, sort=False):
-        return self.find(pattern=pattern, sort=sort, find_in='r')
+        return self.find(pattern=pattern, sort=sort, find_in="r")
 
     def is_essential_reaction(self, rxn, min_growth=0.01):
         res = self.simulate(constraints={rxn: 0}, slim=True)
@@ -359,7 +385,7 @@ class Simulator(ModelContainer, SimulationInterface):
         :param float min_growth: Minimal percentage of the wild type growth value. Default 0.01 (1%).
         :returns: A list of essential reactions.
         """
-        essential = getattr(self, '_essential_reactions', None)
+        essential = getattr(self, "_essential_reactions", None)
         if essential is not None:
             return essential
         essential = []
@@ -410,7 +436,7 @@ class Simulator(ModelContainer, SimulationInterface):
         :returns: A list of essential genes.
 
         """
-        essential = getattr(self, '_essential_genes', None)
+        essential = getattr(self, "_essential_genes", None)
         if essential is not None:
             return essential
         essential = []
@@ -427,7 +453,7 @@ class Simulator(ModelContainer, SimulationInterface):
         :returns: A dictionary of wild type reaction flux values.
 
         """
-        ref = getattr(self, '_reference', None)
+        ref = getattr(self, "_reference", None)
         if ref is not None:
             return ref
         self._reference = self.simulate(method="pFBA").fluxes
@@ -437,17 +463,16 @@ class Simulator(ModelContainer, SimulationInterface):
         return NotImplementedError
 
     def get_external_metabolites(self):
-        external =[]
-        ext_com = [c_id for c_id in self.compartments 
-                   if self.get_compartment(c_id).external==True]
+        external = []
+        ext_com = [c_id for c_id in self.compartments if self.get_compartment(c_id).external]
         for m_id in self.metabolites:
             if self.get_metabolite(m_id).compartment in ext_com:
                 external.append(m_id)
         return external
 
     def blocked_reactions(self, constraints=None, reactions=None, abstol=1e-9):
-        """ Find all blocked reactions in a model
-        
+        """Find all blocked reactions in a model
+
         :param (dict) constraints: additional constraints (optional)
         :param (list) reactions: List of reactions which will be tested (default: None, test all reactions)
         :param (float) abstol: absolute tolerance (default: 1e-9)
@@ -459,7 +484,7 @@ class Simulator(ModelContainer, SimulationInterface):
 
         return [r_id for r_id, (lb, ub) in variability.items() if (abs(lb) + abs(ub)) < abstol]
 
-    def get_metabolite_reactions(self,m_id: str) -> List[str]:
+    def get_metabolite_reactions(self, m_id: str) -> List[str]:
         """Returns the list or reactions that produce or consume a metabolite.
 
         :param m_id: the metabolite identifier
@@ -467,7 +492,7 @@ class Simulator(ModelContainer, SimulationInterface):
         """
         m_r = self.metabolite_reaction_lookup()
         return list(m_r[m_id].keys())
-    
+
     def get_metabolite_producers(self, m_id: str) -> List[str]:
         """Returns the list or reactions that produce a metabolite.
 
@@ -485,7 +510,7 @@ class Simulator(ModelContainer, SimulationInterface):
         """
         m_r = self.metabolite_reaction_lookup()
         return [k for k, v in m_r[m_id].items() if v < 0]
-    
+
     def copy(self):
         """Retuns a copy of the Simulator instance."""
         return deepcopy(self)
@@ -494,8 +519,19 @@ class Simulator(ModelContainer, SimulationInterface):
 class SimulationResult(object):
     """Class that represents simulation results and performs operations over them."""
 
-    def __init__(self, model, objective_value, fluxes=None, status=None, envcond=None, model_constraints=None,
-                 simul_constraints=None, maximize=True, method=None, shadow_prices=None):
+    def __init__(
+        self,
+        model,
+        objective_value,
+        fluxes=None,
+        status=None,
+        envcond=None,
+        model_constraints=None,
+        simul_constraints=None,
+        maximize=True,
+        method=None,
+        shadow_prices=None,
+    ):
         """
         :param model: A model instance.
         :param objective_value: The phenotype simulation objective value.
@@ -534,16 +570,14 @@ class SimulationResult(object):
 
     def __repr__(self):
         if callable(self.method):
-            name = getattr(self.method, '__name__', repr(self.method))
+            name = getattr(self.method, "__name__", repr(self.method))
         else:
             name = str(self.method)
-        return (f"objective: {self.objective_value}\nStatus: "
-                f"{self.status}\nMethod:{name}")
-
+        return f"objective: {self.objective_value}\nStatus: " f"{self.status}\nMethod:{name}"
 
     def __str__(self):
         return self.__repr__()
-    
+
     def find(self, pattern=None, sort=False, shadow_prices=False, show_nulls=False):
         """Returns a dataframe of reactions and their fluxes matching a pattern or a list of patterns.
 
@@ -556,22 +590,23 @@ class SimulationResult(object):
         if shadow_prices:
             try:
                 values = [(key, value) for key, value in self.shadow_prices.items()]
-                columns = ['Metabolite', 'Shadow Price']
+                columns = ["Metabolite", "Shadow Price"]
             except Exception:
-                raise ValueError('No shadow prices')
+                raise ValueError("No shadow prices")
         else:
             try:
                 if show_nulls:
                     values = [(key, value) for key, value in self.fluxes.items()]
                 else:
-                    values = [(key, value) for key, value in self.fluxes.items() if value!=0.0]
-                columns = ['Reaction ID', 'Flux rate']
+                    values = [(key, value) for key, value in self.fluxes.items() if value != 0.0]
+                columns = ["Reaction ID", "Flux rate"]
             except Exception:
-                raise ValueError('No fluxes')
+                raise ValueError("No fluxes")
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -579,6 +614,7 @@ class SimulationResult(object):
         if sort:
             values.sort(key=lambda x: x[1])
         import pandas as pd
+
         df = pd.DataFrame(values, columns=columns)
         df = df.set_index(columns[0])
         return df
@@ -599,6 +635,7 @@ class SimulationResult(object):
         right = ""
         firstLeft, firstRight = True, True
         from . import get_simulator
+
         sim = get_simulator(self.model)
         ssFluxes = self.fluxes
         for r_id in sim.reactions:
@@ -635,8 +672,8 @@ class SimulationResult(object):
 
         return left + " --> " + right
 
-    def get_metabolites_turnover(self, pattern=None, format='df'):
-        """ Calculate metabolite turnovers.
+    def get_metabolites_turnover(self, pattern=None, format="df"):
+        """Calculate metabolite turnovers.
 
          :param str format: the display format (pandas.DataFrame or dict).
              Default 'df' pandas.DataFrame
@@ -645,6 +682,7 @@ class SimulationResult(object):
              dict or pandas.DataFrame: metabolite turnover rates
         """
         from . import get_simulator
+
         sim = get_simulator(self.model)
 
         if not self.fluxes:
@@ -653,8 +691,9 @@ class SimulationResult(object):
         mets = None
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -662,19 +701,22 @@ class SimulationResult(object):
 
         m_r_table = sim.metabolite_reaction_lookup()
 
-        data = {m_id: 0.5*sum([abs(coeff * self.fluxes[r_id]) for r_id, coeff in neighbours.items()])
-                for m_id, neighbours in m_r_table.items()}
+        data = {
+            m_id: 0.5 * sum([abs(coeff * self.fluxes[r_id]) for r_id, coeff in neighbours.items()])
+            for m_id, neighbours in m_r_table.items()
+        }
         if mets is not None:
             data = {k: v for k, v in data.items() if k in mets}
 
-        if format == 'df':
+        if format == "df":
             import pandas as pd
-            df = pd.DataFrame(list(data.values()), index=list(data.keys()), columns=['Turnover'])
-            df.index.name = 'Metabolite'
+
+            df = pd.DataFrame(list(data.values()), index=list(data.keys()), columns=["Turnover"])
+            df.index.name = "Metabolite"
             return df
         return data
 
-    def get_metabolite(self, met_id, format='df'):
+    def get_metabolite(self, met_id, format="df"):
         """Displays the consumption/production of a metabolite in the reactions
         it participates.
 
@@ -686,6 +728,7 @@ class SimulationResult(object):
             dict or pandas.DataFrame: metabolite turnover rates
         """
         from . import get_simulator
+
         sim = get_simulator(self.model)
 
         if not self.fluxes:
@@ -693,10 +736,11 @@ class SimulationResult(object):
 
         m_r = sim.metabolite_reaction_lookup()[met_id]
         data = {r_id: coeff * self.fluxes[r_id] for r_id, coeff in m_r.items()}
-        if format == 'df':
+        if format == "df":
             import pandas as pd
-            df = pd.DataFrame(list(data.values()), index=list(data.keys()), columns=['Value'])
-            df.index.name = 'Reaction'
+
+            df = pd.DataFrame(list(data.values()), index=list(data.keys()), columns=["Value"])
+            df.index.name = "Reaction"
             return df
         return data
 
@@ -711,20 +755,31 @@ class SimulationResult(object):
         :rtype: SolutionResult
         """
         from mewpy.solvers import Solution, Status
-        smap = {Status.OPTIMAL: SStatus.OPTIMAL,
-                Status.UNKNOWN: SStatus.UNKNOWN,
-                Status.SUBOPTIMAL: SStatus.SUBOPTIMAL,
-                Status.UNBOUNDED: SStatus.UNBOUNDED,
-                Status.INFEASIBLE: SStatus.INFEASIBLE,
-                Status.INF_OR_UNB: SStatus.INF_OR_UNB
-                }
+
+        smap = {
+            Status.OPTIMAL: SStatus.OPTIMAL,
+            Status.UNKNOWN: SStatus.UNKNOWN,
+            Status.SUBOPTIMAL: SStatus.SUBOPTIMAL,
+            Status.UNBOUNDED: SStatus.UNBOUNDED,
+            Status.INFEASIBLE: SStatus.INFEASIBLE,
+            Status.INF_OR_UNB: SStatus.INF_OR_UNB,
+        }
         if not isinstance(solution, Solution):
-            raise ValueError('solution should be and instance of mewpy.solvers.solution.Solution')
+            raise ValueError("solution should be and instance of mewpy.solvers.solution.Solution")
         return cls(None, solution.fobj, fluxes=solution.values, status=smap[solution.status])
 
 
-def simulate(model, envcond=None, objective=None, method=SimulationMethod.FBA, maximize=True, constraints=None, reference=None,
-             solver=None, **kwargs):
+def simulate(
+    model,
+    envcond=None,
+    objective=None,
+    method=SimulationMethod.FBA,
+    maximize=True,
+    constraints=None,
+    reference=None,
+    solver=None,
+    **kwargs,
+):
     """Runs an FBA phenotype simulation.
 
     :param model: cobrapy, reframed, GERM constraint-base model
@@ -739,8 +794,15 @@ def simulate(model, envcond=None, objective=None, method=SimulationMethod.FBA, m
     :returns: SimultationResult
     """
     from . import get_simulator
+
     sim = get_simulator(model, envcond=envcond)
-    res = sim.simulate(objective=objective, method=method, maximize=maximize,
-                       constraints=constraints, reference=reference,
-                       solver=solver, **kwargs)
+    res = sim.simulate(
+        objective=objective,
+        method=method,
+        maximize=maximize,
+        constraints=constraints,
+        reference=reference,
+        solver=solver,
+        **kwargs,
+    )
     return res

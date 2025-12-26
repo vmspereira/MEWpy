@@ -15,7 +15,9 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import copy
+
 from reframed.core.cbmodel import CBModel
+
 
 class SMomentModel(CBModel):
 
@@ -32,6 +34,7 @@ class SMomentModel(CBModel):
 
         if isinstance(model, str):
             from reframed.io.sbml import load_cbmodel
+
             model = load_cbmodel(model)
         elif not isinstance(model, CBModel):
             raise ValueError("The model should be a path or a CBModel")
@@ -46,7 +49,7 @@ class SMomentModel(CBModel):
         self.enzymes = []
         for rx in self.reactions:
             if rx.startswith(self.enzyme_prefix):
-                self.enzymes.append(rx[len(self.enzyme_prefix):])
+                self.enzymes.append(rx[len(self.enzyme_prefix) :])
 
     @property
     def protein_rev_reactions(self):

@@ -1,22 +1,24 @@
 import re
 from io import StringIO
-from token import NAME, OP, NUMBER
+from token import NAME, NUMBER, OP
 from tokenize import generate_tokens, untokenize
 from typing import List
 
+from .algebra_constants import (
+    BOOLEAN_ESCAPE_CHARS,
+    BOOLEAN_OPERATORS,
+    BOOLEAN_STATES,
+    FALSE,
+    GLOBAL_MEWPY_OPERATORS,
+    GLOBAL_RELATIONAL_EQUAL_OPERATORS,
+    GLOBAL_RELATIONAL_OPERATORS,
+    RELATIONAL_EQUAL_OPERATORS,
+    RELATIONAL_ESCAPE_CHARS,
+    RELATIONAL_OPERATORS,
+    RELATIONAL_STATES,
+    TRUE,
+)
 from .symbolic import NoneAtom, Symbolic
-from .algebra_constants import (BOOLEAN_STATES,
-                                BOOLEAN_OPERATORS,
-                                TRUE,
-                                FALSE,
-                                RELATIONAL_STATES,
-                                RELATIONAL_OPERATORS,
-                                RELATIONAL_EQUAL_OPERATORS,
-                                GLOBAL_RELATIONAL_EQUAL_OPERATORS,
-                                GLOBAL_RELATIONAL_OPERATORS,
-                                BOOLEAN_ESCAPE_CHARS,
-                                RELATIONAL_ESCAPE_CHARS,
-                                GLOBAL_MEWPY_OPERATORS)
 
 _relational_ops = set()
 _relational_ops.update(GLOBAL_RELATIONAL_OPERATORS)
@@ -25,50 +27,43 @@ _relational_ops.update(GLOBAL_RELATIONAL_EQUAL_OPERATORS)
 
 class ExpressionParser:
 
-    def __init__(self,
-                 expression=None,
-
-                 stringify_expression='',
-                 parsed_expression='',
-                 symbolic_expression='',
-                 tokenized_expression=None,
-
-                 tokens=None,
-                 filters=None,
-                 transformations=None,
-                 escape_chars=None,
-                 replaces=None,
-
-                 symbols=None,
-                 aliases=None,
-
-                 is_boolean=False,
-                 is_true=False,
-                 is_false=False,
-                 is_and=False,
-                 is_or=False,
-                 is_not=False,
-
-                 is_relational=False,
-                 is_equal=False,
-                 is_not_equal=False,
-                 is_inequality=False,
-                 is_greater=False,
-                 is_greater_equal=False,
-                 is_less=False,
-                 is_less_equal=False,
-
-                 is_numeric=False,
-                 is_integer=False,
-                 is_float=False,
-                 is_one=False,
-                 is_zero=False,
-
-                 is_symbol=False,
-                 is_atom=False,
-
-                 is_none=False):
-
+    def __init__(
+        self,
+        expression=None,
+        stringify_expression="",
+        parsed_expression="",
+        symbolic_expression="",
+        tokenized_expression=None,
+        tokens=None,
+        filters=None,
+        transformations=None,
+        escape_chars=None,
+        replaces=None,
+        symbols=None,
+        aliases=None,
+        is_boolean=False,
+        is_true=False,
+        is_false=False,
+        is_and=False,
+        is_or=False,
+        is_not=False,
+        is_relational=False,
+        is_equal=False,
+        is_not_equal=False,
+        is_inequality=False,
+        is_greater=False,
+        is_greater_equal=False,
+        is_less=False,
+        is_less_equal=False,
+        is_numeric=False,
+        is_integer=False,
+        is_float=False,
+        is_one=False,
+        is_zero=False,
+        is_symbol=False,
+        is_atom=False,
+        is_none=False,
+    ):
         """
         Internal use only!
 
@@ -206,8 +201,15 @@ class ExpressionParser:
                 self.transformations = self.transformations + list(diff)
                 self.escape_chars.update({**BOOLEAN_ESCAPE_CHARS, **RELATIONAL_ESCAPE_CHARS})
 
-        if not self.is_boolean or self.is_relational or self.is_one or self.is_true or \
-                self.is_zero or self.is_false or self.is_symbol:
+        if (
+            not self.is_boolean
+            or self.is_relational
+            or self.is_one
+            or self.is_true
+            or self.is_zero
+            or self.is_false
+            or self.is_symbol
+        ):
             self.filters = all_filters
             self.transformations = all_transformations
             self.escape_chars = {**BOOLEAN_ESCAPE_CHARS, **RELATIONAL_ESCAPE_CHARS}
@@ -219,7 +221,7 @@ def tokenize(rule: str) -> List[str]:
     :param rule: stringify expression as string
     :return: it returns all tokens of the expression
     """
-    return list(filter(lambda x: x != '', rule.replace('(', ' ( ').replace(')', ' ) ').split(' ')))
+    return list(filter(lambda x: x != "", rule.replace("(", " ( ").replace(")", " ) ").split(" ")))
 
 
 def escape_chars_filter(expression: ExpressionParser):
@@ -244,20 +246,19 @@ def digit_filter(expression):
 
     """
 
-    expression.parsed_expression = '(' + expression.parsed_expression + ')'
-    regexp = re.compile(r'[^a-zA-Z|^_][0-9]+[a-zA-Z]|[^a-zA-Z|^_][0-9]+_')
+    expression.parsed_expression = "(" + expression.parsed_expression + ")"
+    regexp = re.compile(r"[^a-zA-Z|^_][0-9]+[a-zA-Z]|[^a-zA-Z|^_][0-9]+_")
     res = list(regexp.finditer(expression.parsed_expression))
 
-    new_rule = ''
+    new_rule = ""
 
     last_nd = 0
     for i in range(len(res)):
         st = res[i].start() + 1
         nd = res[i].end()
-        new_rule = new_rule + expression.parsed_expression[last_nd:st] + '_dg_' + expression.parsed_expression[
-                                                                                  st:nd]
+        new_rule = new_rule + expression.parsed_expression[last_nd:st] + "_dg_" + expression.parsed_expression[st:nd]
         last_nd = res[i].end()
-        expression.replaces['_dg_'] = ''
+        expression.replaces["_dg_"] = ""
 
     new_rule = new_rule + expression.parsed_expression[last_nd:]
 
@@ -297,8 +298,7 @@ def bitwise_filter(expression):
     for bit_val, bools in bit_.items():
 
         for python_bool in bools:
-            expression.parsed_expression = re.sub(r'\b{}\b'.format(python_bool), bit_val,
-                                                  expression.parsed_expression)
+            expression.parsed_expression = re.sub(r"\b{}\b".format(python_bool), bit_val, expression.parsed_expression)
 
 
 def relational_filter(expression):
@@ -311,18 +311,32 @@ def relational_filter(expression):
     # regex to match a relational of any type: x>0; x<0; x>=0; x=>0;reverse order 0>x ...; with or without white
     # spaces ([a-zA-Z0-9_]+>[0-9]+)|([a-zA-Z0-9_]+\str>\str[0-9]+)
 
-    regex_str = r'|'.join([r'([a-zA-Z0-9_]+' + regex + r'[0-9.]+)' + r'|' +
-                           r'([a-zA-Z0-9_]+\s' + regex + r'\s[0-9.]+)' + r'|' +
-                           r'([0-9.]+' + regex + r'[a-zA-Z0-9_]+)' + r'|' +
-                           r'([0-9.]+\s' + regex + r'\s[a-zA-Z0-9_]+)'
-                           for regex in _relational_ops])
+    regex_str = r"|".join(
+        [
+            r"([a-zA-Z0-9_]+"
+            + regex
+            + r"[0-9.]+)"
+            + r"|"
+            + r"([a-zA-Z0-9_]+\s"
+            + regex
+            + r"\s[0-9.]+)"
+            + r"|"
+            + r"([0-9.]+"
+            + regex
+            + r"[a-zA-Z0-9_]+)"
+            + r"|"
+            + r"([0-9.]+\s"
+            + regex
+            + r"\s[a-zA-Z0-9_]+)"
+            for regex in _relational_ops
+        ]
+    )
 
     regexp = re.compile(regex_str)
     res = list(regexp.finditer(expression.parsed_expression))
 
     for match in set(map(lambda x: x.group(), res)):
-        expression.parsed_expression = re.sub(r'\b{}\b'.format(match), '(' + match + ')',
-                                              expression.parsed_expression)
+        expression.parsed_expression = re.sub(r"\b{}\b".format(match), "(" + match + ")", expression.parsed_expression)
 
 
 def symbolic_transform(expression):
@@ -345,31 +359,24 @@ def symbolic_transform(expression):
 
             name = token_val
 
-            if name == 'False':
-                result.extend([(NAME, 'BoolFalse'),
-                               (OP, '('),
-                               (NAME, repr(str(name))),
-                               (OP, ')')])
+            if name == "False":
+                result.extend([(NAME, "BoolFalse"), (OP, "("), (NAME, repr(str(name))), (OP, ")")])
 
-            elif name == 'True':
-                result.extend([(NAME, 'BoolTrue'),
-                               (OP, '('),
-                               (NAME, repr(str(name))),
-                               (OP, ')')])
+            elif name == "True":
+                result.extend([(NAME, "BoolTrue"), (OP, "("), (NAME, repr(str(name))), (OP, ")")])
 
-            elif name == 'None':
-                result.extend([(NAME, 'NoneAtom'),
-                               (OP, '('),
-                               (NAME, repr(str(name))),
-                               (OP, ')')])
+            elif name == "None":
+                result.extend([(NAME, "NoneAtom"), (OP, "("), (NAME, repr(str(name))), (OP, ")")])
 
             else:
-                result.extend([
-                    (NAME, 'Symbol'),
-                    (OP, '('),
-                    (NAME, repr(str(token_val))),
-                    (OP, ')'),
-                ])
+                result.extend(
+                    [
+                        (NAME, "Symbol"),
+                        (OP, "("),
+                        (NAME, repr(str(token_val))),
+                        (OP, ")"),
+                    ]
+                )
 
         else:
 
@@ -397,34 +404,23 @@ def numeric_transform(expression):
 
             number = token_val
 
-            if number in ('1.0', '1'):
+            if number in ("1.0", "1"):
 
-                seq = [(NAME, 'One'),
-                       (OP, '('),
-                       (NUMBER, repr(str(number))),
-                       (OP, ')')]
+                seq = [(NAME, "One"), (OP, "("), (NUMBER, repr(str(number))), (OP, ")")]
 
-            elif number in ('0.0', '0'):
+            elif number in ("0.0", "0"):
 
-                seq = [(NAME, 'Zero'),
-                       (OP, '('),
-                       (NUMBER, repr(str(number))),
-                       (OP, ')')]
+                seq = [(NAME, "Zero"), (OP, "("), (NUMBER, repr(str(number))), (OP, ")")]
 
-            elif '.' in number or (('e' in number or 'E' in number)
-                                   and not (number.startswith('0x') or number.startswith('0X'))):
+            elif "." in number or (
+                ("e" in number or "E" in number) and not (number.startswith("0x") or number.startswith("0X"))
+            ):
 
-                seq = [(NAME, 'Float'),
-                       (OP, '('),
-                       (NUMBER, repr(str(number))),
-                       (OP, ')')]
+                seq = [(NAME, "Float"), (OP, "("), (NUMBER, repr(str(number))), (OP, ")")]
 
             else:
 
-                seq = [(NAME, 'Integer'),
-                       (OP, '('),
-                       (NUMBER, number),
-                       (OP, ')')]
+                seq = [(NAME, "Integer"), (OP, "("), (NUMBER, number), (OP, ")")]
 
             result.extend(seq)
 
@@ -527,10 +523,12 @@ def parse_expression(expression: str) -> Symbolic:
 
     elif isinstance(expression, str):
 
-        expr_parser = ExpressionParser(expression=None,
-                                       stringify_expression=expression,
-                                       parsed_expression=expression,
-                                       tokenized_expression=tokenize(expression))
+        expr_parser = ExpressionParser(
+            expression=None,
+            stringify_expression=expression,
+            parsed_expression=expression,
+            tokenized_expression=tokenize(expression),
+        )
 
         expr_parser.build()
 
@@ -555,13 +553,13 @@ def parse_expression(expression: str) -> Symbolic:
 
     else:
 
-        raise ValueError('Expression could not be parsed')
+        raise ValueError("Expression could not be parsed")
 
     for element in expr_parser.expression:
 
         if element.is_symbol:
 
-            old_reg_name = ''.join(element.value)
+            old_reg_name = "".join(element.value)
 
             for replace, special_char in expr_parser.replaces.items():
                 old_reg_name = old_reg_name.replace(replace, special_char)

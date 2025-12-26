@@ -1,4 +1,3 @@
-
 # Copyright (C) 2019- Centre of Biological Engineering,
 #     University of Minho, Portugal
 
@@ -19,22 +18,23 @@
 Author: Vítor Pereira
 ##############################################################################
 """
-from .simulation import Simulator
 from mewpy.util.constants import ModelConstants
+
+from .simulation import Simulator
 
 # Model specific simulators mapping:
 # Entries take the form:  full_model_class_path -> (simulator_path, simulator_class_name)
 # TODO: use qualified names
 map_model_simulator = {
-    'geckopy.gecko.GeckoModel': ('mewpy.simulation.cobra', 'GeckoSimulation'),
-    'mewpy.model.gecko.GeckoModel': ('mewpy.simulation.reframed', 'GeckoSimulation'),
-    'mewpy.model.smoment.SMomentModel': ('mewpy.simulation.reframed', 'GeckoSimulation'),
-    'mewpy.germ.models.model.Model': ('mewpy.simulation.germ', 'Simulation'),
-    'mewpy.germ.models.metabolic.MetabolicModel': ('mewpy.simulation.germ', 'Simulation'),
-    'mewpy.germ.models.regulatory.RegulatoryModel': ('mewpy.simulation.germ', 'Simulation'),
-    'mewpy.germ.models.model.MetabolicRegulatoryModel': ('mewpy.simulation.germ', 'Simulation'),
-    'mewpy.germ.models.model.RegulatoryMetabolicModel': ('mewpy.simulation.germ', 'Simulation'),
-    'mewpy.germ.models.simulator_model.SimulatorBasedMetabolicModel': ('mewpy.simulation.germ', 'Simulation'),
+    "geckopy.gecko.GeckoModel": ("mewpy.simulation.cobra", "GeckoSimulation"),
+    "mewpy.model.gecko.GeckoModel": ("mewpy.simulation.reframed", "GeckoSimulation"),
+    "mewpy.model.smoment.SMomentModel": ("mewpy.simulation.reframed", "GeckoSimulation"),
+    "mewpy.germ.models.model.Model": ("mewpy.simulation.germ", "Simulation"),
+    "mewpy.germ.models.metabolic.MetabolicModel": ("mewpy.simulation.germ", "Simulation"),
+    "mewpy.germ.models.regulatory.RegulatoryModel": ("mewpy.simulation.germ", "Simulation"),
+    "mewpy.germ.models.model.MetabolicRegulatoryModel": ("mewpy.simulation.germ", "Simulation"),
+    "mewpy.germ.models.model.RegulatoryMetabolicModel": ("mewpy.simulation.germ", "Simulation"),
+    "mewpy.germ.models.simulator_model.SimulatorBasedMetabolicModel": ("mewpy.simulation.germ", "Simulation"),
 }
 
 
@@ -59,7 +59,7 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
 
     instance = None
     name = f"{model.__class__.__module__}.{model.__class__.__name__}"
-    
+
     if name in map_model_simulator:
         module_name, class_name = map_model_simulator[name]
         module = __import__(module_name, fromlist=[None])
@@ -70,45 +70,55 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
             pass
         try:
             model.solver.problem.params.OutputFlag = 0
-        except Exception as e:
+        except Exception:
             pass
-        instance = class_(model, envcond=envcond,
-                          constraints=constraints, reference=reference, reset_solver=reset_solver)
+        instance = class_(
+            model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
+        )
     elif "etfl" in name:
         try:
-            from .cobra import Simulation
             from etfl.optim.config import standard_solver_config
+
+            from .cobra import Simulation
+
             standard_solver_config(model, verbose=False)
             model.solver.configuration.timeout = max(7200, ModelConstants.SOLVER_TIMEOUT)
             instance = Simulation(
-                model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver)
-            instance._MAX_STR = 'max'
-            instance._MIN_STR = 'min'
+                model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
+            )
+            instance._MAX_STR = "max"
+            instance._MIN_STR = "min"
         except Exception:
             raise RuntimeError("Could not create simulator for the ETFL model")
     else:
         # Try COBRA models first
         try:
             from cobra.core.model import Model
+
             if isinstance(model, Model):
                 from .cobra import Simulation
+
                 model.solver.configuration.timeout = ModelConstants.SOLVER_TIMEOUT
                 instance = Simulation(
-                    model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver)
+                    model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
+                )
         except ImportError:
             pass
         except Exception:
             # Silently continue to try other simulator types
             pass
-        
+
         # Try REFRAMED models if COBRA failed
         if not instance:
             try:
                 from reframed.core.cbmodel import CBModel
+
                 if isinstance(model, CBModel):
                     from .reframed import Simulation
+
                     instance = Simulation(
-                        model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver)
+                        model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
+                    )
             except ImportError:
                 pass
             except Exception as e:
@@ -130,7 +140,7 @@ def get_container(model):
 
     """
 
-    from mewpy.germ.models import Model, RegulatoryModel, MetabolicModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
     if isinstance(model, (Model, MetabolicModel, RegulatoryModel)):
 
@@ -140,16 +150,20 @@ def get_container(model):
 
     try:
         from reframed.core.cbmodel import CBModel
+
         if isinstance(model, CBModel):
             from mewpy.simulation.reframed import CBModelContainer
+
             return CBModelContainer(model)
     except Exception:
         pass
 
     try:
         from cobra.core.model import Model
+
         if isinstance(model, Model):
             from mewpy.simulation.cobra import CobraModelContainer
+
             return CobraModelContainer(model)
     except Exception:
         pass

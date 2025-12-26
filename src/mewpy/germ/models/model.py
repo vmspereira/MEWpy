@@ -1,13 +1,13 @@
-from typing import Any, Union, Type, TYPE_CHECKING, List, Set, Dict, Iterable, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set, Tuple, Type, Union
 
+from mewpy.germ.models.serialization import Serializer, serialize
 from mewpy.util.history import HistoryManager, recorder
-from mewpy.germ.models.serialization import serialize, Serializer
 
 # Preventing circular dependencies that only happen due to type checking
 if TYPE_CHECKING:
+    from mewpy.germ.lp import LinearProblem
     from mewpy.germ.models import MetabolicModel, RegulatoryModel
     from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target, Variable
-    from mewpy.germ.lp import LinearProblem
 
 
 class MetaModel(type):
@@ -33,11 +33,12 @@ class MetaModel(type):
         6. It adds polymorphic constructors to the dynamic Model class based on the types of the base classes
         7. It adds type checkers to the dynamic Model class based on the types of the base classes
     """
+
     factories = {}
 
     def __new__(mcs, name, bases, attrs, **kwargs):
         # if it is the model factory, only registration is done
-        factory = kwargs.get('factory', False)
+        factory = kwargs.get("factory", False)
 
         if factory:
             cls = super(MetaModel, mcs).__new__(mcs, name, bases, attrs)
@@ -47,75 +48,75 @@ class MetaModel(type):
             return cls
 
         # Dynamic typing being used. In this case, a proper name and model type must be provided
-        dynamic = kwargs.get('dynamic', False)
+        dynamic = kwargs.get("dynamic", False)
         if dynamic:
             names = [base.model_type for base in bases]
 
-            name = ''.join([name.title() for name in names])
-            name += 'Model'
+            name = "".join([name.title() for name in names])
+            name += "Model"
 
-            kwargs['model_type'] = '-'.join(names)
+            kwargs["model_type"] = "-".join(names)
 
         # The model type is always added to the subclasses. If it is not given upon subclass creation,
         # the subclass name is to be used
-        model_type = kwargs.get('model_type', name.lower())
-        attrs['model_type'] = model_type
+        model_type = kwargs.get("model_type", name.lower())
+        attrs["model_type"] = model_type
 
         return super(MetaModel, mcs).__new__(mcs, name, bases, attrs)
 
     def __init__(cls, name, bases, attrs, **kwargs):
         super().__init__(name, bases, attrs)
 
-        factory = kwargs.get('factory', False)
+        factory = kwargs.get("factory", False)
         if factory:
             # collection of all containers that must be serialized for a particular class or subclass
             containers = cls.get_serializable_containers(attrs)
 
-            attrs['_containers_registry']['model'] = containers
+            attrs["_containers_registry"]["model"] = containers
 
             # Skip further building of the Model factory
             return
 
         # Dynamic typing being used. In this case, all children have already been constructed, so everything can be
         # skipped
-        dynamic = kwargs.get('dynamic', False)
+        dynamic = kwargs.get("dynamic", False)
         if dynamic:
             return
 
         # Several attributes and methods must be added automatically to the Model factory children based on the
         # model type.
-        model_type = attrs['model_type']
+        model_type = attrs["model_type"]
 
         for base in bases:
 
             factory = MetaModel.factories.get(base.__name__)
 
-            if factory and hasattr(cls, 'model_type'):
+            if factory and hasattr(cls, "model_type"):
 
                 # if some class inherits from the Model factory, it must be registered in the factory for type
                 # checking
                 if cls.model_type not in factory.get_registry():
-                    raise TypeError(f'{cls.model_type} does not inherit from Model')
+                    raise TypeError(f"{cls.model_type} does not inherit from Model")
 
                 # If set otherwise upon class creation, all subclasses of the Model factory will contribute to
                 # their parent factory with an alternative initializer. The polymorphic constructor, e.g. from_{
                 # model_type}, is added to the Model factory
-                constructor = kwargs.get('constructor', True)
+                constructor = kwargs.get("constructor", True)
 
                 if constructor:
                     # noinspection PyProtectedMember
                     model_type_initializer = Model._from(cls)
-                    setattr(factory, f'from_{model_type}', model_type_initializer)
+                    setattr(factory, f"from_{model_type}", model_type_initializer)
 
                 # If set otherwise upon class creation, all subclasses of the Model factory will contribute to
                 # their parent factory with a declared type checker. The type checker, e.g. is_{model_type},
                 # is added to the Model factory
-                checker = kwargs.get('checker', True)
+                checker = kwargs.get("checker", True)
 
                 if checker:
                     # noinspection PyProtectedMember
                     model_type_checker = Model._is(model_type)
-                    setattr(factory, f'is_{model_type}', model_type_checker)
+                    setattr(factory, f"is_{model_type}", model_type_checker)
 
                 # collection of all containers that must be serialized for a particular class or subclass
                 containers = cls.get_serializable_containers(attrs)
@@ -141,10 +142,13 @@ class MetaModel(type):
 
         for name, method in attrs.items():
 
-            if hasattr(method, 'fget'):
+            if hasattr(method, "fget"):
 
-                if hasattr(method.fget, 'serialize') and hasattr(method.fget, 'deserialize') and hasattr(method.fget,
-                                                                                                         'pickle'):
+                if (
+                    hasattr(method.fget, "serialize")
+                    and hasattr(method.fget, "deserialize")
+                    and hasattr(method.fget, "pickle")
+                ):
                     containers[name] = (method.fget.serialize, method.fget.deserialize, method.fget.pickle)
 
         return containers
@@ -188,11 +192,12 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         - from_dict: deserializes the model from a dictionary
 
     """
+
     # -----------------------------------------------------------------------------
     # Factory management
     # -----------------------------------------------------------------------------
     _registry = {}
-    _containers_registry = {'model': {}}
+    _containers_registry = {"model": {}}
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -205,12 +210,12 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         super(Model, cls).__init_subclass__(**kwargs)
 
         # the child type
-        model_type = getattr(cls, 'model_type', cls.__name__.lower())
+        model_type = getattr(cls, "model_type", cls.__name__.lower())
 
         cls.register_type(model_type, cls)
 
     @staticmethod
-    def get_registry() -> Dict[str, Type['Model']]:
+    def get_registry() -> Dict[str, Type["Model"]]:
         """
         Returns the registry of the Model factory.
 
@@ -230,7 +235,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         return Model._containers_registry.copy()
 
     @staticmethod
-    def register_type(model_type: str, child: Type['Model']):
+    def register_type(model_type: str, child: Type["Model"]):
         """
         Registers a type in the Model factory.
 
@@ -255,12 +260,12 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :param child: the child class
         :return:
         """
-        if hasattr(child, 'model_type'):
+        if hasattr(child, "model_type"):
 
             Model._containers_registry[child.model_type] = containers
 
         elif child is Model:
-            Model._containers_registry['model'] = containers
+            Model._containers_registry["model"] = containers
 
     @property
     def containers(self) -> Dict[str, Tuple[str, str, str]]:
@@ -273,7 +278,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         """
         class_containers = self.get_containers_registry()
 
-        containers = class_containers['model'].copy()
+        containers = class_containers["model"].copy()
 
         for model_type in self.types:
 
@@ -286,9 +291,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # Factory polymorphic constructor
     # -----------------------------------------------------------------------------
     @classmethod
-    def factory(cls, *args: str) -> Union[Type['Model'],
-                                          Type['MetabolicModel'],
-                                          Type['RegulatoryModel']]:
+    def factory(cls, *args: str) -> Union[Type["Model"], Type["MetabolicModel"], Type["RegulatoryModel"]]:
         """
         It creates a dynamic Model class from a list of types. The types must be registered in the Model factory.
 
@@ -309,7 +312,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         if len(types) == 1:
             return types[0]
 
-        _Model = MetaModel('Model', types, {}, dynamic=True)
+        _Model = MetaModel("Model", types, {}, dynamic=True)
 
         # noinspection PyTypeChecker
         return _Model
@@ -318,9 +321,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # Factory polymorphic initializer
     # -----------------------------------------------------------------------------
     @classmethod
-    def from_types(cls, types: Iterable[str], **kwargs) -> Union['Model',
-                                                                 'MetabolicModel',
-                                                                 'RegulatoryModel']:
+    def from_types(cls, types: Iterable[str], **kwargs) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
         """
         It creates a model instance from a list of types and a dictionary of containers and attributes.
         The types must be registered in the Model factory.
@@ -368,10 +369,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # -----------------------------------------------------------------------------
     # Base initializer
     # -----------------------------------------------------------------------------
-    def __init__(self,
-                 identifier: Any,
-                 name: str = None):
-
+    def __init__(self, identifier: Any, name: str = None):
         """
         The model is the base class for all models, such as metabolic model or regulatory model.
         See also model.MetabolicModel and model.RegulatoryModel for concrete implementations of a model type.
@@ -391,13 +389,13 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         self._check_inheritance()
 
         if not identifier:
-            identifier = ''
+            identifier = ""
 
         if not name:
             name = identifier
 
-        self._id = ''
-        self._name = ''
+        self._id = ""
+        self._name = ""
         self._simulators = []
         self._types = set()
 
@@ -422,14 +420,14 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
         for model_type in self.types:
             if model_type not in registry:
-                raise ValueError(f'{model_type} is not registered as subclass of {self.__class__.__name__}')
+                raise ValueError(f"{model_type} is not registered as subclass of {self.__class__.__name__}")
 
     # -----------------------------------------------------------------------------
     # Built-in
     # -----------------------------------------------------------------------------
 
     def __str__(self):
-        return f'Model {self.id} - {self.name}'
+        return f"Model {self.id} - {self.name}"
 
     def __repr__(self):
         return self.__str__()
@@ -440,7 +438,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         It returns a html representation of the gene.
         """
 
-        objective = getattr(self, 'objective', None)
+        objective = getattr(self, "objective", None)
         if objective:
             objective = next(iter(objective)).id
         else:
@@ -633,7 +631,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # -----------------------------------------------------------------------------
     # Model type manager
     # -----------------------------------------------------------------------------
-    @serialize('types', None, None)
+    @serialize("types", None, None)
     @property
     def types(self) -> Set[str]:
         """
@@ -645,7 +643,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # -----------------------------------------------------------------------------
     # Static attributes
     # -----------------------------------------------------------------------------
-    @serialize('id', None, '_id')
+    @serialize("id", None, "_id")
     @property
     def id(self) -> Any:
         """
@@ -654,7 +652,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         """
         return self._id
 
-    @serialize('name', 'name', '_name')
+    @serialize("name", "name", "_name")
     @property
     def name(self) -> str:
         """
@@ -664,7 +662,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         return self._name
 
     @property
-    def simulators(self) -> List['LinearProblem']:
+    def simulators(self) -> List["LinearProblem"]:
         """
         It returns the list of simulation methods associated with the model.
         :return: the list of simulation methods
@@ -683,7 +681,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :return:
         """
         if not value:
-            value = ''
+            value = ""
 
         self._name = value
 
@@ -691,12 +689,9 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # Operations/Manipulations
     # -----------------------------------------------------------------------------
 
-    def get(self, identifier: Any, default=None) -> Union['Gene',
-                                                          'Interaction',
-                                                          'Metabolite',
-                                                          'Reaction',
-                                                          'Regulator',
-                                                          'Target']:
+    def get(
+        self, identifier: Any, default=None
+    ) -> Union["Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]:
         """
         It returns the variable with the given identifier.
         :param identifier: the identifier of the variable
@@ -705,10 +700,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         """
         return default
 
-    def add(self,
-            *variables: 'Variable',
-            comprehensive: bool = True,
-            history: bool = True):
+    def add(self, *variables: "Variable", comprehensive: bool = True, history: bool = True):
         """
         It adds the given variables to the model.
         This method accepts a single variable or a list of variables to be added to specific containers in the model.
@@ -728,21 +720,18 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :return:
         """
         if history:
-            self.history.queue_command(undo_func=self.remove,
-                                       undo_args=variables,
-                                       undo_kwargs={'remove_orphans': True,
-                                                    'history': False},
-                                       func=self.add,
-                                       args=variables,
-                                       kwargs={'comprehensive': comprehensive,
-                                               'history': history})
+            self.history.queue_command(
+                undo_func=self.remove,
+                undo_args=variables,
+                undo_kwargs={"remove_orphans": True, "history": False},
+                func=self.add,
+                args=variables,
+                kwargs={"comprehensive": comprehensive, "history": history},
+            )
 
         self.notify()
 
-    def remove(self,
-               *variables: 'Variable',
-               remove_orphans: bool = False,
-               history: bool = True):
+    def remove(self, *variables: "Variable", remove_orphans: bool = False, history: bool = True):
         """
         It removes the given variables from the model.
         This method accepts a single variable or a list of variables to be removed from specific containers
@@ -763,14 +752,14 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :return:
         """
         if history:
-            self.history.queue_command(undo_func=self.add,
-                                       undo_args=variables,
-                                       undo_kwargs={'comprehensive': True,
-                                                    'history': False},
-                                       func=self.remove,
-                                       args=variables,
-                                       kwargs={'remove_orphans': remove_orphans,
-                                               'history': history})
+            self.history.queue_command(
+                undo_func=self.add,
+                undo_args=variables,
+                undo_kwargs={"comprehensive": True, "history": False},
+                func=self.remove,
+                args=variables,
+                kwargs={"remove_orphans": remove_orphans, "history": history},
+            )
 
         self.notify()
 
@@ -835,7 +824,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # -----------------------------------------------------------------------------
     # Simulators observer pattern
     # -----------------------------------------------------------------------------
-    def attach(self, simulator: 'LinearProblem'):
+    def attach(self, simulator: "LinearProblem"):
         """
         It attaches the given simulation method (simulator) to the model.
         Once a simulator is attached to the model, it will be notified with model changes.
@@ -966,14 +955,16 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # -----------------------------------------------------------------------------
     # The following polymorphic initializers are just registered here to avoid type checking errors
     @classmethod
-    def from_metabolic(cls,
-                       identifier: Any,
-                       name: str = None,
-                       compartments: Dict[str, str] = None,
-                       genes: Dict[str, 'Gene'] = None,
-                       metabolites: Dict[str, 'Metabolite'] = None,
-                       objective: Dict['Reaction', Union[float, int]] = None,
-                       reactions: Dict[str, 'Reaction'] = None) -> 'MetabolicModel':
+    def from_metabolic(
+        cls,
+        identifier: Any,
+        name: str = None,
+        compartments: Dict[str, str] = None,
+        genes: Dict[str, "Gene"] = None,
+        metabolites: Dict[str, "Metabolite"] = None,
+        objective: Dict["Reaction", Union[float, int]] = None,
+        reactions: Dict[str, "Reaction"] = None,
+    ) -> "MetabolicModel":
         """
         It creates a metabolic model from the given information.
         :param identifier: the identifier of the model
@@ -988,13 +979,15 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         ...
 
     @classmethod
-    def from_regulatory(cls,
-                        identifier: Any,
-                        name: str = None,
-                        compartments: Dict[str, str] = None,
-                        interactions: Dict[str, 'Interaction'] = None,
-                        regulators: Dict[str, 'Regulator'] = None,
-                        targets: Dict[str, 'Target'] = None) -> 'RegulatoryModel':
+    def from_regulatory(
+        cls,
+        identifier: Any,
+        name: str = None,
+        compartments: Dict[str, str] = None,
+        interactions: Dict[str, "Interaction"] = None,
+        regulators: Dict[str, "Regulator"] = None,
+        targets: Dict[str, "Target"] = None,
+    ) -> "RegulatoryModel":
         """
         It creates a regulatory model from the given information.
         :param identifier: the identifier of the model
@@ -1066,17 +1059,17 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
         for variable in to_remove:
 
-            container_iter = getattr(variable,
-                                     f'yield_{first_container}',
-                                     lambda: [getattr(variable, f'{first_container}')])
+            container_iter = getattr(
+                variable, f"yield_{first_container}", lambda: [getattr(variable, f"{first_container}")]
+            )
 
             for variable_2 in container_iter():
 
                 remove_variable = True
 
-                container_iter2 = getattr(variable_2,
-                                          f'yield_{second_container}',
-                                          lambda: [getattr(variable_2, f'{second_container}')])
+                container_iter2 = getattr(
+                    variable_2, f"yield_{second_container}", lambda: [getattr(variable_2, f"{second_container}")]
+                )
 
                 for variable_3 in container_iter2():
 
@@ -1089,7 +1082,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         return orphans
 
 
-def build_model(types: Iterable[str], kwargs: Dict[str, Any]) -> Union['Model', 'MetabolicModel', 'RegulatoryModel']:
+def build_model(types: Iterable[str], kwargs: Dict[str, Any]) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
     """
     It builds a model from the given types and arguments. Check the `Model.from_types()` method for details.
     :param types: the types of the model

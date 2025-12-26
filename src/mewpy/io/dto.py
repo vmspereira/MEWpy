@@ -1,17 +1,16 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Set
-
-from pandas import DataFrame
+from typing import TYPE_CHECKING, Any, Dict, Set, Tuple, Union
 
 from cobra import Model as Cobra_Model
+from pandas import DataFrame
 from reframed import CBModel as Reframed_Model
 
-from mewpy.germ.algebra import Symbolic, NoneAtom
+from mewpy.germ.algebra import NoneAtom, Symbolic
 from mewpy.germ.variables import Variable
 
 if TYPE_CHECKING:
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
     from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
 
 
 @dataclass
@@ -20,6 +19,7 @@ class History:
     Data transfer object for history.
     History encoded into a sbml model
     """
+
     data: str = None
     creators: str = None
 
@@ -31,6 +31,7 @@ class FunctionTerm:
     Function term holds the symbolic expression of a given interaction between a target and a set of regulators.
     It also holds the resulting coefficient of this interaction
     """
+
     id: str = None
     symbolic: Symbolic = field(default_factory=NoneAtom)
     coefficient: float = 0
@@ -41,8 +42,9 @@ class CompartmentRecord:
     """
     Data transfer object for compartments.
     """
-    id: str = 'e'
-    name: str = 'external'
+
+    id: str = "e"
+    name: str = "external"
 
 
 @dataclass
@@ -53,6 +55,7 @@ class VariableRecord:
     It can be extended to more types.
     It stores the many attributes that these variables can have encoded into multiple file types.
     """
+
     # ids, names, types, etc
     id: Any = field(default_factory=str)
     name: str = field(default_factory=str)
@@ -72,24 +75,22 @@ class VariableRecord:
     bounds: tuple = None
     charge: int = None
     formula: str = None
-    genes: Dict[str, 'VariableRecord'] = field(default_factory=dict)
+    genes: Dict[str, "VariableRecord"] = field(default_factory=dict)
     gpr: FunctionTerm = field(default_factory=FunctionTerm)
-    metabolites: Dict[str, 'VariableRecord'] = field(default_factory=dict)
-    products: Dict[str, 'VariableRecord'] = field(default_factory=dict)
-    reactants: Dict[str, 'VariableRecord'] = field(default_factory=dict)
+    metabolites: Dict[str, "VariableRecord"] = field(default_factory=dict)
+    products: Dict[str, "VariableRecord"] = field(default_factory=dict)
+    reactants: Dict[str, "VariableRecord"] = field(default_factory=dict)
     stoichiometry: Dict[str, Union[int, float]] = field(default_factory=dict)
 
     # regulatory attributes
-    regulators: Dict[str, 'VariableRecord'] = field(default_factory=dict)
-    target: 'VariableRecord' = None
-    interactions: Dict[str, 'VariableRecord'] = field(default_factory=dict)
-    function_terms: Dict[str, 'FunctionTerm'] = field(default_factory=dict)
+    regulators: Dict[str, "VariableRecord"] = field(default_factory=dict)
+    target: "VariableRecord" = None
+    interactions: Dict[str, "VariableRecord"] = field(default_factory=dict)
+    function_terms: Dict[str, "FunctionTerm"] = field(default_factory=dict)
 
-    def to_variable(self,
-                    model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                    types: Set[str],
-                    **attributes) -> Tuple[Union['Gene', 'Interaction', 'Metabolite', 'Reaction', 'Regulator',
-                                                 'Target', Variable], str]:
+    def to_variable(
+        self, model: Union["Model", "MetabolicModel", "RegulatoryModel"], types: Set[str], **attributes
+    ) -> Tuple[Union["Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", Variable], str]:
 
         try:
 
@@ -97,7 +98,7 @@ class VariableRecord:
 
         except AttributeError:
 
-            warning = f'{self.id} cannot be built properly. Generic Variable, build instead'
+            warning = f"{self.id} cannot be built properly. Generic Variable, build instead"
 
             return Variable(identifier=self.id), warning
 
@@ -105,15 +106,15 @@ class VariableRecord:
 
             try:
 
-                attributes['identifier'] = self.id
+                attributes["identifier"] = self.id
 
                 variable = Variable.from_types(types=types, **attributes)
 
-                return variable, ''
+                return variable, ""
 
             except TypeError:
 
-                warning = f'{self.id} cannot be built properly. Generic Variable, build instead'
+                warning = f"{self.id} cannot be built properly. Generic Variable, build instead"
 
                 return Variable(identifier=self.id), warning
 
@@ -123,11 +124,11 @@ class VariableRecord:
 
                 variable.update(**attributes)
 
-                return variable, ''
+                return variable, ""
 
             except TypeError:
 
-                warning = f'{self.id} cannot be built properly. Generic Variable, build instead'
+                warning = f"{self.id} cannot be built properly. Generic Variable, build instead"
 
                 return variable, warning
 
@@ -140,6 +141,7 @@ class DataTransferObject:
     It can be extended to more types.
     It stores the many attributes that these models can have encoded into multiple file types.
     """
+
     # cobra model
     cobra_model: Cobra_Model = None
 

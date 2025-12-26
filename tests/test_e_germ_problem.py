@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-EC_CORE_MODEL = Path(__file__).parent.joinpath('data', 'e_coli_core.xml')
+EC_CORE_MODEL = Path(__file__).parent.joinpath("data", "e_coli_core.xml")
 
 MIN_GROWTH = 0.1
 
@@ -12,8 +12,10 @@ class TestRKOP(unittest.TestCase):
 
     def setUp(self):
         from mewpy.io import read_sbml
+
         model = read_sbml(EC_CORE_MODEL, regulatory=False, warnings=False)
         from mewpy.problems import RKOProblem
+
         self.problem = RKOProblem(model, [])
 
     def test_targets(self):
@@ -22,20 +24,22 @@ class TestRKOP(unittest.TestCase):
 
     def test_generator(self):
         import random
+
         candidate = self.problem.generator(random)
         self.assertGreater(len(candidate), 0)
 
     def test_decode(self):
         import random
+
         candidate = self.problem.generator(random)
         solution = self.problem.decode(candidate)
         n_candidate = self.problem.encode(solution)
         self.assertEqual(candidate, n_candidate)
 
     def test_to_constraints(self):
-        """
-        """
+        """ """
         import random
+
         ispass = False
         tries = 0
         constraints = []
@@ -50,6 +54,7 @@ class TestRKOP(unittest.TestCase):
 
     def test_simul_constraints(self):
         import random
+
         candidate = self.problem.generator(random)
         solution = self.problem.decode(candidate)
         constraints = self.problem.solution_to_constraints(solution)
@@ -60,8 +65,10 @@ class TestROUP(TestRKOP):
 
     def setUp(self):
         from mewpy.io import read_sbml
+
         model = read_sbml(EC_CORE_MODEL, regulatory=False, warnings=False)
         from mewpy.problems import ROUProblem
+
         self.problem = ROUProblem(model, [])
 
 
@@ -69,8 +76,10 @@ class TestGKOP(TestRKOP):
 
     def setUp(self):
         from mewpy.io import read_sbml
+
         model = read_sbml(EC_CORE_MODEL, regulatory=False, warnings=False)
         from mewpy.problems import GKOProblem
+
         self.problem = GKOProblem(model, [])
 
 
@@ -78,10 +87,12 @@ class TestGOUP(TestRKOP):
 
     def setUp(self):
         from mewpy.io import read_sbml
+
         model = read_sbml(EC_CORE_MODEL, regulatory=False, warnings=False)
         from mewpy.problems import GOUProblem
+
         self.problem = GOUProblem(model, [])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

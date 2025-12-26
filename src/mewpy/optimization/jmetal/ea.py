@@ -13,39 +13,32 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-""" 
+"""
 ##############################################################################
 EA Module for jmetalpy
 
 Authors: Vitor Pereira
 ##############################################################################
 """
+import numpy as np
 from jmetal.algorithm.multiobjective import NSGAII, SPEA2
-from jmetal.algorithm.multiobjective.nsgaiii import NSGAIII
-from jmetal.algorithm.multiobjective.nsgaiii import UniformReferenceDirectionFactory
+from jmetal.algorithm.multiobjective.nsgaiii import NSGAIII, UniformReferenceDirectionFactory
 from jmetal.algorithm.singleobjective import GeneticAlgorithm, SimulatedAnnealing
 from jmetal.operator import BinaryTournamentSelection
 from jmetal.util.termination_criterion import StoppingByEvaluations
 
+from mewpy.util.constants import EAConstants
+from mewpy.util.process import cpu_count, get_evaluator
+
+from ..ea import AbstractEA, Solution
 from .observers import PrintObjectivesStatObserver, VisualizerObserver
 from .problem import JMetalKOProblem, JMetalOUProblem
 from .settings import get_population_size
-from ..ea import AbstractEA, Solution
-from mewpy.util.constants import EAConstants
-from mewpy.util.process import get_evaluator, cpu_count
-import numpy as np
 
 # SOEA alternatives
-soea_map = {
-    'GA': GeneticAlgorithm,
-    'SA': SimulatedAnnealing
-}
+soea_map = {"GA": GeneticAlgorithm, "SA": SimulatedAnnealing}
 # MOEA alternatives
-moea_map = {
-    'NSGAII': NSGAII,
-    'SPEA2': SPEA2,
-    'NSGAIII': NSGAIII
-}
+moea_map = {"NSGAII": NSGAII, "SPEA2": SPEA2, "NSGAIII": NSGAIII}
 
 
 class EA(AbstractEA):
@@ -57,20 +50,34 @@ class EA(AbstractEA):
     :param max_generations: (int) The number of iterations of the EA (stopping criteria).
     """
 
-    def __init__(self, problem, initial_population=[], max_generations=EAConstants.MAX_GENERATIONS, mp=True,
-                 visualizer=False, algorithm=None, **kwargs):
+    def __init__(
+        self,
+        problem,
+        initial_population=[],
+        max_generations=EAConstants.MAX_GENERATIONS,
+        mp=True,
+        visualizer=False,
+        algorithm=None,
+        **kwargs,
+    ):
 
-        super(EA, self).__init__(problem, initial_population=initial_population,
-                                 max_generations=max_generations, mp=mp, visualizer=visualizer, **kwargs)
+        super(EA, self).__init__(
+            problem,
+            initial_population=initial_population,
+            max_generations=max_generations,
+            mp=mp,
+            visualizer=visualizer,
+            **kwargs,
+        )
 
         self.algorithm_name = algorithm
 
-        if self.problem.strategy == 'KO':
+        if self.problem.strategy == "KO":
             self.ea_problem = JMetalKOProblem(self.problem, self.initial_population)
         else:
             self.ea_problem = JMetalOUProblem(self.problem, self.initial_population)
         self.crossover, self.mutation = self.ea_problem.build_operators()
-        self.population_size = kwargs.get('population_size', get_population_size())
+        self.population_size = kwargs.get("population_size", get_population_size())
         self.max_evaluations = self.max_generations * self.population_size
 
         s = []
@@ -81,38 +88,35 @@ class EA(AbstractEA):
                 s.append(1)
         self._sense = np.array(s)
 
-
     def get_population_size(self):
         return self.population_size
 
     def _run_so(self):
-        """ Runs a single objective EA optimization ()
-        """
+        """Runs a single objective EA optimization ()"""
         self.ea_problem.reset_initial_population_counter()
-        if self.algorithm_name == 'SA':
+        if self.algorithm_name == "SA":
             print("Running SA")
             # For SA, set mutation probability to 1.0
             self.mutation.probability = 1.0
             algorithm = SimulatedAnnealing(
                 problem=self.ea_problem,
                 mutation=self.mutation,
-                termination_criterion=StoppingByEvaluations(max_evaluations=self.max_evaluations)
+                termination_criterion=StoppingByEvaluations(max_evaluations=self.max_evaluations),
             )
 
         else:
             print("Running GA")
             args = {
-                'problem':self.ea_problem,
-                'population_size':self.population_size,
-                'offspring_population_size':self.population_size,
-                'mutation':self.mutation,
-                'crossover':self.crossover,
-                'selection':BinaryTournamentSelection(),
-                'termination_criterion':StoppingByEvaluations(
-                    max_evaluations=self.max_evaluations)
+                "problem": self.ea_problem,
+                "population_size": self.population_size,
+                "offspring_population_size": self.population_size,
+                "mutation": self.mutation,
+                "crossover": self.crossover,
+                "selection": BinaryTournamentSelection(),
+                "termination_criterion": StoppingByEvaluations(max_evaluations=self.max_evaluations),
             }
             if self.mp:
-                args['population_evaluator'] = get_evaluator(self.ea_problem, n_mp=cpu_count())
+                args["population_evaluator"] = get_evaluator(self.ea_problem, n_mp=cpu_count())
 
             algorithm = GeneticAlgorithm(**args)
 
@@ -124,37 +128,37 @@ class EA(AbstractEA):
         return result
 
     def _run_mo(self):
-        """ Runs a multi objective EA optimization
-        """
+        """Runs a multi objective EA optimization"""
         self.ea_problem.reset_initial_population_counter()
         if self.algorithm_name in moea_map.keys():
             f = moea_map[self.algorithm_name]
         else:
             if self.ea_problem.number_of_objectives > 2:
-                self.algorithm_name = 'NSGAIII'
-                f = moea_map['NSGAIII']
+                self.algorithm_name = "NSGAIII"
+                f = moea_map["NSGAIII"]
             else:
-                self.algorithm_name = 'SPEA2'
-                f = moea_map['SPEA2']
+                self.algorithm_name = "SPEA2"
+                f = moea_map["SPEA2"]
 
         args = {
-            'problem': self.ea_problem,
-            'population_size': self.population_size,
-            'mutation': self.mutation,
-            'crossover': self.crossover,
-            'termination_criterion': StoppingByEvaluations(max_evaluations=self.max_evaluations)
+            "problem": self.ea_problem,
+            "population_size": self.population_size,
+            "mutation": self.mutation,
+            "crossover": self.crossover,
+            "termination_criterion": StoppingByEvaluations(max_evaluations=self.max_evaluations),
         }
 
         if self.mp:
-            args['population_evaluator'] = get_evaluator(self.ea_problem, n_mp=cpu_count())
+            args["population_evaluator"] = get_evaluator(self.ea_problem, n_mp=cpu_count())
 
         print(f"Running {self.algorithm_name}")
-        if self.algorithm_name == 'NSGAIII':
-            args['reference_directions'] = UniformReferenceDirectionFactory(self.ea_problem.number_of_objectives,
-                                                                            n_points=self.population_size-1)
+        if self.algorithm_name == "NSGAIII":
+            args["reference_directions"] = UniformReferenceDirectionFactory(
+                self.ea_problem.number_of_objectives, n_points=self.population_size - 1
+            )
             algorithm = NSGAIII(**args)
         else:
-            args['offspring_population_size'] = self.population_size
+            args["offspring_population_size"] = self.population_size
             algorithm = f(**args)
 
         if self.visualizer:
@@ -168,7 +172,7 @@ class EA(AbstractEA):
         return result
 
     def _correct_sense(self, fitness):
-        return list(np.array(fitness)*self._sense)
+        return list(np.array(fitness) * self._sense)
 
     def _convertPopulation(self, population):
         """Converts a population represented in Inpyred format to
@@ -180,7 +184,7 @@ class EA(AbstractEA):
         """
         p = []
         for i in range(len(population)):
-            # Corrects fitness values for maximization problems            
+            # Corrects fitness values for maximization problems
             obj = self._correct_sense([x for x in population[i].objectives])
 
             val = set(population[i].variables[:])

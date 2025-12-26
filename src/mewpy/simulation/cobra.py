@@ -23,34 +23,28 @@ Author: Vítor Pereira
 """
 import logging
 from collections import OrderedDict
-import numpy as np
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Union
 
+import numpy as np
 from cobra.core.model import Model
 from cobra.core.solution import Solution
-from cobra.flux_analysis import pfba, moma, room
-
-from . import get_default_solver, SimulationMethod, SStatus
-from .simulation import Simulator, SimulationResult, ModelContainer
-from mewpy.util.constants import ModelConstants
-from mewpy.util.utilities import AttrDict
+from cobra.flux_analysis import moma, pfba, room
 from tqdm import tqdm
 
-from typing import (TYPE_CHECKING,
-                    List,
-                    Dict,
-                    Tuple,
-                    Union,
-                    Any,
-                    Callable)
+from mewpy.util.constants import ModelConstants
+from mewpy.util.utilities import AttrDict
+
+from . import SimulationMethod, SStatus, get_default_solver
+from .simulation import ModelContainer, SimulationResult, Simulator
 
 if TYPE_CHECKING:
     from pandas import DataFrame
-    
+
 LOGGER = logging.getLogger(__name__)
 
 
 class CobraModelContainer(ModelContainer):
-    """ A basic container for COBRApy models.
+    """A basic container for COBRApy models.
 
     :param model: A metabolic model.
 
@@ -59,15 +53,14 @@ class CobraModelContainer(ModelContainer):
     def __init__(self, model: Model = None):
         self.model = model
 
-
     @property
     def id(self):
         """The model identifier."""
         return self.model.id
 
     @id.setter
-    def id(self,sid:str):
-        self.model.id=sid
+    def id(self, sid: str):
+        self.model.id = sid
 
     @property
     def reactions(self) -> List[str]:
@@ -84,10 +77,15 @@ class CobraModelContainer(ModelContainer):
         """
         rxn = self.model.reactions.get_by_id(r_id)
         stoichiometry = {met.id: val for met, val in rxn.metabolites.items()}
-        res = {'id': r_id, 'name': rxn.name, 'lb': rxn.lower_bound,
-               'ub': rxn.upper_bound, 'stoichiometry': stoichiometry}
-        res['gpr'] = rxn.gene_reaction_rule
-        res['annotations'] = rxn.annotation
+        res = {
+            "id": r_id,
+            "name": rxn.name,
+            "lb": rxn.lower_bound,
+            "ub": rxn.upper_bound,
+            "stoichiometry": stoichiometry,
+        }
+        res["gpr"] = rxn.gene_reaction_rule
+        res["annotations"] = rxn.annotation
         return AttrDict(res)
 
     @property
@@ -103,7 +101,7 @@ class CobraModelContainer(ModelContainer):
         g = self.model.genes.get_by_id(g_id)
         gr = self.get_gene_reactions()
         r = gr[g_id]
-        res = {'id': g_id, 'name': g.name, 'reactions': r}
+        res = {"id": g_id, "name": g.name, "reactions": r}
         return AttrDict(res)
 
     @property
@@ -115,7 +113,7 @@ class CobraModelContainer(ModelContainer):
         """
         return [met.id for met in self.model.metabolites]
 
-    def get_metabolite(self, m_id) -> Dict[str,Any]:
+    def get_metabolite(self, m_id) -> Dict[str, Any]:
         """Returns a metabolite propeties.
 
         :param m_id: The metabolite identifier
@@ -124,7 +122,7 @@ class CobraModelContainer(ModelContainer):
         :rtype: Dict[str,Any]
         """
         met = self.model.metabolites.get_by_id(m_id)
-        res = {'id': m_id, 'name': met.name, 'compartment': met.compartment, 'formula': met.formula}
+        res = {"id": m_id, "name": met.name, "compartment": met.compartment, "formula": met.formula}
         return AttrDict(res)
 
     @property
@@ -145,7 +143,7 @@ class CobraModelContainer(ModelContainer):
         """
         return self.model.compartments
 
-    def get_compartment(self, c_id:str) -> Dict[str, Any]:
+    def get_compartment(self, c_id: str) -> Dict[str, Any]:
         """Get a dictionary of a compartment descriptions.
 
         :param c_id: The compartment identifier
@@ -154,13 +152,13 @@ class CobraModelContainer(ModelContainer):
         :rtype: dict
         """
         from cobra.medium import find_external_compartment
-        
+
         c = self.model.compartments[c_id]
         e = find_external_compartment(self.model)
-        res = {'id': c_id, 'name': c, 'external': (e == c_id)}
+        res = {"id": c_id, "name": c, "external": (e == c_id)}
         return AttrDict(res)
 
-    def get_gpr(self, reaction_id:str) -> str:
+    def get_gpr(self, reaction_id: str) -> str:
         """Returns the gpr rule (str) for a given reaction ID.
 
         :param str reaction_id: The reaction identifier.
@@ -184,7 +182,7 @@ class CobraModelContainer(ModelContainer):
         rxns = [r.id for r in self.model.exchanges]
         return rxns
 
-    def get_gene_reactions(self) -> Dict[str,List[str]]:
+    def get_gene_reactions(self) -> Dict[str, List[str]]:
         """Get a map of genes to reactions.
 
         :return: A map of genes to reactions.
@@ -205,13 +203,16 @@ class CobraModelContainer(ModelContainer):
 
 
 class Simulation(CobraModelContainer, Simulator):
-   
-    def __init__(self, model: Model,
-                 envcond: Union[dict, None] = None,
-                 constraints: Union[dict, None] = None,
-                 solver=None,
-                 reference: Union[dict, None] = None,
-                 reset_solver: bool = ModelConstants.RESET_SOLVER):
+
+    def __init__(
+        self,
+        model: Model,
+        envcond: Union[dict, None] = None,
+        constraints: Union[dict, None] = None,
+        solver=None,
+        reference: Union[dict, None] = None,
+        reset_solver: bool = ModelConstants.RESET_SOLVER,
+    ):
         """
         Generic Simulation class for cobra Model.
         Defines the simulation conditions, and makes available a set of methods.
@@ -237,27 +238,30 @@ class Simulation(CobraModelContainer, Simulator):
         self.model = model
         self.model.solver = get_default_solver()
         self._environmental_conditions = OrderedDict() if envcond is None else envcond
-        self._constraints = dict() if constraints is None else {
-            k: v for k, v in constraints.items() if k not in list(self._environmental_conditions.keys())}
+        self._constraints = (
+            dict()
+            if constraints is None
+            else {k: v for k, v in constraints.items() if k not in list(self._environmental_conditions.keys())}
+        )
 
         self.solver = solver
         self._gene_to_reaction = None
         self._reference = reference
         self.__status_mapping = {
-            'optimal': SStatus.OPTIMAL,
-            'unbounded': SStatus.UNBOUNDED,
-            'infeasible': SStatus.INFEASIBLE,
-            'infeasible_or_unbounded': SStatus.INF_OR_UNB,
-            'suboptimal': SStatus.SUBOPTIMAL,
-            'unknown': SStatus.UNKNOWN
+            "optimal": SStatus.OPTIMAL,
+            "unbounded": SStatus.UNBOUNDED,
+            "infeasible": SStatus.INFEASIBLE,
+            "infeasible_or_unbounded": SStatus.INF_OR_UNB,
+            "suboptimal": SStatus.SUBOPTIMAL,
+            "unknown": SStatus.UNKNOWN,
         }
         self.solver = solver
         self._reset_solver = reset_solver
         self.reverse_sintax = []
         self._m_r_lookup = None
 
-        self._MAX_STR = 'maximize'
-        self._MIN_STR = 'minimize'
+        self._MAX_STR = "maximize"
+        self._MIN_STR = "minimize"
 
         # apply the env. cond. and additional constraints to the model
         for r_id, bounds in self._environmental_conditions.items():
@@ -269,11 +273,11 @@ class Simulation(CobraModelContainer, Simulator):
         # during simulations
         self._allow_env_changes = False
         self.biomass_reaction = None
-        try: 
-            self.biomass_reaction=list(self.objective.keys())[0]
+        try:
+            self.biomass_reaction = list(self.objective.keys())[0]
         except:
             pass
-     
+
     @property
     def environmental_conditions(self):
         return self._environmental_conditions.copy()
@@ -297,6 +301,7 @@ class Simulation(CobraModelContainer, Simulator):
     @property
     def objective(self):
         from cobra.util.solver import linear_reaction_coefficients
+
         d = dict(linear_reaction_coefficients(self.model))
         return {k.id: v for k, v in d.items()}
 
@@ -306,42 +311,47 @@ class Simulation(CobraModelContainer, Simulator):
             self.model.objective = objective
         elif isinstance(objective, dict):
             from cobra.util.solver import set_objective
+
             linear_coef = {self.model.reactions.get_by_id(r_id): v for r_id, v in objective.items()}
             set_objective(self.model, linear_coef)
         else:
             raise ValueError(
-                'The objective must be a reaction identifier or a dictionary of \
-                reaction identifier with respective coeficients.')
+                "The objective must be a reaction identifier or a dictionary of \
+                reaction identifier with respective coeficients."
+            )
 
     def add_compartment(self, comp_id, name=None, external=False):
-        """ Adds a compartment
+        """Adds a compartment
 
-            :param str comp_id: Compartment ID
-            :param str name: Compartment name, default None
-            :param bool external: If the compartment is external, default False.
+        :param str comp_id: Compartment ID
+        :param str name: Compartment name, default None
+        :param bool external: If the compartment is external, default False.
         """
         self.model.compartments = {comp_id: name}
 
     def add_metabolite(self, id, formula=None, name=None, compartment=None):
         from cobra import Metabolite
+
         meta = Metabolite(id, formula=formula, name=name, compartment=compartment)
         self.model.add_metabolites([meta])
 
     def add_gene(self, id, name):
         pass
 
-    def add_reaction(self,
-                     rxn_id,
-                     name=None,
-                     stoichiometry=None,
-                     reversible=True,
-                     lb=ModelConstants.REACTION_LOWER_BOUND,
-                     ub=ModelConstants.REACTION_UPPER_BOUND,
-                     gpr=None,
-                     objective=0,
-                     replace=True,
-                     annotations={},
-                     reaction_type=None):
+    def add_reaction(
+        self,
+        rxn_id,
+        name=None,
+        stoichiometry=None,
+        reversible=True,
+        lb=ModelConstants.REACTION_LOWER_BOUND,
+        ub=ModelConstants.REACTION_UPPER_BOUND,
+        gpr=None,
+        objective=0,
+        replace=True,
+        annotations={},
+        reaction_type=None,
+    ):
         """Adds a reaction to the model
 
         :param rxn_id: The reaction identifier
@@ -377,13 +387,13 @@ class Simulation(CobraModelContainer, Simulator):
         reaction.upper_bound = ub
         if gpr and isinstance(gpr, str):
             reaction.gene_reaction_rule = gpr
-        if annotations:    
+        if annotations:
             reaction.annotation = annotations
         if replace and rxn_id in self.reactions:
             self.remove_reaction(rxn_id)
 
         self.model.add_reactions([reaction])
-        if objective!=0:
+        if objective != 0:
             set_objective(self.model, {reaction: objective})
 
     def remove_reaction(self, r_id):
@@ -393,18 +403,17 @@ class Simulation(CobraModelContainer, Simulator):
             r_id (str): The reaction identifier.
         """
         self.model.remove_reactions([r_id])
-        
-    def remove_reactions(self, rxn_ids:List[str]):
+
+    def remove_reactions(self, rxn_ids: List[str]):
         """_summary_
 
         Args:
             rxn_ids (List[str]): _description_
         """
         self.model.remove_reactions(rxn_ids)
-        
 
     def update_stoichiometry(self, rxn_id, stoichiometry):
-        """Updates the stoichiometry of a reaction by creating a 
+        """Updates the stoichiometry of a reaction by creating a
         new reaction with a same id and the new stoichiometry
 
         :param rxn_id: Reaction identifier
@@ -414,30 +423,42 @@ class Simulation(CobraModelContainer, Simulator):
         """
         rxn = self.model.reactions.get_by_id(rxn_id)
         objective = self.objective.get(rxn_id, 0)
-        self.add_reaction(rxn_id,
-                          name=rxn.name,
-                          stoichiometry=stoichiometry,
-                          lb=rxn.lower_bound,
-                          ub=rxn.upper_bound,
-                          gpr=rxn.gene_reaction_rule,
-                          annotations=rxn.annotation,
-                          objective=objective,
-                          replace=True)
-
+        self.add_reaction(
+            rxn_id,
+            name=rxn.name,
+            stoichiometry=stoichiometry,
+            lb=rxn.lower_bound,
+            ub=rxn.upper_bound,
+            gpr=rxn.gene_reaction_rule,
+            annotations=rxn.annotation,
+            objective=objective,
+            replace=True,
+        )
 
     def get_uptake_reactions(self):
         """
         :returns: The list of uptake reactions.
         """
         drains = self.get_exchange_reactions()
-        rxns = [r for r in drains if self.model.reactions.get_by_id(r).reversibility
-                or ((self.model.reactions.get_by_id(r).lower_bound is None
-                     or self.model.reactions.get_by_id(r).lower_bound < 0)
-                    and len(self.model.reactions.get_by_id(r).reactants) > 0)
-                or ((self.model.reactions.get_by_id(r).upper_bound is None
-                     or self.model.reactions.get_by_id(r).upper_bound > 0)
-                    and len(self.model.reactions.get_by_id(r).products) > 0)
-                ]
+        rxns = [
+            r
+            for r in drains
+            if self.model.reactions.get_by_id(r).reversibility
+            or (
+                (
+                    self.model.reactions.get_by_id(r).lower_bound is None
+                    or self.model.reactions.get_by_id(r).lower_bound < 0
+                )
+                and len(self.model.reactions.get_by_id(r).reactants) > 0
+            )
+            or (
+                (
+                    self.model.reactions.get_by_id(r).upper_bound is None
+                    or self.model.reactions.get_by_id(r).upper_bound > 0
+                )
+                and len(self.model.reactions.get_by_id(r).products) > 0
+            )
+        ]
         return rxns
 
     def get_transport_reactions(self):
@@ -459,8 +480,7 @@ class Simulation(CobraModelContainer, Simulator):
         return transport_reactions
 
     def get_transport_genes(self):
-        """Returns the list of genes that only catalyze transport reactions.
-        """
+        """Returns the list of genes that only catalyze transport reactions."""
         trp_rxs = self.get_transport_reactions()
         r_g = self.get_gene_reactions()
         genes = []
@@ -488,7 +508,7 @@ class Simulation(CobraModelContainer, Simulator):
         return None
 
     def metabolite_reaction_lookup(self, force_recalculate=False):
-        """ Return the network topology as a nested map from metabolite to reaction to coefficient.
+        """Return the network topology as a nested map from metabolite to reaction to coefficient.
         :return: a dictionary lookup table
         """
 
@@ -512,15 +532,15 @@ class Simulation(CobraModelContainer, Simulator):
 
         """
         lb, ub = self.model.reactions.get_by_id(reaction_id).bounds
-        #return lb if lb > -np.inf else ModelConstants.REACTION_LOWER_BOUND,\
+        # return lb if lb > -np.inf else ModelConstants.REACTION_LOWER_BOUND,\
         #    ub if ub < np.inf else ModelConstants.REACTION_UPPER_BOUND
-        return lb,ub
-    
+        return lb, ub
+
     def set_reaction_bounds(self, reaction_id, lb, ub, track=True):
         """
         Sets the bounds for a given reaction.
         :param reaction_id: str, reaction ID
-        :param float lb: lower bound 
+        :param float lb: lower bound
         :param float ub: upper bound
         :param bool track: if the changes are to be logged. Default True
         """
@@ -553,24 +573,24 @@ class Simulation(CobraModelContainer, Simulator):
         """Return list of reactions that are not constrained at all."""
         lower_bound, upper_bound = self.find_bounds()
         return [
-            rxn.id
-            for rxn in self.model.reactions
-            if rxn.lower_bound <= lower_bound and rxn.upper_bound >= upper_bound
+            rxn.id for rxn in self.model.reactions if rxn.lower_bound <= lower_bound and rxn.upper_bound >= upper_bound
         ]
 
     # The simulator
-    def simulate(self, 
-                 objective: Dict[str,float]=None,
-                 method:Union[SimulationMethod,str,Callable]=SimulationMethod.FBA,
-                 maximize:bool=True,
-                 constraints:Dict[str,Union[float,Tuple[float,float]]]=None,
-                 reference:Dict[str,float]=None, 
-                 scalefactor:float=None, 
-                 solver=None, 
-                 slim:bool=False,
-                 shadow_prices:bool=False,
-                 **kwargs) -> SimulationResult:
-        '''
+    def simulate(
+        self,
+        objective: Dict[str, float] = None,
+        method: Union[SimulationMethod, str, Callable] = SimulationMethod.FBA,
+        maximize: bool = True,
+        constraints: Dict[str, Union[float, Tuple[float, float]]] = None,
+        reference: Dict[str, float] = None,
+        scalefactor: float = None,
+        solver=None,
+        slim: bool = False,
+        shadow_prices: bool = False,
+        **kwargs,
+    ) -> SimulationResult:
+        """
         Simulates a phenotype when applying a set constraints using the specified method.
 
         :param dic objective: The simulation objective. If none, the model objective is considered.
@@ -580,14 +600,11 @@ class Simulation(CobraModelContainer, Simulator):
         :param dic reference: A dictionary of reaction flux values.
         :param float scalefactor: A positive scaling factor for the solver. Default None.
 
-        '''
+        """
         if callable(method):
-            return self._simulate_callable(method, 
-                                           objective=objective, 
-                                           maximize=maximize, 
-                                           constraints=constraints,
-                                           **kwargs)
-
+            return self._simulate_callable(
+                method, objective=objective, maximize=maximize, constraints=constraints, **kwargs
+            )
 
         if not objective:
             objective = self.model.objective
@@ -597,8 +614,9 @@ class Simulation(CobraModelContainer, Simulator):
         simul_constraints = {}
         if constraints:
             if not self._allow_env_changes:
-                simul_constraints.update({k: v for k, v in constraints.items()
-                                          if k not in list(self._environmental_conditions.keys())})
+                simul_constraints.update(
+                    {k: v for k, v in constraints.items() if k not in list(self._environmental_conditions.keys())}
+                )
             else:
                 simul_constraints.update(constraints)
 
@@ -607,20 +625,18 @@ class Simulation(CobraModelContainer, Simulator):
             for rxn in list(simul_constraints.keys()):
                 reac = model.reactions.get_by_id(rxn)
 
-                # constraints defined as a tuple (lower_bound, upper_bound) or 
+                # constraints defined as a tuple (lower_bound, upper_bound) or
                 # as a single float value
                 if isinstance(simul_constraints.get(rxn), tuple):
-                    reac.bounds = (simul_constraints.get(
-                        rxn)[0], simul_constraints.get(rxn)[1])
+                    reac.bounds = (simul_constraints.get(rxn)[0], simul_constraints.get(rxn)[1])
                 else:
-                    reac.bounds = (simul_constraints.get(
-                        rxn), simul_constraints.get(rxn))
+                    reac.bounds = (simul_constraints.get(rxn), simul_constraints.get(rxn))
 
             # If working directly over optlang use 'max' and 'min'
             # such is the case with pytfa.core.Model.
             objective_sense = self._MAX_STR if maximize else self._MIN_STR
-            
-            #FBA
+
+            # FBA
             if method == SimulationMethod.FBA:
                 if slim:
                     solution = model.slim_optimize()
@@ -645,35 +661,39 @@ class Simulation(CobraModelContainer, Simulator):
 
             # Special case in which only the simulation context is required without any simulation result
             elif method == SimulationMethod.NONE:
-                solution = Solution(None, 'unknown', None)
+                solution = Solution(None, "unknown", None)
 
             else:
-                raise Exception(
-                    "Unknown method to perform the simulation.")
+                raise Exception("Unknown method to perform the simulation.")
 
         if slim:
             return solution
 
         else:
             status = self.__status_mapping[solution.status]
-            result = SimulationResult(self, 
-                                      solution.objective_value,
-                                      fluxes=solution.fluxes.to_dict(OrderedDict),
-                                      status=status, envcond=self.environmental_conditions,
-                                      model_constraints=self._constraints.copy(),
-                                      simul_constraints=constraints,
-                                      maximize=maximize,
-                                      method=method,
-                                      shadow_prices=solution.shadow_prices.to_dict(OrderedDict)
-                                      )
+            result = SimulationResult(
+                self,
+                solution.objective_value,
+                fluxes=solution.fluxes.to_dict(OrderedDict),
+                status=status,
+                envcond=self.environmental_conditions,
+                model_constraints=self._constraints.copy(),
+                simul_constraints=constraints,
+                maximize=maximize,
+                method=method,
+                shadow_prices=solution.shadow_prices.to_dict(OrderedDict),
+            )
             return result
 
-    def FVA(self, reactions:Union[List[str],None]=None,
-            obj_frac:float=0.9,
-            constraints:Dict[str,Union[float,Tuple[float,float]]]=None,
-            loopless:bool=False, 
-            solver=None,
-            format:bool='dict') -> Union[dict,"DataFrame"]:
+    def FVA(
+        self,
+        reactions: Union[List[str], None] = None,
+        obj_frac: float = 0.9,
+        constraints: Dict[str, Union[float, Tuple[float, float]]] = None,
+        loopless: bool = False,
+        solver=None,
+        format: bool = "dict",
+    ) -> Union[dict, "DataFrame"]:
         """ Flux Variability Analysis (FVA).
 
         :param model: An instance of a constraint-based model.
@@ -692,8 +712,9 @@ class Simulation(CobraModelContainer, Simulator):
 
         simul_constraints = {}
         if constraints:
-            simul_constraints.update({k: v for k, v in constraints.items()
-                                      if k not in list(self._environmental_conditions.keys())})
+            simul_constraints.update(
+                {k: v for k, v in constraints.items() if k not in list(self._environmental_conditions.keys())}
+            )
 
         if reactions is None:
             _reactions = self.reactions
@@ -702,7 +723,7 @@ class Simulation(CobraModelContainer, Simulator):
         elif isinstance(reactions, list):
             _reactions = reactions
         else:
-            raise ValueError('Invalid reactions.')
+            raise ValueError("Invalid reactions.")
 
         with self.model as model:
 
@@ -710,31 +731,30 @@ class Simulation(CobraModelContainer, Simulator):
                 for rxn in list(simul_constraints.keys()):
                     reac = model.reactions.get_by_id(rxn)
                     if isinstance(simul_constraints.get(rxn), tuple):
-                        reac.bounds = (simul_constraints.get(
-                            rxn)[0], simul_constraints.get(rxn)[1])
+                        reac.bounds = (simul_constraints.get(rxn)[0], simul_constraints.get(rxn)[1])
                     else:
-                        reac.bounds = (simul_constraints.get(
-                            rxn), simul_constraints.get(rxn))
+                        reac.bounds = (simul_constraints.get(rxn), simul_constraints.get(rxn))
 
             df = flux_variability_analysis(
-                model, reaction_list=_reactions, loopless=loopless, fraction_of_optimum=obj_frac)
+                model, reaction_list=_reactions, loopless=loopless, fraction_of_optimum=obj_frac
+            )
 
         variability = {}
         for r_id in _reactions:
-            variability[r_id] = [
-                float(df.loc[r_id][0]), float(df.loc[r_id][1])]
+            variability[r_id] = [float(df.loc[r_id][0]), float(df.loc[r_id][1])]
 
-        if format == 'df':
+        if format == "df":
             import pandas as pd
+
             e = variability.items()
             f = [[a, b, c] for a, [b, c] in e]
-            df = pd.DataFrame(f, columns=['Reaction ID', 'Minimum', 'Maximum'])
+            df = pd.DataFrame(f, columns=["Reaction ID", "Minimum", "Maximum"])
             df = df.set_index(df.columns[0])
             return df
         else:
             return variability
 
-    def set_objective(self, reaction_id:str):
+    def set_objective(self, reaction_id: str):
         self.model.objective = reaction_id
 
     def create_empty_model(self, model_id: str):
@@ -746,18 +766,26 @@ class GeckoSimulation(Simulation):
     Simulator for geckopy.gecko.GeckoModel
     """
 
-    def __init__(self, model, envcond=None, constraints=None, solver=None, reference=None,
-                 reset_solver=ModelConstants.RESET_SOLVER, protein_prefix=None):
+    def __init__(
+        self,
+        model,
+        envcond=None,
+        constraints=None,
+        solver=None,
+        reference=None,
+        reset_solver=ModelConstants.RESET_SOLVER,
+        protein_prefix=None,
+    ):
         try:
             from geckopy.gecko import GeckoModel
+
             if not isinstance(model, GeckoModel):
                 raise ValueError("The model is not an instance of geckopy.gecko.GeckoModel")
         except ImportError:
             raise RuntimeError("The geckopy package is not installed.")
 
-        super(GeckoSimulation, self).__init__(
-            model, envcond, constraints, solver, reference, reset_solver)
-        self.protein_prefix = protein_prefix if protein_prefix else 'draw_prot_'
+        super(GeckoSimulation, self).__init__(model, envcond, constraints, solver, reference, reset_solver)
+        self.protein_prefix = protein_prefix if protein_prefix else "draw_prot_"
         self._essential_proteins = None
         self._protein_rev_reactions = None
         self._prot_react = None
@@ -765,11 +793,10 @@ class GeckoSimulation(Simulation):
     @property
     def proteins(self):
         return list(self.model.proteins)
-    
+
     @property
     def protein_pool_exchange(self):
         return self.model.protein_pool_exchange
-
 
     def essential_proteins(self, min_growth=0.01):
         if self._essential_proteins is not None:
@@ -782,8 +809,9 @@ class GeckoSimulation(Simulation):
             rxn = "{}{}".format(self.protein_prefix, p)
             res = self.simulate(constraints={rxn: 0})
             if res:
-                if (res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth) or \
-                        res.status == SStatus.INFEASIBLE:
+                if (
+                    res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth
+                ) or res.status == SStatus.INFEASIBLE:
                     self._essential_proteins.append(p)
         return self._essential_proteins
 
@@ -797,11 +825,11 @@ class GeckoSimulation(Simulation):
                 rxn = self.model.reactions.get_by_id(r_id)
                 lsub = rxn.reactants
                 for m in lsub:
-                    if 'prot_' in m.id:
+                    if "prot_" in m.id:
                         p = m.id[5:-2]
                         try:
-                            l = self._prot_react[p]
-                            l.append(r_id)
+                            reaction_list = self._prot_react[p]
+                            reaction_list.append(r_id)
 
                         except Exception:
                             pass
@@ -815,7 +843,7 @@ class GeckoSimulation(Simulation):
         return mapper[protein]
 
     def get_protein(self, p_id):
-        res = {'Protein': p_id, 'reactions': self.protein_reactions(p_id)}
+        res = {"Protein": p_id, "reactions": self.protein_reactions(p_id)}
         return AttrDict(res)
 
     def find_proteins(self, pattern=None, sort=False):
@@ -832,8 +860,9 @@ class GeckoSimulation(Simulation):
         values = self.proteins
         if pattern:
             import re
+
             if isinstance(pattern, list):
-                patt = '|'.join(pattern)
+                patt = "|".join(pattern)
                 re_expr = re.compile(patt)
             else:
                 re_expr = re.compile(pattern)
@@ -887,10 +916,10 @@ class GeckoSimulation(Simulation):
                 in_sub[p] = sub
             pairs = {}
             for k, s in in_sub.items():
-                revs = [r for r in s if '_REV' in r]
+                revs = [r for r in s if "_REV" in r]
                 if len(revs) > 0:
                     for r in revs:
-                        la = [a for a in s if r.replace('_REV', '') == a]
+                        la = [a for a in s if r.replace("_REV", "") == a]
                         la.append(r)
                         if len(la) == 2:
                             if k in pairs.keys():
@@ -901,8 +930,8 @@ class GeckoSimulation(Simulation):
         return self._protein_rev_reactions
 
     def get_Kcats(self, protein: str):
-        """ 
-        Returns a dictionary of reactions and respective Kcat for a 
+        """
+        Returns a dictionary of reactions and respective Kcat for a
         specific protein/enzyme·
 
         :params (str) protein: the protein identifier.
@@ -910,12 +939,13 @@ class GeckoSimulation(Simulation):
         :returns: A dictionary of reactions and respective Kcat values.
         """
         import re
+
         re_expr = re.compile(f"{protein}_")
         values = [x for x in self.metabolites if re_expr.search(x) is not None]
         if len(values) == 1:
             m_r = self.metabolite_reaction_lookup()
             r_d = m_r[values[0]]
-            return {k: -1/v for k, v in r_d.items() if self.protein_prefix not in k}
+            return {k: -1 / v for k, v in r_d.items() if self.protein_prefix not in k}
         elif len(values) > 1:
             raise ValueError(f"More than one protein match {values}")
         else:
@@ -932,7 +962,7 @@ class GeckoSimulation(Simulation):
         :type invkcat: float
         """
         if kcat <= 0:
-            raise ValueError('kcat value needs to be positive.')
+            raise ValueError("kcat value needs to be positive.")
 
         rxn = self.model.reactions.get_by_id(reaction)
         m = None
@@ -941,8 +971,6 @@ class GeckoSimulation(Simulation):
                 m = met
                 break
         if m is not None:
-            rxn.subtract_metabolites({m: -1/kcat})
+            rxn.subtract_metabolites({m: -1 / kcat})
         else:
-            LOGGER.warn(f'Could not identify {protein} ' 
-                        f'protein specie in reaction {reaction}')
- 
+            LOGGER.warn(f"Could not identify {protein} " f"protein specie in reaction {reaction}")

@@ -21,6 +21,7 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 from inspyred.ec.emo import Pareto
+
 from mewpy.util.process import Evaluable
 
 
@@ -33,11 +34,10 @@ class IntTuppleBounder(object):
 
     """
 
-    def __init__(self, lower_bound:int, upper_bound:int):
+    def __init__(self, lower_bound: int, upper_bound: int):
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
-        self.range = [self.upper_bound[i] - self.lower_bound[i] +
-                      1 for i in range(len(self.lower_bound))]
+        self.range = [self.upper_bound[i] - self.lower_bound[i] + 1 for i in range(len(self.lower_bound))]
 
     def __call__(self, candidate, args):
         bounded_candidate = set()
@@ -53,7 +53,7 @@ class IntTuppleBounder(object):
 class InspyredProblem(Evaluable):
     """Inspyred EA builder helper.
 
-        :param problem: the optimization problem.
+    :param problem: the optimization problem.
     """
 
     def __init__(self, problem, directions):
@@ -63,17 +63,17 @@ class InspyredProblem(Evaluable):
     def evaluate(self, solution):
         """Evaluates a single solution
 
-            :param solution: The individual to be evaluated.
-            :returns: A list with a fitness value or a Pareto object.
+        :param solution: The individual to be evaluated.
+        :returns: A list with a fitness value or a Pareto object.
 
         """
         p = self.problem.evaluate_solution(solution)
         # single objective
         if self.problem.number_of_objectives == 1:
-            return p[0]*self.direction[0]
+            return p[0] * self.direction[0]
         # multi objective
         else:
-            v = [a*b for a, b in zip(p, self.direction)]
+            v = [a * b for a, b in zip(p, self.direction)]
             return Pareto(v)
 
     def evaluator(self, candidates, *args):

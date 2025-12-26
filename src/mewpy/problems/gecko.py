@@ -22,15 +22,17 @@ Contributors: Sergio Salgado Briegas
 ##############################################################################
 """
 import warnings
+from copy import copy
+from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+
+from mewpy.simulation import SStatus, get_simulator
+from mewpy.util.constants import ModelConstants
 
 from .problem import AbstractKOProblem, AbstractOUProblem
-from mewpy.util.constants import ModelConstants
-from mewpy.simulation import SStatus, get_simulator
-from copy import copy
 
-from typing import TYPE_CHECKING, Union, List, Dict, Tuple
 if TYPE_CHECKING:
     from geckopy import GeckoModel
+
     from mewpy.model import GeckoModel as GECKOModel
     from mewpy.optimization.evaluation import EvaluationFunction
     from mewpy.simulation.simulation import Simulator
@@ -61,13 +63,12 @@ class GeckoKOProblem(AbstractKOProblem):
 
     """
 
-    def __init__(self, model: Union["GeckoModel", "GECKOModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
+    def __init__(
+        self, model: Union["GeckoModel", "GECKOModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs
+    ):
 
-        super(GeckoKOProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
-        self.prot_prefix = kwargs.get('prot_prefix', 'draw_prot_')
+        super(GeckoKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
+        self.prot_prefix = kwargs.get("prot_prefix", "draw_prot_")
         self.simulator.prot_prefix = self.prot_prefix
 
     def _build_target_list(self):
@@ -90,11 +91,9 @@ class GeckoKOProblem(AbstractKOProblem):
         decoded_candidate = dict()
         for idx in candidate:
             try:
-                decoded_candidate["{}{}".format(
-                    self.prot_prefix, self.target_list[idx])] = 0
+                decoded_candidate["{}{}".format(self.prot_prefix, self.target_list[idx])] = 0
             except IndexError:
-                raise IndexError(
-                    f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
         return decoded_candidate
 
     def encode(self, candidate):
@@ -112,6 +111,7 @@ class GeckoKOProblem(AbstractKOProblem):
         Converts a candidate, a dictionary of reactions, into a dictionary of constraints.
         This is problem specific. By default return the decoded candidate.
         """
+
         # check prefix
         def add_prefix(prot):
             if prot.startswith(self.prot_prefix):
@@ -151,14 +151,13 @@ class GeckoOUProblem(AbstractOUProblem):
 
     """
 
-    def __init__(self, model: Union["GeckoModel", "GECKOModel"],
-                 fevaluation: List["EvaluationFunction"] = None,
-                 **kwargs):
-        super(GeckoOUProblem, self).__init__(
-            model, fevaluation=fevaluation, **kwargs)
+    def __init__(
+        self, model: Union["GeckoModel", "GECKOModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs
+    ):
+        super(GeckoOUProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
         self.prot_rev_reactions = None
-        self.prot_prefix = kwargs.get('prot_prefix', 'draw_prot_')
+        self.prot_prefix = kwargs.get("prot_prefix", "draw_prot_")
 
     def _build_target_list(self):
         """
@@ -180,12 +179,10 @@ class GeckoOUProblem(AbstractOUProblem):
         for idx, lv_idx in candidate:
             try:
 
-                decoded_candidate["{}{}".format(
-                    self.prot_prefix, self.target_list[idx])] = self.levels[lv_idx]
+                decoded_candidate["{}{}".format(self.prot_prefix, self.target_list[idx])] = self.levels[lv_idx]
 
             except IndexError:
-                raise IndexError(
-                    f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
         return decoded_candidate
 
     def encode(self, candidate):
@@ -198,8 +195,7 @@ class GeckoOUProblem(AbstractOUProblem):
                   problem dependent.
         """
         p_size = len(self.prot_prefix)
-        return set([(self.target_list.index(k[p_size:]), self.levels.index(lv))
-                    for k, lv in candidate.items()])
+        return set([(self.target_list.index(k[p_size:]), self.levels.index(lv)) for k, lv in candidate.items()])
 
     def solution_to_constraints(self, candidate):
         """
@@ -231,7 +227,7 @@ class GeckoOUProblem(AbstractOUProblem):
             try:
                 deletions = {rxn: 0 for rxn, lv in _candidate.items() if lv == 0}
                 if deletions and len(deletions) < len(_candidate):
-                    sr = self.simulator.simulate(constraints=deletions, method='pFBA')
+                    sr = self.simulator.simulate(constraints=deletions, method="pFBA")
                     if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                         reference = sr.fluxes
             except Exception as e:
@@ -242,7 +238,7 @@ class GeckoOUProblem(AbstractOUProblem):
 
         for rxn, lv in _candidate.items():
             fluxe_wt = reference[rxn]
-            prot = rxn[len(self.prot_prefix):]
+            prot = rxn[len(self.prot_prefix) :]
             if lv < 0:
                 raise ValueError("All UO levels should be positive")
             # a level = 0 is interpreted as KO
@@ -255,8 +251,7 @@ class GeckoOUProblem(AbstractOUProblem):
             elif lv == 1:
                 continue
             else:
-                constraints[rxn] = (
-                    lv * fluxe_wt, ModelConstants.REACTION_UPPER_BOUND)
+                constraints[rxn] = (lv * fluxe_wt, ModelConstants.REACTION_UPPER_BOUND)
                 # Deals with reverse reactions associated with the protein.
                 # This should not be necessery if arm reaction are well defined. But,
                 # just in case it is not so...
@@ -273,18 +268,22 @@ class GeckoOUProblem(AbstractOUProblem):
                         else:
                             warnings.warn(
                                 f"Reactions {r} and {r_rev}, associated with the protein {prot},\
-                                both have fluxes in the WT.")
+                                both have fluxes in the WT."
+                            )
 
         return constraints
 
 
 class KcatOptProblem(AbstractOUProblem):
 
-    def __init__(self,
-                 model: Union["GeckoModel", "GECKOModel"],
-                 proteins: List[str],
-                 fevaluation: List["EvaluationFunction"] = None, **kwargs):
-        """ Kcats optimization problem
+    def __init__(
+        self,
+        model: Union["GeckoModel", "GECKOModel"],
+        proteins: List[str],
+        fevaluation: List["EvaluationFunction"] = None,
+        **kwargs,
+    ):
+        """Kcats optimization problem
 
         :param model: A GECKO model, instance of geckoy.GeckoModel or mewpy.model.GeckoModel
         :param proteins: A list of proteins identifiers.
@@ -314,14 +313,14 @@ class KcatOptProblem(AbstractOUProblem):
 
     def _build_target_list(self):
         """Builds a list of targets in the form
-           [(protein,reaction), ...]
+        [(protein,reaction), ...]
         """
         targets = []
         if self.proteins is None:
             self.proteins = self.model.proteins
         for p in self.proteins:
             rxs = self.simulator.get_Kcats(p)
-            t = [(p, r) for r in rxs.keys() if 'draw_prot_' not in r]
+            t = [(p, r) for r in rxs.keys() if "draw_prot_" not in r]
             targets.extend(t)
         self._trg_list = targets
 
@@ -336,14 +335,12 @@ class KcatOptProblem(AbstractOUProblem):
         :returns: A Simulator
         """
         m = copy(self.model)
-        sim = get_simulator(m,
-                            envcond=self.environmental_conditions,
-                            reset_solver=True)
+        sim = get_simulator(m, envcond=self.environmental_conditions, reset_solver=True)
         for k, v in solution.items():
             p = k[0]
             rx = k[1]
             kcat = sim.get_Kcats(p)[rx]
-            nkcat = kcat*v
+            nkcat = kcat * v
             sim.set_Kcat(p, rx, nkcat)
         return sim
 
@@ -374,7 +371,7 @@ class KcatOptProblem(AbstractOUProblem):
             for f in self.fevaluation:
                 v = f(simulation_results, decoded, scalefactor=self.scalefactor, simulator=simulator)
                 p.append(v)
-        except Exception as e:
+        except Exception:
             p = []
             for f in self.fevaluation:
                 p.append(f.worst_fitness)
@@ -393,8 +390,7 @@ class KcatOptProblem(AbstractOUProblem):
         if self.candidate_min_size == self.candidate_max_size:
             solution_size = self.candidate_min_size
         else:
-            solution_size = random.randint(
-                self.candidate_min_size, self.candidate_max_size)
+            solution_size = random.randint(self.candidate_min_size, self.candidate_max_size)
 
         if solution_size > len(self.target_list):
             solution_size = len(self.target_list)
@@ -403,8 +399,8 @@ class KcatOptProblem(AbstractOUProblem):
         try:
             idx = self.levels.index(1)
             values = [idx] * solution_size
-            p = random.randint(0, solution_size-1)
-            values[p] = random.randint(0, len(self.levels)-1)
+            p = random.randint(0, solution_size - 1)
+            values[p] = random.randint(0, len(self.levels) - 1)
         except:
             values = random.choices(range(len(self.levels)), k=solution_size)
 

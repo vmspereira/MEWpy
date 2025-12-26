@@ -15,19 +15,19 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Abstract evaluators 
+Abstract evaluators
 
 Author: Vitor Pereira
 ##############################################################################
 """
-from abc import ABCMeta, abstractmethod
 import math
+from abc import ABCMeta, abstractmethod
+
 
 class EvaluationFunction:
     __metaclass__ = ABCMeta
 
-    def __init__(self, maximize:bool=True,
-                 worst_fitness:float=0.0):
+    def __init__(self, maximize: bool = True, worst_fitness: float = 0.0):
         """This abstract class should be extended by all evaluation functions.
 
         :param maximize: Wether to maximize (True) or minimize (False), defaults to True
@@ -83,12 +83,10 @@ class EvaluationFunction:
 class PhenotypeEvaluationFunction(EvaluationFunction):
 
     def __init__(self, maximize=True, worst_fitness=0.0):
-        super(PhenotypeEvaluationFunction, self).__init__(maximize=maximize,
-                                                          worst_fitness=worst_fitness)
+        super(PhenotypeEvaluationFunction, self).__init__(maximize=maximize, worst_fitness=worst_fitness)
 
 
 class KineticEvaluationFunction(EvaluationFunction):
 
     def __init__(self, maximize=True, worst_fitness=0.0):
-        super(KineticEvaluationFunction, self).__init__(maximize=maximize,
-                                                        worst_fitness=worst_fitness)
+        super(KineticEvaluationFunction, self).__init__(maximize=maximize, worst_fitness=worst_fitness)

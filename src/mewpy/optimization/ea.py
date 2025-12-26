@@ -20,19 +20,20 @@ Heuristic optimization abstract classes and interfaces
 Author: Vitor Pereira
 ##############################################################################
 """
-from abc import ABC, abstractmethod
 import signal
 import sys
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
+
 from mewpy.util.constants import EAConstants
 from mewpy.util.process import cpu_count
-from typing import TYPE_CHECKING, Any, Dict, List, Union, Tuple
 
 if TYPE_CHECKING:
     from mewpy.problems.problem import AbstractProblem
 
+
 class SolutionInterface(ABC):
-    """ An interface for EA solutions.
-    """
+    """An interface for EA solutions."""
 
     @abstractmethod
     def get_fitness(self):
@@ -50,11 +51,13 @@ class SolutionInterface(ABC):
 
 class Solution(SolutionInterface):
 
-    def __init__(self, 
-                 values:Any, 
-                 fitness:List[float], 
-                 constraints:Dict[str,Union[float,Tuple[float,float]]]=None, 
-                 is_maximize:bool=True):
+    def __init__(
+        self,
+        values: Any,
+        fitness: List[float],
+        constraints: Dict[str, Union[float, Tuple[float, float]]] = None,
+        is_maximize: bool = True,
+    ):
         """
         EA Solution
 
@@ -84,10 +87,10 @@ class Solution(SolutionInterface):
     def __repr__(self) -> str:
         return f"{self.fitness};{self.values}"
 
-    def __eq__(self, solution:"Solution") -> bool:
-        if isinstance(self.values,dict):
-           return set(self.values.items()) == set(solution.values.items())
-        else:     
+    def __eq__(self, solution: "Solution") -> bool:
+        if isinstance(self.values, dict):
+            return set(self.values.items()) == set(solution.values.items())
+        else:
             return set(self.values) == set(solution.values)
 
     def __ne__(self, solution: "Solution") -> bool:
@@ -95,29 +98,30 @@ class Solution(SolutionInterface):
             return True
         else:
             return not self.__eq__(solution)
-        
-    def __gt__(self, solution:"Solution") -> bool:
+
+    def __gt__(self, solution: "Solution") -> bool:
         if isinstance(solution, self.__class__):
             return dominance_test(self, solution, maximize=self._is_maximize) == 1
         return False
 
-    def __lt__(self, solution:"Solution") -> bool:
+    def __lt__(self, solution: "Solution") -> bool:
         if isinstance(solution, self.__class__):
             return dominance_test(self, solution, maximize=self._is_maximize) == -1
         return False
 
-    def __ge__(self, solution:"Solution") -> bool:
+    def __ge__(self, solution: "Solution") -> bool:
         if isinstance(solution, self.__class__):
             return dominance_test(self, solution, maximize=self._is_maximize) != -1
         return False
 
-    def __le__(self, solution:"Solution") -> bool:
+    def __le__(self, solution: "Solution") -> bool:
         if isinstance(solution, self.__class__):
             return dominance_test(self, solution, maximize=self._is_maximize) != 1
         return False
 
     def __copy__(self) -> "Solution":
         import copy
+
         values = copy.copy(self.values)
         fitness = self.fitness.copy()
         new_solution = Solution(values, fitness)
@@ -129,25 +133,26 @@ class Solution(SolutionInterface):
         else:
             return hash(str(set(self.values)))
 
-    def __len__(self) ->int:
+    def __len__(self) -> int:
         return len(self.values)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = {'values': self.values,
-             'fitness': self.fitness,
-             'constraints': self.constraints}
+        d = {"values": self.values, "fitness": self.fitness, "constraints": self.constraints}
         return d
 
 
 class AbstractEA(ABC):
 
-    def __init__(self, problem: "AbstractProblem",
-                 initial_population: List = [],
-                 max_generations:int=EAConstants.MAX_GENERATIONS,
-                 mp:bool=True,
-                 np:int=None,
-                 visualizer:bool=False, 
-                 **kwargs):
+    def __init__(
+        self,
+        problem: "AbstractProblem",
+        initial_population: List = [],
+        max_generations: int = EAConstants.MAX_GENERATIONS,
+        mp: bool = True,
+        np: int = None,
+        visualizer: bool = False,
+        **kwargs,
+    ):
 
         self.problem = problem
         self.initial_population = initial_population
@@ -158,7 +163,7 @@ class AbstractEA(ABC):
         self.np = np
 
     def run(self, simplify=True):
-        """ Runs the optimization for the defined problem.
+        """Runs the optimization for the defined problem.
         The number of objectives is defined to be the number of evaluation functions in fevalution.
         """
         # Register signal handler for linux
@@ -190,8 +195,9 @@ class AbstractEA(ABC):
         """
         if not self.final_population:
             raise Exception("No solutions")
-        table = [[x.values, len(x.values)]+x.fitness for x in self.final_population]
+        table = [[x.values, len(x.values)] + x.fitness for x in self.final_population]
         import pandas as pd
+
         columns = ["Modification", "Size"]
         columns.extend([obj.short_str() for obj in self.problem.fevaluation])
         df = pd.DataFrame(table, columns=columns)
@@ -205,6 +211,7 @@ class AbstractEA(ABC):
         if not self.final_population:
             raise Exception("No solutions")
         from ..visualization.plot import StreamingPlot
+
         labels = [obj.short_str() for obj in self.problem.fevaluation]
         p = StreamingPlot(axis_labels=labels)
         p.plot(self.final_population)
@@ -217,28 +224,29 @@ class AbstractEA(ABC):
                 data = [s.to_dict() for s in pop]
                 import json
                 from datetime import datetime
+
                 now = datetime.now()
                 dt_string = now.strftime("%d%m%Y-%H%M%S")
-                with open(f'mewpy-dump-{dt_string}.json', 'w') as outfile:
+                with open(f"mewpy-dump-{dt_string}.json", "w") as outfile:
                     json.dump(data, outfile)
             except Exception:
                 print("Unable to dump population.")
             print("Exiting")
         sys.exit(0)
 
-    @ abstractmethod
+    @abstractmethod
     def _convertPopulation(self, population):
         raise NotImplementedError
 
-    @ abstractmethod
+    @abstractmethod
     def _run_so(self):
         raise NotImplementedError
 
-    @ abstractmethod
+    @abstractmethod
     def _run_mo(self):
         raise NotImplementedError
 
-    @ abstractmethod
+    @abstractmethod
     def _get_current_population(self):
         raise NotImplementedError
 
@@ -325,11 +333,9 @@ def non_dominated_population(solutions, maximize=True, filter_duplicate=True):
 
 
 def filter_duplicates(population):
-    """ Filters equal solutions from a population
-    """
-    res = [x for i,x in enumerate(population) if x not in population[:i] ]
+    """Filters equal solutions from a population"""
+    res = [x for i, x in enumerate(population) if x not in population[:i]]
     return res
-        
 
 
 def cmetric(pf1, pf2, maximize=True):

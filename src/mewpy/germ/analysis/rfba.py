@@ -4,16 +4,16 @@ Regulatory Flux Balance Analysis (RFBA) - Clean Implementation
 This module implements RFBA using RegulatoryExtension only.
 No backwards compatibility with legacy GERM models.
 """
-from typing import Union, Dict, Tuple
+
+from typing import Dict, Tuple, Union
 from warnings import warn
 
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
-from mewpy.solvers import Solution
-from mewpy.solvers.solver import Solver
-from mewpy.solvers import solver_instance
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
-from mewpy.util.constants import ModelConstants
 from mewpy.germ.solution import DynamicSolution
+from mewpy.solvers import Solution, solver_instance
+from mewpy.solvers.solver import Solver
+from mewpy.util.constants import ModelConstants
 
 
 class RFBA(_RegulatoryAnalysisBase):
@@ -32,11 +32,13 @@ class RFBA(_RegulatoryAnalysisBase):
     For more details: Covert et al. 2004, https://doi.org/10.1038/nature02456
     """
 
-    def __init__(self,
-                 model: RegulatoryExtension,
-                 solver: Union[str, Solver, None] = None,
-                 build: bool = False,
-                 attach: bool = False):
+    def __init__(
+        self,
+        model: RegulatoryExtension,
+        solver: Union[str, Solver, None] = None,
+        build: bool = False,
+        attach: bool = False,
+    ):
         """
         Initialize RFBA with a RegulatoryExtension model.
 
@@ -155,11 +157,13 @@ class RFBA(_RegulatoryAnalysisBase):
 
         return state
 
-    def optimize(self,
-                 initial_state: Dict[str, float] = None,
-                 dynamic: bool = False,
-                 to_solver: bool = False,
-                 solver_kwargs: Dict = None) -> Union[Solution, DynamicSolution]:
+    def optimize(
+        self,
+        initial_state: Dict[str, float] = None,
+        dynamic: bool = False,
+        to_solver: bool = False,
+        solver_kwargs: Dict = None,
+    ) -> Union[Solution, DynamicSolution]:
         """
         Solve the RFBA problem.
 
@@ -186,10 +190,7 @@ class RFBA(_RegulatoryAnalysisBase):
             # Dynamic RFBA (iterative until convergence)
             return self._optimize_dynamic(state, to_solver, solver_kwargs)
 
-    def _optimize_steady_state(self,
-                                state: Dict[str, float],
-                                to_solver: bool,
-                                solver_kwargs: Dict) -> Solution:
+    def _optimize_steady_state(self, state: Dict[str, float], to_solver: bool, solver_kwargs: Dict) -> Solution:
         """
         Perform steady-state RFBA simulation.
 
@@ -205,8 +206,8 @@ class RFBA(_RegulatoryAnalysisBase):
         constraints = self.decode_constraints(metabolic_state)
 
         # Merge with user-provided constraints
-        if 'constraints' in solver_kwargs:
-            constraints.update(solver_kwargs['constraints'])
+        if "constraints" in solver_kwargs:
+            constraints.update(solver_kwargs["constraints"])
 
         # Solve
         solution = self.solver.solve(
@@ -214,23 +215,15 @@ class RFBA(_RegulatoryAnalysisBase):
             minimize=self._minimize,
             constraints=constraints,
             get_values=True,
-            **solver_kwargs
+            **solver_kwargs,
         )
 
         if to_solver:
             return solution
 
-        return Solution.from_solver(
-            method=self.method,
-            solution=solution,
-            model=self.model,
-            minimize=self._minimize
-        )
+        return Solution.from_solver(method=self.method, solution=solution, model=self.model, minimize=self._minimize)
 
-    def _optimize_dynamic(self,
-                          state: Dict[str, float],
-                          to_solver: bool,
-                          solver_kwargs: Dict) -> DynamicSolution:
+    def _optimize_dynamic(self, state: Dict[str, float], to_solver: bool, solver_kwargs: Dict) -> DynamicSolution:
         """
         Perform dynamic RFBA simulation (iterative until convergence).
 
@@ -253,7 +246,7 @@ class RFBA(_RegulatoryAnalysisBase):
             solutions.append(solution)
 
             # Check if solution is optimal
-            if solution.status.name != 'OPTIMAL':
+            if solution.status.name != "OPTIMAL":
                 warn(f"Non-optimal solution at iteration {iteration}")
                 break
 
@@ -270,9 +263,7 @@ class RFBA(_RegulatoryAnalysisBase):
 
         return DynamicSolution(solutions=solutions, method=self.method)
 
-    def _update_state_from_solution(self,
-                                     current_state: Dict[str, float],
-                                     solution) -> Dict[str, float]:
+    def _update_state_from_solution(self, current_state: Dict[str, float], solution) -> Dict[str, float]:
         """
         Update regulatory state based on FBA solution.
 

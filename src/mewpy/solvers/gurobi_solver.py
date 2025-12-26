@@ -21,11 +21,15 @@ Adapted by Vitor Pereira from Daniel Machado's REFRAMED
 https://github.com/cdanielmachado/reframed
 ##############################################################################
 """
-from .solver import Solver, VarType, Parameter, default_parameters
-from .solution import Solution, Status
-from gurobipy import Model as GurobiModel, GRB, quicksum
 from math import inf
 from warnings import warn
+
+from gurobipy import GRB
+from gurobipy import Model as GurobiModel
+from gurobipy import quicksum
+
+from .solution import Solution, Status
+from .solver import Parameter, Solver, VarType, default_parameters
 
 
 def infinity_fix(val):
@@ -41,14 +45,10 @@ status_mapping = {
     GRB.OPTIMAL: Status.OPTIMAL,
     GRB.UNBOUNDED: Status.UNBOUNDED,
     GRB.INFEASIBLE: Status.INFEASIBLE,
-    GRB.INF_OR_UNBD: Status.INF_OR_UNB
+    GRB.INF_OR_UNBD: Status.INF_OR_UNB,
 }
 
-vartype_mapping = {
-    VarType.BINARY: GRB.BINARY,
-    VarType.INTEGER: GRB.INTEGER,
-    VarType.CONTINUOUS: GRB.CONTINUOUS
-}
+vartype_mapping = {VarType.BINARY: GRB.BINARY, VarType.INTEGER: GRB.INTEGER, VarType.CONTINUOUS: GRB.CONTINUOUS}
 
 parameter_mapping = {
     Parameter.TIME_LIMIT: GRB.Param.TimeLimit,
@@ -58,12 +58,12 @@ parameter_mapping = {
     Parameter.MIP_ABS_GAP: GRB.Param.MIPGapAbs,
     Parameter.MIP_REL_GAP: GRB.Param.MIPGap,
     Parameter.POOL_SIZE: GRB.Param.PoolSolutions,
-    Parameter.POOL_GAP: GRB.Param.PoolGap
+    Parameter.POOL_GAP: GRB.Param.PoolGap,
 }
 
 
 class GurobiSolver(Solver):
-    """ Implements the gurobi solver interface. """
+    """Implements the gurobi solver interface."""
 
     def __init__(self, model=None):
         Solver.__init__(self)
@@ -74,7 +74,7 @@ class GurobiSolver(Solver):
             self.build_problem(model)
 
     def add_variable(self, var_id, lb=-inf, ub=inf, vartype=VarType.CONTINUOUS, update=True):
-        """ Add a variable to the current problem.
+        """Add a variable to the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -89,9 +89,9 @@ class GurobiSolver(Solver):
 
         if var_id in self.var_ids:
             var = self.problem.getVarByName(var_id)
-            var.setAttr('lb', lb)
-            var.setAttr('ub', ub)
-            var.setAttr('vtype', vartype_mapping[vartype])
+            var.setAttr("lb", lb)
+            var.setAttr("ub", ub)
+            var.setAttr("vtype", vartype_mapping[vartype])
         else:
             self.problem.addVar(name=var_id, lb=lb, ub=ub, vtype=vartype_mapping[vartype])
             self.var_ids.append(var_id)
@@ -113,8 +113,8 @@ class GurobiSolver(Solver):
         if ub:
             var.ub = ub
 
-    def add_constraint(self, constr_id, lhs, sense='=', rhs=0, update=True):
-        """ Add a constraint to the current problem.
+    def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
+        """Add a constraint to the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -124,14 +124,12 @@ class GurobiSolver(Solver):
             update (bool): update problem immediately (default: True)
         """
 
-        grb_sense = {'=': GRB.EQUAL,
-                     '<': GRB.LESS_EQUAL,
-                     '>': GRB.GREATER_EQUAL}
+        grb_sense = {"=": GRB.EQUAL, "<": GRB.LESS_EQUAL, ">": GRB.GREATER_EQUAL}
 
         if constr_id in self.constr_ids:
-                self.problem.update()
-                constr = self.problem.getConstrByName(constr_id)
-                self.problem.remove(constr)
+            self.problem.update()
+            constr = self.problem.getConstrByName(constr_id)
+            self.problem.remove(constr)
 
         expr = quicksum(coeff * self.problem.getVarByName(r_id) for r_id, coeff in lhs.items() if coeff)
 
@@ -142,7 +140,7 @@ class GurobiSolver(Solver):
             self.problem.update()
 
     def remove_variable(self, var_id):
-        """ Remove a variable from the current problem.
+        """Remove a variable from the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -150,7 +148,7 @@ class GurobiSolver(Solver):
         self.remove_variables([var_id])
 
     def remove_variables(self, var_ids):
-        """ Remove variables from the current problem.
+        """Remove variables from the current problem.
 
         Arguments:
             var_ids (list): variable identifiers
@@ -162,7 +160,7 @@ class GurobiSolver(Solver):
                 self.var_ids.remove(var_id)
 
     def remove_constraint(self, constr_id):
-        """ Remove a constraint from the current problem.
+        """Remove a constraint from the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -170,7 +168,7 @@ class GurobiSolver(Solver):
         self.remove_constraints([constr_id])
 
     def remove_constraints(self, constr_ids):
-        """ Remove constraints from the current problem.
+        """Remove constraints from the current problem.
 
         Arguments:
             constr_ids (list): constraint identifiers
@@ -182,11 +180,11 @@ class GurobiSolver(Solver):
                 self.constr_ids.remove(constr_id)
 
     def update(self):
-        """ Update internal structure. Used for efficient lazy updating. """
+        """Update internal structure. Used for efficient lazy updating."""
         self.problem.update()
 
     def set_objective(self, linear=None, quadratic=None, minimize=True):
-        """ Set a predefined objective for this problem.
+        """Set a predefined objective for this problem.
 
         Args:
             linear (dict): linear coefficients (optional)
@@ -230,9 +228,20 @@ class GurobiSolver(Solver):
 
         self.problem.setObjective(obj_expr, sense)
 
-    def solve(self, linear=None, quadratic=None, minimize=None, model=None, constraints=None, get_values=True,
-              shadow_prices=False, reduced_costs=False, pool_size=0, pool_gap=None):
-        """ Solve the optimization problem.
+    def solve(
+        self,
+        linear=None,
+        quadratic=None,
+        minimize=None,
+        model=None,
+        constraints=None,
+        get_values=True,
+        shadow_prices=False,
+        reduced_costs=False,
+        pool_size=0,
+        pool_gap=None,
+    ):
+        """Solve the optimization problem.
 
         Arguments:
             linear (str or dict): linear coefficients (or a single variable to optimize)
@@ -327,7 +336,7 @@ class GurobiSolver(Solver):
         return solution
 
     def get_solution_pool(self, get_values=True):
-        """ Return a solution pool for MILP problems.
+        """Return a solution pool for MILP problems.
         Must be called after using solve with pool_size argument > 0.
 
         Arguments:
@@ -356,7 +365,7 @@ class GurobiSolver(Solver):
         return solutions
 
     def set_parameter(self, parameter, value):
-        """ Set a parameter value for this optimization problem
+        """Set a parameter value for this optimization problem
 
         Arguments:
             parameter (Parameter): parameter type
@@ -367,19 +376,19 @@ class GurobiSolver(Solver):
             grb_param = parameter_mapping[parameter]
             self.problem.setParam(grb_param, value)
         else:
-            raise Exception('Parameter unknown (or not yet supported).')
+            raise Exception("Parameter unknown (or not yet supported).")
 
     def set_logging(self, enabled=False):
-        """ Enable or disable log output:
+        """Enable or disable log output:
 
         Arguments:
             enabled (bool): turn logging on (default: False)
         """
-        self.problem.setParam('LogToConsole',0)
-        self.problem.setParam('OutputFlag', 1 if enabled else 0)
+        self.problem.setParam("LogToConsole", 0)
+        self.problem.setParam("OutputFlag", 1 if enabled else 0)
 
     def write_to_file(self, filename):
-        """ Write problem to file:
+        """Write problem to file:
 
         Arguments:
             filename (str): file path

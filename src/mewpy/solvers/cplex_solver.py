@@ -22,12 +22,14 @@ https://github.com/cdanielmachado/reframed
 
 ##############################################################################
 """
-from .solver import Solver, VarType, Parameter, default_parameters
-from .solution import Solution, Status
-from cplex import Cplex, infinity, SparsePair
 import sys
 from math import inf
 from warnings import warn
+
+from cplex import Cplex, SparsePair, infinity
+
+from .solution import Solution, Status
+from .solver import Parameter, Solver, VarType, default_parameters
 
 
 def infinity_fix(val):
@@ -40,7 +42,7 @@ def infinity_fix(val):
 
 
 class CplexSolver(Solver):
-    """ Implements the solver interface using CPLEX. """
+    """Implements the solver interface using CPLEX."""
 
     def __init__(self, model=None):
         Solver.__init__(self)
@@ -55,13 +57,13 @@ class CplexSolver(Solver):
             self.problem.solution.status.MIP_optimal: Status.OPTIMAL,
             self.problem.solution.status.MIP_unbounded: Status.UNBOUNDED,
             self.problem.solution.status.MIP_infeasible: Status.INFEASIBLE,
-            self.problem.solution.status.MIP_infeasible_or_unbounded: Status.INF_OR_UNB
+            self.problem.solution.status.MIP_infeasible_or_unbounded: Status.INF_OR_UNB,
         }
 
         self.vartype_mapping = {
             VarType.BINARY: self.problem.variables.type.binary,
             VarType.INTEGER: self.problem.variables.type.integer,
-            VarType.CONTINUOUS: self.problem.variables.type.continuous
+            VarType.CONTINUOUS: self.problem.variables.type.continuous,
         }
 
         self.parameter_mapping = {
@@ -72,7 +74,7 @@ class CplexSolver(Solver):
             Parameter.MIP_ABS_GAP: self.problem.parameters.mip.tolerances.mipgap,
             Parameter.MIP_REL_GAP: self.problem.parameters.mip.tolerances.absmipgap,
             Parameter.POOL_SIZE: self.problem.parameters.mip.limits.populate,
-            Parameter.POOL_GAP: self.problem.parameters.mip.pool.relgap
+            Parameter.POOL_GAP: self.problem.parameters.mip.pool.relgap,
         }
 
         self.set_parameters(default_parameters)
@@ -89,7 +91,7 @@ class CplexSolver(Solver):
             self.build_problem(model)
 
     def add_variable(self, var_id, lb=-inf, ub=inf, vartype=VarType.CONTINUOUS, update=True):
-        """ Add a variable to the current problem.
+        """Add a variable to the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -105,7 +107,7 @@ class CplexSolver(Solver):
             self._cached_vars.append((var_id, lb, ub, vartype))
 
     def add_variables(self, var_ids, lbs, ubs, vartypes):
-        """ Add multiple variables to the current problem.
+        """Add multiple variables to the current problem.
 
         Arguments:
             var_ids (list): variable identifier
@@ -141,8 +143,8 @@ class CplexSolver(Solver):
         if ub:
             self.problem.variables.set_upper_bounds(var_id, ub)
 
-    def add_constraint(self, constr_id, lhs, sense='=', rhs=0, update=True):
-        """ Add a constraint to the current problem.
+    def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
+        """Add a constraint to the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -158,7 +160,7 @@ class CplexSolver(Solver):
             self._cached_constrs.append((constr_id, lhs, sense, rhs))
 
     def add_constraints(self, constr_ids, lhs, senses, rhs):
-        """ Add a list of constraints to the current problem.
+        """Add a list of constraints to the current problem.
 
         Arguments:
             constr_ids (list): constraint identifiers
@@ -167,22 +169,17 @@ class CplexSolver(Solver):
             rhs (list): right-hand side of equations (default: 0)
         """
 
-        map_sense = {'=': 'E',
-                     '<': 'L',
-                     '>': 'G'}
+        map_sense = {"=": "E", "<": "L", ">": "G"}
 
         exprs = [SparsePair(ind=list(constr.keys()), val=list(constr.values())) for constr in lhs]
         senses = [map_sense[sense] for sense in senses]
 
-        self.problem.linear_constraints.add(lin_expr=exprs,
-                                            senses=senses,
-                                            rhs=rhs,
-                                            names=constr_ids)
+        self.problem.linear_constraints.add(lin_expr=exprs, senses=senses, rhs=rhs, names=constr_ids)
 
         self.constr_ids.extend(constr_ids)
 
     def remove_variable(self, var_id):
-        """ Remove a variable from the current problem.
+        """Remove a variable from the current problem.
 
         Arguments:
             var_id (str): variable identifier
@@ -190,7 +187,7 @@ class CplexSolver(Solver):
         self.remove_variables([var_id])
 
     def remove_variables(self, var_ids):
-        """ Remove variables from the current problem.
+        """Remove variables from the current problem.
 
         Arguments:
             var_ids (list): variable identifiers
@@ -205,7 +202,7 @@ class CplexSolver(Solver):
         self.problem.variables.delete(found)
 
     def remove_constraint(self, constr_id):
-        """ Remove a constraint from the current problem.
+        """Remove a constraint from the current problem.
 
         Arguments:
             constr_id (str): constraint identifier
@@ -213,7 +210,7 @@ class CplexSolver(Solver):
         self.remove_constraints([constr_id])
 
     def remove_constraints(self, constr_ids):
-        """ Remove constraints from the current problem.
+        """Remove constraints from the current problem.
 
         Arguments:
             constr_ids (list): constraint identifiers
@@ -228,7 +225,7 @@ class CplexSolver(Solver):
         self.problem.linear_constraints.delete(found)
 
     def update(self):
-        """ Update internal structure. Used for efficient lazy updating. """
+        """Update internal structure. Used for efficient lazy updating."""
 
         if self._cached_vars:
             var_ids = [x[0] for x in self._cached_vars]
@@ -247,7 +244,7 @@ class CplexSolver(Solver):
             self._cached_constrs = []
 
     def set_objective(self, linear=None, quadratic=None, minimize=True):
-        """ Set a predefined objective for this problem.
+        """Set a predefined objective for this problem.
 
         Args:
             linear (str or dict): linear coefficients (or a single variable to optimize)
@@ -285,7 +282,7 @@ class CplexSolver(Solver):
             quad_coeffs = [(r_id1, r_id2, coeff) for (r_id1, r_id2), coeff in quadratic.items()]
             self.problem.objective.set_quadratic_coefficients(quad_coeffs)
 
-            for (r_id1, r_id2) in quadratic:
+            for r_id1, r_id2 in quadratic:
                 if r_id1 not in self.var_ids:
                     warn(f"Objective variable not previously declared: {r_id1}")
                 if r_id2 not in self.var_ids:
@@ -300,7 +297,7 @@ class CplexSolver(Solver):
             self._cached_sense = minimize
 
     def __build_problem_simulator(self, model):
-        """ Create problem structure for a given model.
+        """Create problem structure for a given model.
 
         Arguments:
             model : Simulator
@@ -320,12 +317,23 @@ class CplexSolver(Solver):
         constr_ids = list(model.metabolites.keys())
         table = model.metabolite_reaction_lookup()
         lhs = list(table.values())
-        senses = ['='] * len(constr_ids)
+        senses = ["="] * len(constr_ids)
         rhs = [0] * len(constr_ids)
         self.add_constraints(constr_ids, lhs, senses, rhs)
 
-    def solve(self, linear=None, quadratic=None, minimize=None, model=None, constraints=None, get_values=True,
-              shadow_prices=False, reduced_costs=False, pool_size=0, pool_gap=None):
+    def solve(
+        self,
+        linear=None,
+        quadratic=None,
+        minimize=None,
+        model=None,
+        constraints=None,
+        get_values=True,
+        shadow_prices=False,
+        reduced_costs=False,
+        pool_size=0,
+        pool_gap=None,
+    ):
         """ Solve the optimization problem.
 
         Arguments:
@@ -387,27 +395,26 @@ class CplexSolver(Solver):
 
         else:
             pool_pmap = {
-                'SolnPoolIntensity': problem.parameters.mip.pool.intensity,
-                'PopulateLim': problem.parameters.mip.limits.populate,
-                'SolnPoolCapacity': problem.parameters.mip.pool.capacity,
-                'SolnPoolReplace': problem.parameters.mip.pool.replace,
-                'SolnPoolGap': problem.parameters.mip.pool.relgap,
-                'SolnPoolAGap': problem.parameters.mip.pool.absgap
-
+                "SolnPoolIntensity": problem.parameters.mip.pool.intensity,
+                "PopulateLim": problem.parameters.mip.limits.populate,
+                "SolnPoolCapacity": problem.parameters.mip.pool.capacity,
+                "SolnPoolReplace": problem.parameters.mip.pool.replace,
+                "SolnPoolGap": problem.parameters.mip.pool.relgap,
+                "SolnPoolAGap": problem.parameters.mip.pool.absgap,
             }
 
             default_params = {
-                'SolnPoolIntensity': 3,
-                'PopulateLim': 10 * pool_size,
-                'SolnPoolCapacity': pool_size,
-                'SolnPoolReplace': 1
+                "SolnPoolIntensity": 3,
+                "PopulateLim": 10 * pool_size,
+                "SolnPoolCapacity": pool_size,
+                "SolnPoolReplace": 1,
             }
 
             for param, val in default_params.items():
                 pool_pmap[param].set(val)
 
             if pool_gap:
-                pool_pmap['SolnPoolGap'].set(pool_gap)
+                pool_pmap["SolnPoolGap"].set(pool_gap)
 
             problem.populate_solution_pool()
 
@@ -491,7 +498,7 @@ class CplexSolver(Solver):
             self.problem.variables.set_upper_bounds(ub_old)
 
     def set_parameter(self, parameter, value):
-        """ Set a parameter value for this optimization problem
+        """Set a parameter value for this optimization problem
 
         Arguments:
             parameter (Parameter): parameter type
@@ -501,10 +508,10 @@ class CplexSolver(Solver):
         if parameter in self.parameter_mapping:
             self.parameter_mapping[parameter].set(value)
         else:
-            raise RuntimeError('Parameter unknown (or not yet supported).')
+            raise RuntimeError("Parameter unknown (or not yet supported).")
 
     def set_logging(self, enabled=False):
-        """ Enable or disable log output:
+        """Enable or disable log output:
 
         Arguments:
             enabled (bool): turn logging on (default: False)
@@ -522,7 +529,7 @@ class CplexSolver(Solver):
             self.problem.set_results_stream(None)
 
     def write_to_file(self, filename):
-        """ Write problem to file:
+        """Write problem to file:
 
         Arguments:
             filename (str): file path

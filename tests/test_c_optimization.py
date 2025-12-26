@@ -20,7 +20,7 @@ class TestOptInspyred(unittest.TestCase):
         from mewpy.optimization.settings import set_default_population_size
 
         set_default_population_size(10)
-        from mewpy.optimization import set_default_engine, get_available_engines
+        from mewpy.optimization import get_available_engines, set_default_engine
 
         if len(get_available_engines()):
             set_default_engine("inspyred")
@@ -49,7 +49,7 @@ class TestOptInspyred(unittest.TestCase):
 
     def test_OUProblem(self):
         """Tests OU problems"""
-        from mewpy.optimization.evaluation import BPCY_FVA, TargetFlux, ModificationType
+        from mewpy.optimization.evaluation import BPCY_FVA, ModificationType, TargetFlux
 
         f1 = BPCY_FVA(BIOMASS_ID, SUCC_ID, method="lMOMA")
         f2 = TargetFlux(SUCC_ID)
@@ -97,7 +97,7 @@ class TestGERMOptInspyred(unittest.TestCase):
         from mewpy.optimization.settings import set_default_population_size
 
         set_default_population_size(10)
-        from mewpy.optimization import set_default_engine, get_available_engines
+        from mewpy.optimization import get_available_engines, set_default_engine
 
         if len(get_available_engines()):
             set_default_engine("inspyred")
@@ -127,7 +127,7 @@ class TestGERMOptInspyred(unittest.TestCase):
 
     def test_OUProblem(self):
         """Tests OU problems"""
-        from mewpy.optimization.evaluation import BPCY_FVA, TargetFlux, ModificationType
+        from mewpy.optimization.evaluation import BPCY_FVA, ModificationType, TargetFlux
 
         f1 = BPCY_FVA(BIOMASS_ID, SUCC_ID)
         f2 = TargetFlux(SUCC_ID, method="fba")

@@ -17,23 +17,25 @@
 """
 ##############################################################################
 OptRAM Problem. Implementation of OptRAM: In-silico strain design via
-integrative regulatory-metabolic network modeling, 
+integrative regulatory-metabolic network modeling,
 https://doi.org/10.1371/journal.pcbi.1006835
 
-Author: Vitor Pereira 
-##############################################################################   
+Author: Vitor Pereira
+##############################################################################
 """
 import math
 from collections import OrderedDict
+
 import numpy as np
 import pandas as pd
-from .problem import AbstractOUProblem
+
 from ..util.constants import EAConstants
 from ..util.parsing import Boolean, GeneEvaluator, build_tree
+from .problem import AbstractOUProblem
 
 
 # TODO: should it be in io?
-def load_optram(gene_filename, tf_filename, matrix_filename, gene_prefix=''):
+def load_optram(gene_filename, tf_filename, matrix_filename, gene_prefix=""):
     """
     Loads a OptRAM regulatory model from csv files:
 
@@ -47,12 +49,11 @@ def load_optram(gene_filename, tf_filename, matrix_filename, gene_prefix=''):
 
     genes = OrderedDict()
     for index, row in df_genes.iterrows():
-        genes[gene_prefix + row['Name']
-              ] = RegGene(gene_prefix + row['Name'], index, row['id'])
+        genes[gene_prefix + row["Name"]] = RegGene(gene_prefix + row["Name"], index, row["id"])
     tfs = OrderedDict()
     for index, row in df_TFs.iterrows():
-        tf = TF(row['Name'], index, row['Expression'])
-        tfs[row['Name']] = tf
+        tf = TF(row["Name"], index, row["Expression"])
+        tfs[row["Name"]] = tf
 
     model = OptRAMRegModel(genes, tfs, mat)
     return model
@@ -62,11 +63,11 @@ def load_optram(gene_filename, tf_filename, matrix_filename, gene_prefix=''):
 class RegGene:
     """Genes included in the regulatory model
 
-       args:
-        name (str): the gene identifier
-        row (int): the associated row in the regulatory model
-        id (int): OptRAM ID
-        cbm_name (str): the gene corresponding name in the constraint base model (G_XXXXX)
+    args:
+     name (str): the gene identifier
+     row (int): the associated row in the regulatory model
+     id (int): OptRAM ID
+     cbm_name (str): the gene corresponding name in the constraint base model (G_XXXXX)
 
     """
 
@@ -127,11 +128,10 @@ class OptRamProblem(AbstractOUProblem):
         # GPR operators
         self._operators = None
         # Reset default OU levels to OptRAM levels if none are provided
-        self.levels = kwargs.get('levels', EAConstants.OPTRAM_LEVELS)
+        self.levels = kwargs.get("levels", EAConstants.OPTRAM_LEVELS)
 
     def _build_target_list(self):
-        """ The EA target list is the combination [mGene]+[TFs]
-        """
+        """The EA target list is the combination [mGene]+[TFs]"""
         self._trg_list = []
         self._trg_list.extend(list(self.regmodel.genes.keys()))
         self._trg_list.extend(list(self.regmodel.tfs.keys()))
@@ -201,8 +201,7 @@ class OptRamProblem(AbstractOUProblem):
         # Evaluate gpr.
         if not self._operators:
             self._operators = (lambda x, y: min(x, y), lambda x, y: max(x, y))
-        evaluator = GeneEvaluator(
-            mgenes_p, self._operators[0], self._operators[1])
+        evaluator = GeneEvaluator(mgenes_p, self._operators[0], self._operators[1])
         for rxn_id in self.simulator.reactions:
             if self.simulator.get_gpr(rxn_id):
                 gpr = str(self.simulator.get_gpr(rxn_id))
@@ -222,6 +221,5 @@ class OptRamProblem(AbstractOUProblem):
                     # No constraints are added.
                     continue
                 else:
-                    gr_constraints.update(
-                        self.reaction_constraints(rxn_id, lv, self.reference))
+                    gr_constraints.update(self.reaction_constraints(rxn_id, lv, self.reference))
         return gr_constraints

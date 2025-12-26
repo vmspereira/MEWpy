@@ -1,12 +1,11 @@
-from typing import Union, TYPE_CHECKING, Type, Dict
 import sys
+from typing import TYPE_CHECKING, Dict, Type, Union
 
-from mewpy.germ.algebra import Expression
-from mewpy.germ.algebra import parse_expression
+from mewpy.germ.algebra import Expression, parse_expression
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
-    from mewpy.germ.variables import Variable, Gene, Interaction, Metabolite, Reaction, Regulator, Target
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+    from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target, Variable
 
 sys.setrecursionlimit(50000)
 
@@ -45,7 +44,7 @@ class Serializer:
 
             return tuple(obj)
 
-        elif hasattr(obj, 'id'):
+        elif hasattr(obj, "id"):
 
             return obj.id
 
@@ -64,35 +63,47 @@ class Serializer:
     @staticmethod
     def _model_container_serializer(container):
 
-        return {variable.id: variable.to_dict(serialization_format='json') for variable in container.values()}
+        return {variable.id: variable.to_dict(serialization_format="json") for variable in container.values()}
 
     def _get_attribute_serializer(self, attr):
 
-        if attr in ('id', 'name', 'types', 'aliases', 'target', 'charge', 'compartment', 'formula', 'compartments',
-                    'bounds', 'coefficients', 'interaction'):
+        if attr in (
+            "id",
+            "name",
+            "types",
+            "aliases",
+            "target",
+            "charge",
+            "compartment",
+            "formula",
+            "compartments",
+            "bounds",
+            "coefficients",
+            "interaction",
+        ):
 
             return self._obj_serializer
 
-        elif attr in ('reactions', 'regulators', 'genes', 'interactions', 'targets'):
+        elif attr in ("reactions", "regulators", "genes", "interactions", "targets"):
 
             return self._variable_container_serializer
 
-        elif attr == 'regulatory_events':
+        elif attr == "regulatory_events":
 
             return self._regulatory_events_serializer
 
-        elif attr == 'gpr':
+        elif attr == "gpr":
 
             return self._expression_serializer
 
-        elif attr == 'stoichiometry':
+        elif attr == "stoichiometry":
 
             return self._key_container_serializer
 
         else:
             return lambda *args, **kwargs: {}
 
-    def _variable_serializer(self: Union['Serializer', 'Variable', 'Model']):
+    def _variable_serializer(self: Union["Serializer", "Variable", "Model"]):
 
         variable = {}
 
@@ -107,15 +118,15 @@ class Serializer:
 
     def _get_container_serializer(self, attr, variables=True):
 
-        if attr in ('id', 'name', 'types'):
+        if attr in ("id", "name", "types"):
 
             return self._obj_serializer
 
-        elif attr == 'objective':
+        elif attr == "objective":
 
             return self._key_container_serializer
 
-        elif attr in ('genes', 'metabolites', 'reactions', 'interactions', 'regulators', 'targets'):
+        elif attr in ("genes", "metabolites", "reactions", "interactions", "regulators", "targets"):
 
             if variables:
                 return self._model_container_serializer
@@ -125,8 +136,7 @@ class Serializer:
         else:
             return lambda *args, **kwargs: {}
 
-    def _model_serializer(self: Union['Serializer', 'Variable', 'Model'],
-                          variables=True):
+    def _model_serializer(self: Union["Serializer", "Variable", "Model"], variables=True):
 
         model = {}
 
@@ -146,12 +156,10 @@ class Serializer:
     # -----------------------------------------------------------------------------
 
     @classmethod
-    def _model_deserializer(cls: Union[Type['Serializer'], Type['Variable'], Type['Model']],
-                            obj,
-                            variables=False):
+    def _model_deserializer(cls: Union[Type["Serializer"], Type["Variable"], Type["Model"]], obj, variables=False):
 
-        identifier = obj.get('id')
-        types = obj.get('types')
+        identifier = obj.get("id")
+        types = obj.get("types")
 
         model = cls.from_types(types=types, identifier=identifier)
 
@@ -170,8 +178,8 @@ class Serializer:
                 container = obj[serialize_name]
                 container = deserializer(container, children=children)
 
-                if serialize_name in ('genes', 'metabolites', 'reactions', 'interactions', 'regulators', 'targets'):
-                    setattr(model, f'_{serialize_name}', container)
+                if serialize_name in ("genes", "metabolites", "reactions", "interactions", "regulators", "targets"):
+                    setattr(model, f"_{serialize_name}", container)
 
                 else:
                     update_attributes[deserialize_name] = container
@@ -189,8 +197,14 @@ class Serializer:
 
         for attr_name, (serialize_name, deserialize_name, _) in model.containers.items():
 
-            if deserialize_name is not None and serialize_name in ('genes', 'metabolites', 'reactions',
-                                                                   'interactions', 'regulators', 'targets'):
+            if deserialize_name is not None and serialize_name in (
+                "genes",
+                "metabolites",
+                "reactions",
+                "interactions",
+                "regulators",
+                "targets",
+            ):
 
                 container = obj[serialize_name]
 
@@ -202,9 +216,9 @@ class Serializer:
 
                     else:
 
-                        children[var_id] = Variable.from_types(variable['types'],
-                                                               identifier=variable['id'],
-                                                               model=model)
+                        children[var_id] = Variable.from_types(
+                            variable["types"], identifier=variable["id"], model=model
+                        )
 
         return children
 
@@ -215,8 +229,14 @@ class Serializer:
 
         for attr_name, (serialize_name, deserialize_name, _) in model.containers.items():
 
-            if deserialize_name is not None and serialize_name in ('genes', 'metabolites', 'reactions',
-                                                                   'interactions', 'regulators', 'targets'):
+            if deserialize_name is not None and serialize_name in (
+                "genes",
+                "metabolites",
+                "reactions",
+                "interactions",
+                "regulators",
+                "targets",
+            ):
 
                 container = obj[serialize_name]
 
@@ -235,16 +255,15 @@ class Serializer:
     @classmethod
     def _get_container_deserializer(cls, attr):
 
-        if attr == 'name':
+        if attr == "name":
 
             return cls._obj_deserializer
 
-        elif attr in ('genes', 'metabolites', 'reactions',
-                      'interactions', 'regulators', 'targets'):
+        elif attr in ("genes", "metabolites", "reactions", "interactions", "regulators", "targets"):
 
             return cls._model_container_deserializer
 
-        elif attr == 'objective':
+        elif attr == "objective":
 
             return cls._key_container_deserializer
 
@@ -292,22 +311,22 @@ class Serializer:
 
             if children_types:
                 from mewpy.germ.variables import Variable
-                return {Variable.from_types(children_types, identifier=variable): val
-                        for variable, val in obj.items()}
+
+                return {Variable.from_types(children_types, identifier=variable): val for variable, val in obj.items()}
 
             else:
                 from mewpy.germ.variables import Metabolite
+
                 return {Metabolite(key): val for key, val in obj.items()}
 
         else:
             return {children[variable]: val for variable, val in obj.items()}
 
     @classmethod
-    def _variable_deserializer(cls: Union[Type['Serializer'], Type['Variable'], Type['Model']],
-                               obj):
+    def _variable_deserializer(cls: Union[Type["Serializer"], Type["Variable"], Type["Model"]], obj):
 
-        identifier = obj.get('id')
-        types = obj.get('types')
+        identifier = obj.get("id")
+        types = obj.get("types")
 
         variable = cls.from_types(types=types, identifier=identifier)
 
@@ -330,46 +349,46 @@ class Serializer:
                 deserializer, children_types = cls._get_attribute_deserializer(attr=deserialize_name)
 
                 attribute = obj[serialize_name]
-                variable_attributes[deserialize_name] = deserializer(attribute,
-                                                                     children=children,
-                                                                     children_types=children_types)
+                variable_attributes[deserialize_name] = deserializer(
+                    attribute, children=children, children_types=children_types
+                )
 
         return variable_attributes
 
     @classmethod
     def _get_attribute_deserializer(cls, attr):
 
-        if attr in ('name', 'aliases', 'coefficients', 'bounds', 'charge', 'compartment', 'formula'):
+        if attr in ("name", "aliases", "coefficients", "bounds", "charge", "compartment", "formula"):
 
             return cls._obj_deserializer, None
 
-        elif attr == 'regulatory_events':
+        elif attr == "regulatory_events":
 
-            return cls._regulatory_events_deserializer, ['regulator']
+            return cls._regulatory_events_deserializer, ["regulator"]
 
-        elif attr == 'gpr':
+        elif attr == "gpr":
 
-            return cls._expression_deserializer, ['gene']
+            return cls._expression_deserializer, ["gene"]
 
-        elif attr == 'reactions':
+        elif attr == "reactions":
 
-            return cls._variable_container_deserializer, ['reaction']
+            return cls._variable_container_deserializer, ["reaction"]
 
-        elif attr == 'interactions':
+        elif attr == "interactions":
 
-            return cls._variable_container_deserializer, ['interaction']
+            return cls._variable_container_deserializer, ["interaction"]
 
-        elif attr == 'stoichiometry':
+        elif attr == "stoichiometry":
 
-            return cls._key_container_deserializer, ['metabolite']
+            return cls._key_container_deserializer, ["metabolite"]
 
-        elif attr == 'target':
+        elif attr == "target":
 
-            return cls._variable_attribute_deserializer, ['target']
+            return cls._variable_attribute_deserializer, ["target"]
 
-        elif attr == 'interaction':
+        elif attr == "interaction":
 
-            return cls._variable_attribute_deserializer, ['interaction']
+            return cls._variable_attribute_deserializer, ["interaction"]
 
         else:
             return lambda *args, **kwargs: {}, None
@@ -383,8 +402,10 @@ class Serializer:
 
             from mewpy.germ.variables import Variable
 
-            variables = {symbol.name: Variable.from_types(children_types, identifier=symbol.name)
-                         for symbol in symbolic.atoms(symbols_only=True)}
+            variables = {
+                symbol.name: Variable.from_types(children_types, identifier=symbol.name)
+                for symbol in symbolic.atoms(symbols_only=True)
+            }
 
             return Expression(symbolic=symbolic, variables=variables)
 
@@ -392,22 +413,24 @@ class Serializer:
 
             symbolic = parse_expression(obj)
 
-            variables = {symbol.name: children[symbol.name]
-                         for symbol in symbolic.atoms(symbols_only=True)}
+            variables = {symbol.name: children[symbol.name] for symbol in symbolic.atoms(symbols_only=True)}
 
             return Expression(symbolic=symbolic, variables=variables)
 
     @staticmethod
     def _regulatory_events_deserializer(obj, children=None, children_types=None):
 
-        return {state: Serializer._expression_deserializer(expression, children, children_types)
-                for state, expression in obj.items()}
+        return {
+            state: Serializer._expression_deserializer(expression, children, children_types)
+            for state, expression in obj.items()
+        }
 
     @staticmethod
     def _variable_container_deserializer(obj, children=None, children_types=None):
         if children is None:
 
             from mewpy.germ.variables import Variable
+
             return {key: Variable.from_types(children_types, identifier=key) for key in obj}
 
         else:
@@ -418,6 +441,7 @@ class Serializer:
         if children is None:
 
             from mewpy.germ.variables import Variable
+
             return Variable.from_types(children_types, identifier=obj)
 
         else:
@@ -426,17 +450,17 @@ class Serializer:
     # -----------------------------------------------------------------------------
     # reduce for pickle serialization
     # -----------------------------------------------------------------------------
-    def __reduce__(self: Union['Serializer', 'Model', 'Variable']):
+    def __reduce__(self: Union["Serializer", "Model", "Variable"]):
         # for further detail: https://docs.python.org/3/library/pickle.html#object.__reduce__
 
         from mewpy.germ.models import Model, build_model
         from mewpy.germ.variables import Variable, build_variable
 
         if isinstance(self, Model):
-            return build_model, (tuple(self.types), {'identifier': self.id}), self._dict_to_pickle()
+            return build_model, (tuple(self.types), {"identifier": self.id}), self._dict_to_pickle()
 
         if isinstance(self, Variable):
-            return build_variable, (tuple(self.types), {'identifier': self.id}), self._dict_to_pickle()
+            return build_variable, (tuple(self.types), {"identifier": self.id}), self._dict_to_pickle()
 
         return super(Serializer, self).__reduce__()
 
@@ -454,8 +478,7 @@ class Serializer:
     # Pickle-like serialization
     # -----------------------------------------------------------------------------
 
-    def _pickle_variable_serializer(self: Union['Serializer', 'Variable'],
-                                    to_state=True):
+    def _pickle_variable_serializer(self: Union["Serializer", "Variable"], to_state=True):
         attributes = {}
 
         for attribute, (_, _, pickle_name) in self.attributes.items():
@@ -470,8 +493,7 @@ class Serializer:
 
         return attributes
 
-    def _pickle_model_serializer(self: Union['Serializer', 'Model'],
-                                 to_state=True):
+    def _pickle_model_serializer(self: Union["Serializer", "Model"], to_state=True):
         containers = {}
 
         for container, (_, _, pickle_name) in self.containers.items():
@@ -486,20 +508,19 @@ class Serializer:
 
         return containers
 
-    def _dict_to_pickle(self: Union['Serializer', 'Model', 'Variable']):
-        if hasattr(self, 'containers'):
+    def _dict_to_pickle(self: Union["Serializer", "Model", "Variable"]):
+        if hasattr(self, "containers"):
             return self._pickle_model_serializer(to_state=True)
 
-        if hasattr(self, 'attributes'):
+        if hasattr(self, "attributes"):
             return self._pickle_variable_serializer(to_state=True)
 
         return {}
 
     @classmethod
-    def _pickle_variable_deserializer(cls: Union[Type['Variable']],
-                                      obj):
-        identifier = obj.get('id')
-        types = obj.get('types')
+    def _pickle_variable_deserializer(cls: Union[Type["Variable"]], obj):
+        identifier = obj.get("id")
+        types = obj.get("types")
 
         variable = cls.from_types(types=types, identifier=identifier)
 
@@ -515,10 +536,9 @@ class Serializer:
         return variable
 
     @classmethod
-    def _pickle_model_deserializer(cls: Union[Type['Model']],
-                                   obj):
-        identifier = obj.get('id')
-        types = obj.get('types')
+    def _pickle_model_deserializer(cls: Union[Type["Model"]], obj):
+        identifier = obj.get("id")
+        types = obj.get("types")
 
         model = cls.from_types(types=types, identifier=identifier)
 
@@ -534,15 +554,9 @@ class Serializer:
         return model
 
     # FIXME: make sure variables point to the correct model
-    def to_dict(self: Union['Serializer', 'Variable', 'Model'],
-                serialization_format: str = 'json',
-                variables: bool = False) -> Dict[str, Union[dict,
-                                                            'Gene',
-                                                            'Interaction',
-                                                            'Metabolite',
-                                                            'Reaction',
-                                                            'Regulator',
-                                                            'Target']]:
+    def to_dict(
+        self: Union["Serializer", "Variable", "Model"], serialization_format: str = "json", variables: bool = False
+    ) -> Dict[str, Union[dict, "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]]:
         """
         It is possible to export a variable or a model to a dictionary.
         The object can be exported to a json or a pickle format. The json format is the default.
@@ -556,45 +570,36 @@ class Serializer:
         """
 
         is_model = False
-        if hasattr(self, 'containers'):
+        if hasattr(self, "containers"):
             is_model = True
 
-        if serialization_format == 'pickle':
+        if serialization_format == "pickle":
 
             if is_model:
                 dict_obj = self._pickle_model_serializer(to_state=False)
             else:
                 dict_obj = self._pickle_variable_serializer(to_state=False)
 
-            dict_obj['types'] = self.types
+            dict_obj["types"] = self.types
             return dict_obj
 
-        elif serialization_format == 'json':
+        elif serialization_format == "json":
             if is_model:
                 return self._model_serializer(variables)
 
             return self._variable_serializer()
 
-        raise ValueError('The serialization format must be either json or pickle.')
+        raise ValueError("The serialization format must be either json or pickle.")
 
     @classmethod
-    def from_dict(cls: Union[Type['Serializer'], Type['Variable'], Type['Model']],
-                  obj: Dict[str, Union[dict,
-                                       'Gene',
-                                       'Interaction',
-                                       'Metabolite',
-                                       'Reaction',
-                                       'Regulator',
-                                       'Target']],
-                  serialization_format: str = 'json',
-                  variables: bool = False) -> Union['Gene',
-                                                    'Interaction',
-                                                    'Metabolite',
-                                                    'Reaction',
-                                                    'Regulator',
-                                                    'Target',
-                                                    'MetabolicModel',
-                                                    'RegulatoryModel']:
+    def from_dict(
+        cls: Union[Type["Serializer"], Type["Variable"], Type["Model"]],
+        obj: Dict[str, Union[dict, "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target"]],
+        serialization_format: str = "json",
+        variables: bool = False,
+    ) -> Union[
+        "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "MetabolicModel", "RegulatoryModel"
+    ]:
         """
         It is possible to create a new variable or model from a dictionary.
         The dictionary must be in the same format as the one returned by the to_dict method.
@@ -608,50 +613,44 @@ class Serializer:
         """
 
         is_model = False
-        if hasattr(cls, 'containers'):
+        if hasattr(cls, "containers"):
             is_model = True
 
-        if serialization_format == 'pickle':
+        if serialization_format == "pickle":
 
             if is_model:
                 return cls._pickle_model_deserializer(obj)
 
             return cls._pickle_variable_deserializer(obj)
 
-        elif serialization_format == 'json':
+        elif serialization_format == "json":
 
             if is_model:
                 return cls._model_deserializer(obj, variables)
 
             return cls._variable_deserializer(obj)
 
-        raise ValueError('The serialization format must be either json or pickle')
+        raise ValueError("The serialization format must be either json or pickle")
 
     # -----------------------------------------------------------------------------
     # Copy leveraging serialization
     # -----------------------------------------------------------------------------
 
-    def __copy__(self) -> Union['Gene',
-                                'Interaction',
-                                'Metabolite',
-                                'Reaction',
-                                'Regulator',
-                                'Target',
-                                'MetabolicModel',
-                                'RegulatoryModel']:
+    def __copy__(
+        self,
+    ) -> Union[
+        "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "MetabolicModel", "RegulatoryModel"
+    ]:
 
-        obj_dict = self.to_dict(serialization_format='pickle')
+        obj_dict = self.to_dict(serialization_format="pickle")
 
-        return self.from_dict(obj_dict, serialization_format='pickle')
+        return self.from_dict(obj_dict, serialization_format="pickle")
 
-    def copy(self) -> Union['Gene',
-                            'Interaction',
-                            'Metabolite',
-                            'Reaction',
-                            'Regulator',
-                            'Target',
-                            'MetabolicModel',
-                            'RegulatoryModel']:
+    def copy(
+        self,
+    ) -> Union[
+        "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "MetabolicModel", "RegulatoryModel"
+    ]:
         """
         It creates a copy of the variable or model. This is a shallow copy, meaning that the attributes and containers
         are copied by reference. If you want to create a deep copy, use the deepcopy method.
@@ -659,26 +658,20 @@ class Serializer:
         """
         return self.__copy__()
 
-    def __deepcopy__(self, memo) -> Union['Gene',
-                                          'Interaction',
-                                          'Metabolite',
-                                          'Reaction',
-                                          'Regulator',
-                                          'Target',
-                                          'MetabolicModel',
-                                          'RegulatoryModel']:
+    def __deepcopy__(
+        self, memo
+    ) -> Union[
+        "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "MetabolicModel", "RegulatoryModel"
+    ]:
         obj_dict = self.to_dict(variables=True)
         memo[id(self)] = obj_dict
         return self.from_dict(obj_dict, variables=True)
 
-    def deepcopy(self) -> Union['Gene',
-                                'Interaction',
-                                'Metabolite',
-                                'Reaction',
-                                'Regulator',
-                                'Target',
-                                'MetabolicModel',
-                                'RegulatoryModel']:
+    def deepcopy(
+        self,
+    ) -> Union[
+        "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "MetabolicModel", "RegulatoryModel"
+    ]:
         """
         It creates a deep copy of the variable or model.
         This means that the attributes and containers are copied by value.

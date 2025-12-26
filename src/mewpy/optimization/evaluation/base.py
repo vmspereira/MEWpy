@@ -15,27 +15,23 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-General evaluators 
+General evaluators
 
 Author: Vitor Pereira
 ##############################################################################
 """
-from .evaluator import (PhenotypeEvaluationFunction,
-                        KineticEvaluationFunction, 
-                        EvaluationFunction)
-from functools import reduce
 import warnings
+from functools import reduce
+from typing import Dict, List
+
 import numpy as np
 
-from typing import List, Dict
+from .evaluator import EvaluationFunction, KineticEvaluationFunction, PhenotypeEvaluationFunction
 
 
 class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
-    
-    def __init__(self,
-                 fevaluation: List[EvaluationFunction], 
-                 tradeoffs: List[float]=None, 
-                 maximize: bool=True):
+
+    def __init__(self, fevaluation: List[EvaluationFunction], tradeoffs: List[float] = None, maximize: bool = True):
         """
         Aggredated sum evaluation function. Used to converte MOEAs into Single Objective EAs.
 
@@ -43,14 +39,12 @@ class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         :param tradeoffs: (list) Tradeoff values for each evaluation function. If None, all functions have \
             the same associated weight.
     """
-        super(AggregatedSum, self).__init__(
-            maximize=maximize, worst_fitness=0.0)
+        super(AggregatedSum, self).__init__(maximize=maximize, worst_fitness=0.0)
         self.fevaluation = fevaluation
         if tradeoffs and len(tradeoffs) == len(fevaluation):
             self.tradeoffs = tradeoffs
         else:
-            self.tradeoffs = [1 / len(self.fevaluation)] * \
-                (len(self.fevaluation))
+            self.tradeoffs = [1 / len(self.fevaluation)] * (len(self.fevaluation))
 
     def required_simulations(self):
         methods = []
@@ -80,8 +74,8 @@ class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
 
 
 class CandidateSize(PhenotypeEvaluationFunction, KineticEvaluationFunction):
-   
-    def __init__(self, maximize:bool=False):
+
+    def __init__(self, maximize: bool = False):
         """
         Maximize/minimize the number of modifications.
 
@@ -113,11 +107,8 @@ class MinCandSize(CandidateSize):
 
 
 class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):
-    
 
-    def __init__(self, 
-                 penalizations:Dict[str,float]={'KO': 5, 'UE': 2, 'OE': 0}, 
-                 maximize:bool=True):
+    def __init__(self, penalizations: Dict[str, float] = {"KO": 5, "UE": 2, "OE": 0}, maximize: bool = True):
         """
         This Objective function favors solutions with deletions, under expression
         and over expression, in this same order.
@@ -129,17 +120,16 @@ class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         """
         super(ModificationType, self).__init__(maximize=maximize, worst_fitness=0.0)
         self.penalizations = penalizations
-        
 
     def get_fitness(self, simulResult, candidate, **kwargs):
         sum = 0
         for v in candidate.values():
             if v == 0:
-                sum += self.penalizations['KO']
+                sum += self.penalizations["KO"]
             elif v < 1:
-                sum += self.penalizations['UE']
+                sum += self.penalizations["UE"]
             else:
-                sum += self.penalizations['OE']
+                sum += self.penalizations["OE"]
         return sum / len(candidate)
 
     def required_simulations(self):

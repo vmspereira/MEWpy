@@ -4,32 +4,31 @@ Probabilistic Regulation of Metabolism (PROM) - Clean Implementation
 This module implements PROM using RegulatoryExtension only.
 No backwards compatibility with legacy GERM models.
 """
-from typing import Union, Dict, TYPE_CHECKING, Any, Sequence, Tuple
+
+from typing import TYPE_CHECKING, Any, Dict, Sequence, Tuple, Union
 
 import pandas as pd
 
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
+from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.germ.solution import KOSolution
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
 from mewpy.util.constants import ModelConstants
-from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 
 if TYPE_CHECKING:
-    from mewpy.germ.variables import Regulator, Gene, Target
+    from mewpy.germ.variables import Gene, Regulator, Target
 
 
-def _run_and_decode_solver(lp,
-                           additional_constraints: Dict[str, Tuple[float, float]] = None,
-                           **kwargs):
+def _run_and_decode_solver(lp, additional_constraints: Dict[str, Tuple[float, float]] = None, **kwargs):
     if not additional_constraints:
         additional_constraints = {}
 
     if not kwargs:
         kwargs = {}
 
-    if 'constraints' in kwargs:
-        kwargs['constraints'].update(additional_constraints)
+    if "constraints" in kwargs:
+        kwargs["constraints"].update(additional_constraints)
 
     solution = lp.solver.solve(**kwargs)
     if solution.status == Status.OPTIMAL:
@@ -49,11 +48,9 @@ class PROM(_RegulatoryAnalysisBase):
     For more details: https://doi.org/10.1073/pnas.1005139107
     """
 
-    def __init__(self,
-                 model: RegulatoryExtension,
-                 solver: Union[str, Solver] = None,
-                 build: bool = False,
-                 attach: bool = False):
+    def __init__(
+        self, model: RegulatoryExtension, solver: Union[str, Solver] = None, build: bool = False, attach: bool = False
+    ):
         """
         Initialize PROM with a RegulatoryExtension model.
 
@@ -81,26 +78,23 @@ class PROM(_RegulatoryAnalysisBase):
         # Wild-type reference
         reference = self.solver.solve(**solver_kwargs)
         if reference.status != Status.OPTIMAL:
-            raise RuntimeError('The solver did not find an optimal solution for the wild-type conditions.')
+            raise RuntimeError("The solver did not find an optimal solution for the wild-type conditions.")
         reference = reference.values.copy()
-        reference_constraints = {key: (reference[key] * 0.99, reference[key])
-                                for key in self._linear_objective}
+        reference_constraints = {key: (reference[key] * 0.99, reference[key]) for key in self._linear_objective}
 
         # FVA of the reaction at fraction of 0.99 (for wild-type growth rate)
         rates = {}
         for reaction in self.model.reactions:
-            min_rxn = _run_and_decode_solver(self,
-                                            additional_constraints=reference_constraints,
-                                            **{**solver_kwargs,
-                                               'get_values': False,
-                                               'linear': {reaction: 1},
-                                               'minimize': True})
-            max_rxn = _run_and_decode_solver(self,
-                                            additional_constraints=reference_constraints,
-                                            **{**solver_kwargs,
-                                               'get_values': False,
-                                               'linear': {reaction: 1},
-                                               'minimize': False})
+            min_rxn = _run_and_decode_solver(
+                self,
+                additional_constraints=reference_constraints,
+                **{**solver_kwargs, "get_values": False, "linear": {reaction: 1}, "minimize": True},
+            )
+            max_rxn = _run_and_decode_solver(
+                self,
+                additional_constraints=reference_constraints,
+                **{**solver_kwargs, "get_values": False, "linear": {reaction: 1}, "minimize": False},
+            )
 
             reference_rate = reference[reaction]
 
@@ -118,15 +112,17 @@ class PROM(_RegulatoryAnalysisBase):
 
         return rates
 
-    def _optimize_ko(self,
-                    probabilities: Dict[Tuple[str, str], float],
-                    regulator: Union['Gene', 'Regulator'],
-                    reference: Dict[str, float],
-                    max_rates: Dict[str, float],
-                    to_solver: bool = False,
-                    solver_kwargs: Dict[str, Any] = None):
+    def _optimize_ko(
+        self,
+        probabilities: Dict[Tuple[str, str], float],
+        regulator: Union["Gene", "Regulator"],
+        reference: Dict[str, float],
+        max_rates: Dict[str, float],
+        to_solver: bool = False,
+        solver_kwargs: Dict[str, Any] = None,
+    ):
         """Optimize with regulator knockout."""
-        solver_constrains = solver_kwargs.get('constraints', {})
+        solver_constrains = solver_kwargs.get("constraints", {})
 
         # Get reaction bounds from simulator
         prom_constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
@@ -162,7 +158,7 @@ class PROM(_RegulatoryAnalysisBase):
             if not target.is_gene():
                 continue
 
-            target: Union['Target', 'Gene']
+            target: Union["Target", "Gene"]
 
             # Composed key for interactions_probabilities
             target_regulator = (target.id, regulator.id)
@@ -205,32 +201,35 @@ class PROM(_RegulatoryAnalysisBase):
 
                 prom_constraints[reaction.id] = (rxn_lb, rxn_ub)
 
-        solution = self.solver.solve(**{**solver_kwargs,
-                                       'linear': self._linear_objective,
-                                       'minimize': self._minimize,
-                                       'get_values': True,
-                                       'constraints': {**solver_constrains, **prom_constraints}})
+        solution = self.solver.solve(
+            **{
+                **solver_kwargs,
+                "linear": self._linear_objective,
+                "minimize": self._minimize,
+                "get_values": True,
+                "constraints": {**solver_constrains, **prom_constraints},
+            }
+        )
 
         if to_solver:
             return solution
 
-        minimize = solver_kwargs.get('minimize', self._minimize)
-        return Solution.from_solver(method=self.method, solution=solution, model=self.model,
-                                   minimize=minimize)
+        minimize = solver_kwargs.get("minimize", self._minimize)
+        return Solution.from_solver(method=self.method, solution=solution, model=self.model, minimize=minimize)
 
-    def _optimize(self,
-                 initial_state: Dict[Tuple[str, str], float] = None,
-                 regulators: Sequence[Union['Gene', 'Regulator']] = None,
-                 to_solver: bool = False,
-                 solver_kwargs: Dict[str, Any] = None) -> Union[Dict[str, Solution], Dict[str, Solution]]:
+    def _optimize(
+        self,
+        initial_state: Dict[Tuple[str, str], float] = None,
+        regulators: Sequence[Union["Gene", "Regulator"]] = None,
+        to_solver: bool = False,
+        solver_kwargs: Dict[str, Any] = None,
+    ) -> Union[Dict[str, Solution], Dict[str, Solution]]:
         """Internal optimization method."""
         # Wild-type reference
-        solver_kwargs['get_values'] = True
-        reference = self.solver.solve(linear=self._linear_objective,
-                                     minimize=self._minimize,
-                                     **solver_kwargs)
+        solver_kwargs["get_values"] = True
+        reference = self.solver.solve(linear=self._linear_objective, minimize=self._minimize, **solver_kwargs)
         if reference.status != Status.OPTIMAL:
-            raise RuntimeError('The solver did not find an optimal solution for the wild-type conditions.')
+            raise RuntimeError("The solver did not find an optimal solution for the wild-type conditions.")
         reference = reference.values.copy()
 
         # Max and min fluxes of the reactions
@@ -238,31 +237,37 @@ class PROM(_RegulatoryAnalysisBase):
 
         # Single regulator knockout
         if len(regulators) == 1:
-            ko_solution = self._optimize_ko(probabilities=initial_state,
-                                           regulator=regulators[0],
-                                           reference=reference,
-                                           max_rates=max_rates,
-                                           to_solver=to_solver,
-                                           solver_kwargs=solver_kwargs)
+            ko_solution = self._optimize_ko(
+                probabilities=initial_state,
+                regulator=regulators[0],
+                reference=reference,
+                max_rates=max_rates,
+                to_solver=to_solver,
+                solver_kwargs=solver_kwargs,
+            )
             return {regulators[0].id: ko_solution}
 
         # Multiple regulator knockouts
         kos = {}
         for regulator in regulators:
-            ko_solution = self._optimize_ko(probabilities=initial_state,
-                                           regulator=regulator,
-                                           reference=reference,
-                                           max_rates=max_rates,
-                                           to_solver=to_solver,
-                                           solver_kwargs=solver_kwargs)
+            ko_solution = self._optimize_ko(
+                probabilities=initial_state,
+                regulator=regulator,
+                reference=reference,
+                max_rates=max_rates,
+                to_solver=to_solver,
+                solver_kwargs=solver_kwargs,
+            )
             kos[regulator.id] = ko_solution
         return kos
 
-    def optimize(self,
-                initial_state: Dict[Tuple[str, str], float] = None,
-                regulators: Union[str, Sequence['str']] = None,
-                to_solver: bool = False,
-                solver_kwargs: Dict[str, Any] = None) -> Union[KOSolution, Dict[str, Solution]]:
+    def optimize(
+        self,
+        initial_state: Dict[Tuple[str, str], float] = None,
+        regulators: Union[str, Sequence["str"]] = None,
+        to_solver: bool = False,
+        solver_kwargs: Dict[str, Any] = None,
+    ) -> Union[KOSolution, Dict[str, Solution]]:
         """
         Solve the PROM linear problem.
 
@@ -291,10 +296,9 @@ class PROM(_RegulatoryAnalysisBase):
             solver_kwargs = {}
 
         # Concrete optimize
-        solutions = self._optimize(initial_state=initial_state,
-                                  regulators=regulators,
-                                  to_solver=to_solver,
-                                  solver_kwargs=solver_kwargs)
+        solutions = self._optimize(
+            initial_state=initial_state, regulators=regulators, to_solver=to_solver, solver_kwargs=solver_kwargs
+        )
 
         if to_solver:
             return solutions
@@ -305,10 +309,9 @@ class PROM(_RegulatoryAnalysisBase):
 # ----------------------------------------------------------------------------------------------------------------------
 # Probability of Target-Regulator interactions
 # ----------------------------------------------------------------------------------------------------------------------
-def target_regulator_interaction_probability(model: RegulatoryExtension,
-                                            expression: pd.DataFrame,
-                                            binary_expression: pd.DataFrame) -> Tuple[Dict[Tuple[str, str], float],
-                                                                                      Dict[Tuple[str, str], float]]:
+def target_regulator_interaction_probability(
+    model: RegulatoryExtension, expression: pd.DataFrame, binary_expression: pd.DataFrame
+) -> Tuple[Dict[Tuple[str, str], float], Dict[Tuple[str, str], float]]:
     """
     Compute the conditional probability of a target gene being active when the regulator is inactive.
 
@@ -328,9 +331,11 @@ def target_regulator_interaction_probability(model: RegulatoryExtension,
         # noinspection PyPackageRequirements
         from scipy.stats import ks_2samp
     except ImportError:
-        raise ImportError('The package scipy is not installed. '
-                         'To compute the probability of target-regulator interactions, please install scipy '
-                         '(pip install scipy).')
+        raise ImportError(
+            "The package scipy is not installed. "
+            "To compute the probability of target-regulator interactions, please install scipy "
+            "(pip install scipy)."
+        )
 
     missed_interactions = {}
     interactions_probabilities = {}

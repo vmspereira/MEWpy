@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from mewpy.germ.models import Model
 from mewpy.io.dto import DataTransferObject
@@ -8,12 +8,11 @@ from mewpy.io.dto import DataTransferObject
 from .engine import Engine
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import RegulatoryModel, Model, MetabolicModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
 class JSON(Engine):
     def __init__(self, io, config, model=None):
-
         """
         Engine for JSON files
         """
@@ -21,38 +20,38 @@ class JSON(Engine):
 
     @property
     def model_type(self):
-        return 'metabolic'
+        return "metabolic"
 
     @property
     def model(self):
 
         if self._model is None:
-            return Model(identifier='model')
+            return Model(identifier="model")
 
         return self._model
 
-    def open(self,  mode='r'):
+    def open(self, mode="r"):
 
         self._dto = DataTransferObject()
 
-        if mode == 'r':
+        if mode == "r":
             if isinstance(self.io, str):
 
                 if not os.path.exists(self.io):
-                    raise OSError(f'{self.io} is not a valid input. Provide the path or file handler')
+                    raise OSError(f"{self.io} is not a valid input. Provide the path or file handler")
 
                 self._io = open(self.io)
 
-        elif mode == 'w':
+        elif mode == "w":
             pass
 
         else:
-            raise ValueError(f'{mode} mode is not recognized. Try one of the following: r, w')
+            raise ValueError(f"{mode} mode is not recognized. Try one of the following: r, w")
 
     def parse(self):
 
         if self.dto is None:
-            raise OSError('Model is not open')
+            raise OSError("Model is not open")
 
         try:
 
@@ -65,15 +64,13 @@ class JSON(Engine):
 
             raise exc
 
-        if 'types' not in self.dto.model:
+        if "types" not in self.dto.model:
             self.close()
             self.clean()
 
-            raise OSError(f'{self.io} is not a valid json GERM model')
+            raise OSError(f"{self.io} is not a valid json GERM model")
 
-    def read(self,
-             model: Union['Model', 'MetabolicModel', 'RegulatoryModel'] = None,
-             variables=None):
+    def read(self, model: Union["Model", "MetabolicModel", "RegulatoryModel"] = None, variables=None):
 
         return Model.from_dict(self.dto.model, variables=True)
 
@@ -81,7 +78,7 @@ class JSON(Engine):
 
         dict_model = self.model.to_dict(variables=True)
 
-        if hasattr(self.io, 'close'):
+        if hasattr(self.io, "close"):
 
             try:
                 json.dump(dict_model, self.io)
@@ -94,14 +91,14 @@ class JSON(Engine):
                 raise exc
 
         else:
-            with open(self.io, 'w') as file_path:
+            with open(self.io, "w") as file_path:
                 json.dump(dict_model, file_path)
 
             self.clean()
 
     def close(self):
 
-        if hasattr(self.io, 'close'):
+        if hasattr(self.io, "close"):
             self.io.close()
 
     def clean(self):

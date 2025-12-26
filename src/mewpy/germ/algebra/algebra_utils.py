@@ -1,4 +1,4 @@
-from typing import Union, Dict, Any
+from typing import Any, Dict, Union
 
 
 def solution_decode(solution: Union[int, bool], decoder: Dict[Any, int] = None) -> int:
@@ -12,13 +12,7 @@ def solution_decode(solution: Union[int, bool], decoder: Dict[Any, int] = None) 
     """
 
     if not decoder:
-        decoder = {True: 1,
-                   False: 0,
-                   1: 1,
-                   0: 0,
-                   -1: 1,
-                   -2: 0
-                   }
+        decoder = {True: 1, False: 0, 1: 1, 0: 0, -1: 1, -2: 0}
 
     return decoder.get(solution, solution)
 

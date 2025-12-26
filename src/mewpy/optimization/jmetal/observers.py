@@ -25,22 +25,26 @@ import logging
 from typing import List, TypeVar
 
 import numpy
+
 from mewpy.visualization.plot import StreamingPlot
-from ..ea import non_dominated_population, Solution
 
-S = TypeVar('S')
-LOGGER = logging.getLogger('mewpy')
+from ..ea import Solution, non_dominated_population
+
+S = TypeVar("S")
+LOGGER = logging.getLogger("mewpy")
 
 
-class VisualizerObserver():
+class VisualizerObserver:
 
-    def __init__(self,
-                 reference_front: List[S] = None,
-                 reference_point: list = None,
-                 display_frequency: float = 1.0,
-                 non_dominated=False,
-                 axis_labels=None,
-                 nevaluations=None) -> None:
+    def __init__(
+        self,
+        reference_front: List[S] = None,
+        reference_point: list = None,
+        display_frequency: float = 1.0,
+        non_dominated=False,
+        axis_labels=None,
+        nevaluations=None,
+    ) -> None:
         self.figure = None
         self.display_frequency = display_frequency
         self.reference_point = reference_point
@@ -50,9 +54,9 @@ class VisualizerObserver():
         self.nevaluations = nevaluations
 
     def update(self, *args, **kwargs):
-        evaluations = kwargs['EVALUATIONS']
-        solutions = kwargs['SOLUTIONS']
-        obj_directions = kwargs['PROBLEM'].obj_directions
+        evaluations = kwargs["EVALUATIONS"]
+        solutions = kwargs["SOLUTIONS"]
+        obj_directions = kwargs["PROBLEM"].obj_directions
 
         if solutions:
             population = [Solution(s.variables, s.objectives) for s in solutions]
@@ -62,13 +66,13 @@ class VisualizerObserver():
             # negative fitness values are converted to positive
             for i in range(len(population)):
                 obj = population[i].fitness
-                population[i].fitness = [(-1*obj[k]*obj_directions[k]) for k in range(len(obj))]
+                population[i].fitness = [(-1 * obj[k] * obj_directions[k]) for k in range(len(obj))]
 
             nds = non_dominated_population(population)
             ds = None
 
             if not self.non_dominated:
-                ds = list(set(population)-set(nds))
+                ds = list(set(population) - set(nds))
 
             if self.figure is None:
                 self.figure = StreamingPlot(axis_labels=self.axis_labels)
@@ -77,16 +81,15 @@ class VisualizerObserver():
                 text = str(evaluations)
                 self.figure.update(nds, dominated=ds, text=text)
 
-            self.figure.ax.set_title(
-                'Eval: {}'.format(evaluations), fontsize=13)
+            self.figure.ax.set_title("Eval: {}".format(evaluations), fontsize=13)
 
 
-class PrintObjectivesStatObserver():
+class PrintObjectivesStatObserver:
 
     def __init__(self, frequency: float = 1.0) -> None:
-        """ Show the number of evaluations, best fitness and computing time.
+        """Show the number of evaluations, best fitness and computing time.
 
-        :param frequency: Display frequency. """
+        :param frequency: Display frequency."""
         self.display_frequency = frequency
         self.first = True
 
@@ -96,6 +99,7 @@ class PrintObjectivesStatObserver():
         :param problem: The jMetalPy problem.
         :returns: A statistics dictionary.
         """
+
         def minuszero(value):
             return round(value, 6)
 
@@ -116,8 +120,13 @@ class PrintObjectivesStatObserver():
             med_fit = numpy.median(f)
             avg_fit = numpy.mean(f)
             std_fit = numpy.std(f)
-            stats['obj_{}'.format(i)] = {'best': minuszero(best_fit), 'worst': minuszero(worst_fit),
-                                         'mean': minuszero(avg_fit), 'median': minuszero(med_fit), 'std': minuszero(std_fit)}
+            stats["obj_{}".format(i)] = {
+                "best": minuszero(best_fit),
+                "worst": minuszero(worst_fit),
+                "mean": minuszero(avg_fit),
+                "median": minuszero(med_fit),
+                "std": minuszero(std_fit),
+            }
         return stats
 
     def stats_to_str(self, stats, evaluations, title=False):
@@ -129,28 +138,25 @@ class PrintObjectivesStatObserver():
             s = stats[key]
             if title:
                 title = title + "     Worst      Best    Median   Average   Std Dev|"
-            values = values + "  {0:.6f}  {1:.6f}  {2:.6f}  {3:.6f}  {4:.6f}|".format(s['worst'],
-                                                                                      s['best'],
-                                                                                      s['median'],
-                                                                                      s['mean'],
-                                                                                      s['std'])
+            values = values + "  {0:.6f}  {1:.6f}  {2:.6f}  {3:.6f}  {4:.6f}|".format(
+                s["worst"], s["best"], s["median"], s["mean"], s["std"]
+            )
         if title:
             return title + "\n" + values
         else:
             return values
 
     def update(self, *args, **kwargs):
-        evaluations = kwargs['EVALUATIONS']
-        solutions = kwargs['SOLUTIONS']
-        problem = kwargs['PROBLEM']
+        evaluations = kwargs["EVALUATIONS"]
+        solutions = kwargs["SOLUTIONS"]
+        problem = kwargs["PROBLEM"]
         if (evaluations % self.display_frequency) == 0 and solutions:
-            if type(solutions) == list:
+            if isinstance(solutions, list):
                 stats = self.fitness_statistics(solutions, problem)
                 message = self.stats_to_str(stats, evaluations, self.first)
                 self.first = False
             else:
                 fitness = solutions.objectives
                 res = abs(fitness[0])
-                message = 'Evaluations: {}\tFitness: {}'.format(
-                    evaluations, res)
+                message = "Evaluations: {}\tFitness: {}".format(evaluations, res)
             print(message)

@@ -87,8 +87,7 @@ def uniform_crossover_KO(random, mom, dad, args):
     child2 = copy.copy(intersection)
 
     while len(otherElems) > 0:
-        elemPosition = random.randint(
-            0, len(otherElems) - 1) if len(otherElems) > 1 else 0
+        elemPosition = random.randint(0, len(otherElems) - 1) if len(otherElems) > 1 else 0
         if len(child1) == maxSize or len(child2) == 0:
             child2.add(otherElems[elemPosition])
         elif len(child2) == maxSize or len(child1) == 0:
@@ -132,12 +131,12 @@ def uniform_crossover_OU(random, mom, dad, args):
 
     maxSize = args["candidate_max_size"]
     # common idx (reactions)
-    intersection = list({idx for (idx, idy) in mom} &
-                        {idx for (idx, idy) in dad})
+    intersection = list({idx for (idx, idy) in mom} & {idx for (idx, idy) in dad})
     c_mom = {idx: idy for (idx, idy) in mom if idx in intersection}
     c_dad = {idx: idy for (idx, idy) in dad if idx in intersection}
-    rest = [(idx, idy) for (idx, idy) in mom if idx not in intersection] + \
-           [(idx, idy) for (idx, idy) in dad if idx not in intersection]
+    rest = [(idx, idy) for (idx, idy) in mom if idx not in intersection] + [
+        (idx, idy) for (idx, idy) in dad if idx not in intersection
+    ]
     child1 = []
     child2 = []
 
@@ -303,11 +302,9 @@ def single_mutation_OU(random, candidate, args):
 
     bounder = args["_ec"].bounder
     mutRate = args.setdefault("mutation_rate", 0.1)
-    minSize = args["candidate_min_size"]
-    maxSize = args["candidate_max_size"]
 
     import random
-    id = random.randint(1, 1000)
+
     n = bounder.upper_bound[0] - bounder.lower_bound[0] + 1
     if random.random() > mutRate or len(candidate) >= n:
         return candidate
@@ -325,7 +322,7 @@ def single_mutation_OU(random, candidate, args):
         while idx in ml:
             idx = idx + 1
             if idx > bounder.upper_bound[0]:
-               idx = bounder.lower_bound[0]
+                idx = bounder.lower_bound[0]
         is_mutate_idx = True
     lv = random.randint(bounder.lower_bound[1], bounder.upper_bound[1])
     while not is_mutate_idx and lv == idy:
@@ -352,7 +349,6 @@ def single_mutation_OU_level(random, candidate, args):
 
     """
     import random
-    id = random.randint(1, 1000)
 
     bounder = args["_ec"].bounder
     mutRate = args.setdefault("mutation_rate", 0.1)
@@ -360,7 +356,7 @@ def single_mutation_OU_level(random, candidate, args):
         return candidate
     mutant = copy.copy(candidate)
     index = random.randint(0, len(mutant) - 1) if len(mutant) > 1 else 0
-    
+
     mutantL = list(mutant)
     idx, idy = mutantL[index]
     lv = random.randint(bounder.lower_bound[1], bounder.upper_bound[1])
@@ -374,17 +370,17 @@ def single_mutation_OU_level(random, candidate, args):
 @crossover
 def real_arithmetical_crossover(random, mom, dad, args):
     """
-        Random trade off of n genes from the progenitors
-        The maximum number of trade off is defined by  'num_mix_points'
-        For a gene position i and a randmon value a in range 0 to 1
-            child_1[i] = a * parent_1[i] + (1-a) * parent_2[i]
-            child_2[i] = (1-a) * parent_1[i] + a * parent_2[i]
+    Random trade off of n genes from the progenitors
+    The maximum number of trade off is defined by  'num_mix_points'
+    For a gene position i and a randmon value a in range 0 to 1
+        child_1[i] = a * parent_1[i] + (1-a) * parent_2[i]
+        child_2[i] = (1-a) * parent_1[i] + a * parent_2[i]
     """
-    crossover_rate = args.setdefault('real_arithmetical_crossover_rate', 0.5)
-    num_mix_points = args.setdefault('num_mix_points', 1)
+    crossover_rate = args.setdefault("real_arithmetical_crossover_rate", 0.5)
+    num_mix_points = args.setdefault("num_mix_points", 1)
     children = []
     if random.random() < crossover_rate:
-        num_mix = min(len(mom)-1, num_mix_points)
+        num_mix = min(len(mom) - 1, num_mix_points)
         mix_points = random.sample(range(1, len(mom)), num_mix)
         mix_points.sort()
         bro = copy.copy(dad)
@@ -392,8 +388,8 @@ def real_arithmetical_crossover(random, mom, dad, args):
         for i, (m, d) in enumerate(zip(mom, dad)):
             if i in mix_points:
                 mix = random.random()
-                bro[i] = m * mix + d * (1-mix)
-                sis[i] = d * mix + m * (1-mix)
+                bro[i] = m * mix + d * (1 - mix)
+                sis[i] = d * mix + m * (1 - mix)
         children.append(bro)
         children.append(sis)
     else:
@@ -405,13 +401,13 @@ def real_arithmetical_crossover(random, mom, dad, args):
 @mutator
 def gaussian_mutation(random, candidate, args):
     """
-        A Gaussian mutator centered in the gene[i] value
+    A Gaussian mutator centered in the gene[i] value
     """
-    mut_rate = args.setdefault('gaussian_mutation_rate', 0.1)
-    mut_gene_rate = args.setdefault('gaussian_gene_mutation', 0.1)
-    mean = args.setdefault('gaussian_mean', 0.0)
-    stdev = args.setdefault('gaussian_stdev', 1.0)
-    bounder = args['_ec'].bounder
+    mut_rate = args.setdefault("gaussian_mutation_rate", 0.1)
+    mut_gene_rate = args.setdefault("gaussian_gene_mutation", 0.1)
+    mean = args.setdefault("gaussian_mean", 0.0)
+    stdev = args.setdefault("gaussian_stdev", 1.0)
+    bounder = args["_ec"].bounder
     mutant = copy.copy(candidate)
     if random.random() < mut_rate:
         for i, m in enumerate(mutant):
@@ -448,8 +444,7 @@ def single_real_mutation(random, candidate, args):
         return candidate
     mutant = copy.copy(candidate)
     index = random.randint(0, len(mutant) - 1) if len(mutant) > 1 else 0
-    newElem = bounder.lower_bound + \
-        (bounder.upper_bound - bounder.lower_bound) * random.random()
+    newElem = bounder.lower_bound + (bounder.upper_bound - bounder.lower_bound) * random.random()
     mutantL = list(mutant)
     mutantL[index] = newElem
     mutant = set(mutantL)
@@ -464,5 +459,5 @@ OPERATORS = {
     "UCROSSOU": uniform_crossover_OU,
     "SMUTKO": single_mutation_KO,
     "SMUTOU": single_mutation_OU,
-    "SMLEVEL": single_mutation_OU_level
+    "SMLEVEL": single_mutation_OU_level,
 }

@@ -1,26 +1,28 @@
 from re import findall
-from typing import Any, Dict, Generator, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Generator, Union
 
-from mewpy.util.utilities import generator, chemical_formula_re
 from mewpy.germ.models.serialization import serialize
-from mewpy.util.history import recorder
 from mewpy.util.constants import atomic_weights
+from mewpy.util.history import recorder
+from mewpy.util.utilities import chemical_formula_re, generator
+
 from .variable import Variable
 
 if TYPE_CHECKING:
     from .reaction import Reaction
 
 
-class Metabolite(Variable, variable_type='metabolite', register=True, constructor=True, checker=True):
+class Metabolite(Variable, variable_type="metabolite", register=True, constructor=True, checker=True):
 
-    def __init__(self,
-                 identifier: Any,
-                 charge: int = None,
-                 compartment: str = None,
-                 formula: str = None,
-                 reactions: Dict[str, 'Reaction'] = None,
-                 **kwargs):
-
+    def __init__(
+        self,
+        identifier: Any,
+        charge: int = None,
+        compartment: str = None,
+        formula: str = None,
+        reactions: Dict[str, "Reaction"] = None,
+        **kwargs,
+    ):
         """
         A metabolite is regularly associated with reactions.
         In metabolic-regulatory models, metabolites can be associated with regulators too.
@@ -43,7 +45,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
             compartment = None
 
         if not formula:
-            formula = ''
+            formula = ""
 
         if not reactions:
             reactions = {}
@@ -53,8 +55,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
         self._formula = formula
         self._reactions = reactions
 
-        super().__init__(identifier,
-                         **kwargs)
+        super().__init__(identifier, **kwargs)
 
     # -----------------------------------------------------------------------------
     # Variable type manager
@@ -75,23 +76,25 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
     # -----------------------------------------------------------------------------
     def __str__(self):
 
-        return f'{self.id} || {self.name} || {self.formula}'
+        return f"{self.id} || {self.name} || {self.formula}"
 
     def _metabolite_to_html(self):
         """
         It returns a html dict representation.
         """
-        html_dict = {'Compartment': self.compartment,
-                     'Formula': self.formula,
-                     'Molecular weight': self.molecular_weight,
-                     'Charge': self.charge,
-                     'Reactions': ', '.join(self.reactions)}
+        html_dict = {
+            "Compartment": self.compartment,
+            "Formula": self.formula,
+            "Molecular weight": self.molecular_weight,
+            "Charge": self.charge,
+            "Reactions": ", ".join(self.reactions),
+        }
         return html_dict
 
     # -----------------------------------------------------------------------------
     # Static attributes
     # -----------------------------------------------------------------------------
-    @serialize('charge', 'charge', '_charge')
+    @serialize("charge", "charge", "_charge")
     @property
     def charge(self) -> int:
         """
@@ -104,7 +107,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
 
         return self._charge
 
-    @serialize('compartment', 'compartment', '_compartment')
+    @serialize("compartment", "compartment", "_compartment")
     @property
     def compartment(self) -> str:
         """
@@ -113,7 +116,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
         """
         return self._compartment
 
-    @serialize('formula', 'formula', '_formula')
+    @serialize("formula", "formula", "_formula")
     @property
     def formula(self) -> str:
         """
@@ -122,9 +125,9 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
         """
         return self._formula
 
-    @serialize('reactions', 'reactions', '_reactions')
+    @serialize("reactions", "reactions", "_reactions")
     @property
-    def reactions(self) -> Dict[str, 'Reaction']:
+    def reactions(self) -> Dict[str, "Reaction"]:
         """
         The reactions to which the metabolite is associated with
         :return: reactions as dict
@@ -158,7 +161,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
         """
 
         if not value:
-            value = ''
+            value = ""
 
         self._formula = value
 
@@ -206,7 +209,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
         for atom, count in all_elements:
 
             if not count:
-                count = '1'
+                count = "1"
 
             atoms[atom] = atoms.get(atom, 0) + int(count)
 
@@ -222,7 +225,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
         return sum([atomic_weights[atom] * count for atom, count in self.atoms.items()])
 
     @property
-    def exchange_reaction(self) -> 'Reaction':
+    def exchange_reaction(self) -> "Reaction":
         """
         The exchange reaction of the metabolite.
         It finds the first boundary reaction in which the metabolite is involved
@@ -234,7 +237,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
                 return reaction
 
     @property
-    def exchange_reactions(self) -> Dict[str, 'Reaction']:
+    def exchange_reactions(self) -> Dict[str, "Reaction"]:
         """
         The exchange reactions of the metabolite.
         It finds all boundary reactions in which the metabolite is involved
@@ -252,7 +255,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
     # -----------------------------------------------------------------------------
     # Generators
     # -----------------------------------------------------------------------------
-    def yield_reactions(self) -> Generator['Reaction', None, None]:
+    def yield_reactions(self) -> Generator["Reaction", None, None]:
         """
         Yields the reactions to which the metabolite is associated with
         :return: reactions as generator
@@ -260,7 +263,7 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
 
         return generator(self._reactions)
 
-    def yield_exchange_reactions(self) -> Generator['Reaction', None, None]:
+    def yield_exchange_reactions(self) -> Generator["Reaction", None, None]:
         """
         Yields the exchange reactions to which the metabolite is associated with
         :return: exchange reactions as generator
@@ -270,13 +273,14 @@ class Metabolite(Variable, variable_type='metabolite', register=True, constructo
     # -----------------------------------------------------------------------------
     # Operations/Manipulations
     # -----------------------------------------------------------------------------
-    def update(self,
-               charge: int = None,
-               compartment: str = None,
-               formula: str = None,
-               reactions: Dict[str, 'Reaction'] = None,
-               **kwargs):
-
+    def update(
+        self,
+        charge: int = None,
+        compartment: str = None,
+        formula: str = None,
+        reactions: Dict[str, "Reaction"] = None,
+        **kwargs,
+    ):
         """
         It updates the metabolite with the provided information
 

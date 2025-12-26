@@ -22,14 +22,23 @@ Contributors: Paulo Carvalhais
 ##############################################################################
 """
 from mewpy.simulation import get_simulator
-from .. import Preprocessing, ExpressionSet
+
+from .. import ExpressionSet, Preprocessing
 
 
-def eFlux(model, expr, condition=0, scale_rxn=None, scale_value=1,
-          constraints=None, parsimonious=False, max_exp = None, **kwargs):
+def eFlux(
+    model,
+    expr,
+    condition=0,
+    scale_rxn=None,
+    scale_value=1,
+    constraints=None,
+    parsimonious=False,
+    max_exp=None,
+    **kwargs,
+):
     """ Run an E-Flux simulation (Colijn et al, 2009).
 
-    
     :param model: a REFRAMED or COBRApy model or a MEWpy Simulator.
     :param expr (ExpressionSet): transcriptomics data.
     :param condition: the condition to use in the simulation\
@@ -71,7 +80,7 @@ def eFlux(model, expr, condition=0, scale_rxn=None, scale_value=1,
             bounds[r_id] = (lb2, ub2)
 
     if parsimonious:
-        sol = sim.simulate(constraints=bounds, method='pFBA')
+        sol = sim.simulate(constraints=bounds, method="pFBA")
     else:
         sol = sim.simulate(constraints=bounds)
 

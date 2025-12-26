@@ -1,37 +1,40 @@
 from pathlib import Path
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from mewpy.simulation import get_container, get_simulator
 
 from .director import Director
+from .engines import (
+    JSON,
+    BooleanRegulatoryCSV,
+    CobraModel,
+    CoExpressionRegulatoryCSV,
+    Engines,
+    MetabolicSBML,
+    ReframedModel,
+    RegulatorySBML,
+    TargetRegulatorRegulatoryCSV,
+)
 from .reader import Reader
 from .writer import Writer
-
-from .engines import (Engines,
-                      BooleanRegulatoryCSV,
-                      CoExpressionRegulatoryCSV,
-                      TargetRegulatorRegulatoryCSV,
-                      CobraModel,
-                      ReframedModel,
-                      JSON,
-                      RegulatorySBML,
-                      MetabolicSBML)
-
 
 if TYPE_CHECKING:
     from io import TextIOWrapper
 
-    from mewpy.germ.models import Model, RegulatoryModel, MetabolicModel
     from cobra import Model as Cobra_Model
     from reframed import CBModel as Reframed_Model
 
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
-def load_sbml_container(filename, flavor='reframed'):
-    if flavor == 'reframed':
+
+def load_sbml_container(filename, flavor="reframed"):
+    if flavor == "reframed":
         from reframed.io.sbml import load_cbmodel
+
         model = load_cbmodel(filename)
-    elif flavor == 'cobra':
+    elif flavor == "cobra":
         from cobra.io import read_sbml_model
+
         model = read_sbml_model(filename)
     else:
         raise ValueError(f"{flavor} is not a recognized flavor")
@@ -39,12 +42,14 @@ def load_sbml_container(filename, flavor='reframed'):
     return container
 
 
-def load_sbml_simulator(filename, flavor='reframed', envcond=None):
-    if flavor == 'reframed':
+def load_sbml_simulator(filename, flavor="reframed", envcond=None):
+    if flavor == "reframed":
         from reframed.io.sbml import load_cbmodel
+
         model = load_cbmodel(filename)
-    elif flavor == 'cobra':
+    elif flavor == "cobra":
         from cobra.io import read_sbml_model
+
         model = read_sbml_model(filename)
     else:
         raise ValueError(f"{flavor} is not a recognized flavor")
@@ -52,12 +57,14 @@ def load_sbml_simulator(filename, flavor='reframed', envcond=None):
     return simul
 
 
-def load_gecko_simulator(filename, flavor='reframed', envcond=None):
-    if flavor == 'reframed':
+def load_gecko_simulator(filename, flavor="reframed", envcond=None):
+    if flavor == "reframed":
         from mewpy.model.gecko import GeckoModel
+
         model = GeckoModel(filename)
-    elif flavor == 'cobra':
+    elif flavor == "cobra":
         from geckopy.gecko import GeckoModel
+
         model = GeckoModel(filename)
     else:
         raise ValueError(f"{flavor} is not a recognized flavor")
@@ -68,8 +75,7 @@ def load_gecko_simulator(filename, flavor='reframed', envcond=None):
 # A common entry point for all models.
 # The following "read" and "write" functions available in this module are just wrappers for a single reader/writer
 # or multiple readers/writers using the director
-def read_model(*readers: Reader,
-               warnings: bool = True) -> Union['Model', 'RegulatoryModel', 'MetabolicModel']:
+def read_model(*readers: Reader, warnings: bool = True) -> Union["Model", "RegulatoryModel", "MetabolicModel"]:
     """
     Reading a GERM model encoded into one or more file types (e.g. sbml, csv, cobrapy, reframed, json, etc).
     It can return a metabolic, regulatory or metabolic-regulatory model from multiple files.
@@ -94,10 +100,9 @@ def read_model(*readers: Reader,
     return model
 
 
-def read_sbml(io: Union[str, Path, 'TextIOWrapper'],
-              metabolic: bool = True,
-              regulatory: bool = True,
-              warnings: bool = True) -> Union['Model', 'RegulatoryModel', 'MetabolicModel']:
+def read_sbml(
+    io: Union[str, Path, "TextIOWrapper"], metabolic: bool = True, regulatory: bool = True, warnings: bool = True
+) -> Union["Model", "RegulatoryModel", "MetabolicModel"]:
     """
     Reading a GERM model encoded into a SBML file.
     It can return a metabolic, regulatory or metabolic-regulatory model from the SBML file according to the metabolic
@@ -118,29 +123,29 @@ def read_sbml(io: Union[str, Path, 'TextIOWrapper'],
     readers = []
 
     if metabolic:
-        metabolic_reader = Reader(engine=MetabolicSBML,
-                                  io=io)
+        metabolic_reader = Reader(engine=MetabolicSBML, io=io)
 
         readers.append(metabolic_reader)
 
     if regulatory:
-        regulatory_reader = Reader(engine=RegulatorySBML,
-                                   io=io)
+        regulatory_reader = Reader(engine=RegulatorySBML, io=io)
 
         readers.append(regulatory_reader)
 
     if not readers:
-        raise OSError('Nothing to read')
+        raise OSError("Nothing to read")
 
     return read_model(*readers, warnings=warnings)
 
 
-def read_csv(io: Union[str, Path, 'TextIOWrapper'],
-             boolean: bool = True,
-             co_expression: bool = False,
-             target_regulator: bool = False,
-             warnings: bool = True,
-             **kwargs) -> Union['Model', 'RegulatoryModel']:
+def read_csv(
+    io: Union[str, Path, "TextIOWrapper"],
+    boolean: bool = True,
+    co_expression: bool = False,
+    target_regulator: bool = False,
+    warnings: bool = True,
+    **kwargs,
+) -> Union["Model", "RegulatoryModel"]:
     """
     Reading a mewpy regulatory model encoded into a CSV file.
     It can only return a regulatory model from the CSV file.
@@ -162,39 +167,32 @@ def read_csv(io: Union[str, Path, 'TextIOWrapper'],
     readers = []
 
     if boolean:
-        boolean_reader = Reader(engine=BooleanRegulatoryCSV,
-                                io=io,
-                                **kwargs)
+        boolean_reader = Reader(engine=BooleanRegulatoryCSV, io=io, **kwargs)
 
         readers.append(boolean_reader)
 
     if co_expression:
-        regulatory_reader = Reader(engine=CoExpressionRegulatoryCSV,
-                                   io=io,
-                                   **kwargs)
+        regulatory_reader = Reader(engine=CoExpressionRegulatoryCSV, io=io, **kwargs)
 
         readers.append(regulatory_reader)
 
     if target_regulator:
-        regulatory_reader = Reader(engine=TargetRegulatorRegulatoryCSV,
-                                   io=io,
-                                   **kwargs)
+        regulatory_reader = Reader(engine=TargetRegulatorRegulatoryCSV, io=io, **kwargs)
 
         readers.append(regulatory_reader)
 
     if not readers:
-        raise OSError('Nothing to read')
+        raise OSError("Nothing to read")
 
     if len(readers) > 1:
-        raise OSError('read_csv only accepts one file at a time')
+        raise OSError("read_csv only accepts one file at a time")
 
     return read_model(*readers, warnings=warnings)
 
 
-def read_cbmodel(io: Union['Cobra_Model', 'Reframed_Model'],
-                 cobrapy: bool = True,
-                 reframed: bool = False,
-                 warnings: bool = True) -> Union['Model', 'MetabolicModel']:
+def read_cbmodel(
+    io: Union["Cobra_Model", "Reframed_Model"], cobrapy: bool = True, reframed: bool = False, warnings: bool = True
+) -> Union["Model", "MetabolicModel"]:
     """
     Reading a mewpy metabolic model encoded into a Constraint-Based metabolic model from Cobrapy or Reframed.
     It can only return a metabolic model from the cobra model.
@@ -212,28 +210,27 @@ def read_cbmodel(io: Union['Cobra_Model', 'Reframed_Model'],
     readers = []
 
     if cobrapy:
-        boolean_reader = Reader(engine=CobraModel,
-                                io=io)
+        boolean_reader = Reader(engine=CobraModel, io=io)
 
         readers.append(boolean_reader)
 
     if reframed:
-        regulatory_reader = Reader(engine=ReframedModel,
-                                   io=io)
+        regulatory_reader = Reader(engine=ReframedModel, io=io)
 
         readers.append(regulatory_reader)
 
     if not readers:
-        raise OSError('Nothing to read')
+        raise OSError("Nothing to read")
 
     if len(readers) > 1:
-        raise OSError('read_cbmodel only accepts one cbmodel at a time')
+        raise OSError("read_cbmodel only accepts one cbmodel at a time")
 
     return read_model(*readers, warnings=warnings)
 
 
-def read_json(io: Union[str, Path, 'TextIOWrapper'],
-              warnings: bool = True) -> Union['Model', 'MetabolicModel', 'RegulatoryModel']:
+def read_json(
+    io: Union[str, Path, "TextIOWrapper"], warnings: bool = True
+) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
     """
     Reading a GERM model encoded into a JSON file.
     It can return a metabolic, regulatory or metabolic-regulatory model from the JSON file according to the JSON file.
@@ -247,14 +244,12 @@ def read_json(io: Union[str, Path, 'TextIOWrapper'],
     :return: mewpy metabolic, regulatory or both model
     """
 
-    json_reader = Reader(engine=JSON,
-                         io=io)
+    json_reader = Reader(engine=JSON, io=io)
 
     return read_model(json_reader, warnings=warnings)
 
 
-def write_model(*writers: Writer,
-                warnings=True) -> Union['Model', 'RegulatoryModel', 'MetabolicModel']:
+def write_model(*writers: Writer, warnings=True) -> Union["Model", "RegulatoryModel", "MetabolicModel"]:
     """
     Writing a GERM model into one or more file types (e.g. sbml, csv, cobrapy, reframed, json, etc).
     It can write a metabolic, regulatory or metabolic-regulatory model to multiple files.

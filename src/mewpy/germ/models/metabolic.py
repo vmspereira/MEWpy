@@ -1,31 +1,32 @@
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Union, Generator, Dict, List, Tuple, Set
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Set, Tuple, Union
+
+from mewpy.germ.models.serialization import serialize
+from mewpy.util.history import recorder
+from mewpy.util.utilities import generator
 
 from .model import Model
-from mewpy.util.history import recorder
-from mewpy.germ.models.serialization import serialize
-from mewpy.util.utilities import generator
 
 if TYPE_CHECKING:
     from mewpy.germ.algebra import Expression
     from mewpy.germ.variables import Gene, Metabolite, Reaction
 
 
-class MetabolicModel(Model, model_type='metabolic', register=True, constructor=True, checker=True):
+class MetabolicModel(Model, model_type="metabolic", register=True, constructor=True, checker=True):
     """
     DEPRECATED: This class is deprecated and maintained only for backwards compatibility.
-    
+
     For new code, use the unified factory to create models from external simulators:
-    
+
         from mewpy.germ.models.unified_factory import unified_factory
         model = unified_factory(cobra_model)  # From COBRApy model
         model = unified_factory('model.xml')  # From file path
-    
-    The unified factory returns SimulatorBasedMetabolicModel instances that provide 
+
+    The unified factory returns SimulatorBasedMetabolicModel instances that provide
     the same interface but with better performance through external simulators.
-    
+
     ---
-    
+
     A germ metabolic model consists of a classic Genome-Scale Metabolic (GEM) model,
     containing reactions, metabolites and genes.
 
@@ -54,28 +55,30 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         - Remove reactions, metabolites and genes
         - Update the objective function
     """
-    def __init__(self,
-                 identifier: Any,
-                 compartments: Dict[str, str] = None,
-                 genes: Dict[str, 'Gene'] = None,
-                 metabolites: Dict[str, 'Metabolite'] = None,
-                 objective: Dict['Reaction', Union[float, int]] = None,
-                 reactions: Dict[str, 'Reaction'] = None,
-                 **kwargs):
 
+    def __init__(
+        self,
+        identifier: Any,
+        compartments: Dict[str, str] = None,
+        genes: Dict[str, "Gene"] = None,
+        metabolites: Dict[str, "Metabolite"] = None,
+        objective: Dict["Reaction", Union[float, int]] = None,
+        reactions: Dict[str, "Reaction"] = None,
+        **kwargs,
+    ):
         """
         DEPRECATED: Direct instantiation of MetabolicModel is deprecated.
-        
+
         MetabolicModel now only supports external model integration through COBRApy and reframed.
         Use the unified factory instead:
-        
+
             from mewpy.germ.models.unified_factory import unified_factory
             model = unified_factory(cobra_model)
             # or
             model = unified_factory('path/to/model.xml')
-        
+
         For backwards compatibility, this constructor still works but should not be used in new code.
-        
+
         A GERM metabolic model consists of a classic Genome-Scale Metabolic (GEM) model,
         containing reactions, metabolites and genes.
 
@@ -93,12 +96,13 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         :param reactions: a dictionary with Reaction objects. See variables.Reaction for more info
         """
         import warnings
+
         warnings.warn(
             "Direct instantiation of MetabolicModel is deprecated. "
             "Use unified_factory from mewpy.germ.models.unified_factory instead. "
             "For external models, use: unified_factory(external_model)",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         # compartments attribute can be shared across the children, thus name mangling
         self.__compartments = {}
@@ -106,9 +110,8 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         self._metabolites = {}
         self._objective = {}
         self._reactions = {}
-        
-        super().__init__(identifier,
-                         **kwargs)
+
+        super().__init__(identifier, **kwargs)
 
         # the setters will handle adding and removing variables to the correct containers
         self.compartments = compartments
@@ -120,7 +123,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
     # -----------------------------------------------------------------------------
     # Model type manager
     # -----------------------------------------------------------------------------
-    @serialize('types', None)
+    @serialize("types", None)
     @property
     def types(self):
         """
@@ -136,9 +139,9 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
     # -----------------------------------------------------------------------------
     # Static attributes
     # -----------------------------------------------------------------------------
-    @serialize('genes', 'genes', '_genes')
+    @serialize("genes", "genes", "_genes")
     @property
-    def genes(self) -> Dict[str, 'Gene']:
+    def genes(self) -> Dict[str, "Gene"]:
         """
         It returns a dictionary with the genes of the model. The key is the gene identifier and the value is the
         `Gene` object. To retrieve an iterator with the genes use `yield_genes` method.
@@ -148,9 +151,9 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         """
         return self._genes.copy()
 
-    @serialize('metabolites', 'metabolites', '_metabolites')
+    @serialize("metabolites", "metabolites", "_metabolites")
     @property
-    def metabolites(self) -> Dict[str, 'Metabolite']:
+    def metabolites(self) -> Dict[str, "Metabolite"]:
         """
         It returns a dictionary with the metabolites of the model. The key is the metabolite identifier and the value is
         the `Metabolite` object. To retrieve an iterator with the metabolites use `yield_metabolites` method.
@@ -160,9 +163,9 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         """
         return self._metabolites.copy()
 
-    @serialize('objective', 'objective', '_objective')
+    @serialize("objective", "objective", "_objective")
     @property
-    def objective(self) -> Dict['Reaction', Union[float, int]]:
+    def objective(self) -> Dict["Reaction", Union[float, int]]:
         """
         It returns a dictionary with the objective functions of the model.
         The key is the `Reaction` object and the value is the respective coefficient.
@@ -172,9 +175,9 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         """
         return self._objective.copy()
 
-    @serialize('reactions', 'reactions', '_reactions')
+    @serialize("reactions", "reactions", "_reactions")
     @property
-    def reactions(self) -> Dict[str, 'Reaction']:
+    def reactions(self) -> Dict[str, "Reaction"]:
         """
         It returns a dictionary with the reactions of the model. The key is the reaction identifier and the value is
         the `Reaction` object. To retrieve an iterator with the reactions use `yield_reactions` method.
@@ -195,9 +198,11 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         :return:
         """
 
-        compartments = {met.compartment: self.__compartments.get(met.compartment, '')
-                        for met in self.yield_metabolites()
-                        if met.compartment is not None}
+        compartments = {
+            met.compartment: self.__compartments.get(met.compartment, "")
+            for met in self.yield_metabolites()
+            if met.compartment is not None
+        }
 
         compartments.update(self.__compartments)
 
@@ -224,7 +229,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
 
     @genes.setter
     @recorder
-    def genes(self, value: Dict[str, 'Gene']):
+    def genes(self, value: Dict[str, "Gene"]):
         """
         It sets the genes of the model. The key is the gene identifier and the value is the `Gene` object.
         :param value: a dictionary with the genes of the model
@@ -238,7 +243,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
 
     @metabolites.setter
     @recorder
-    def metabolites(self, value: Dict[str, 'Metabolite']):
+    def metabolites(self, value: Dict[str, "Metabolite"]):
         """
         It sets the metabolites of the model. The key is the metabolite identifier and the value is the `Metabolite`
         object.
@@ -253,14 +258,14 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
 
     @objective.setter
     @recorder
-    def objective(self, value: Dict['Reaction', Union[float, int]]):
+    def objective(self, value: Dict["Reaction", Union[float, int]]):
         """
         It sets the objective functions of the model. The key is the `Reaction` object and the value is the respective
         coefficient.
-        
-        Note: MetabolicModel is deprecated. For external models, objective setting is handled by the 
+
+        Note: MetabolicModel is deprecated. For external models, objective setting is handled by the
         SimulatorBasedMetabolicModel wrapper through the external simulator.
-        
+
         :param value: a dictionary with the objective functions of the model
         :return:
         """
@@ -270,23 +275,23 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         if isinstance(value, str):
             value = {self.get(value): 1}
 
-        elif hasattr(value, 'types'):
+        elif hasattr(value, "types"):
             value = {value: 1}
 
         elif isinstance(value, dict):
             value = {self.get(var, var): val for var, val in value.items()}
 
         else:
-            raise ValueError(f'{value} is not a valid objective')
+            raise ValueError(f"{value} is not a valid objective")
 
         self._objective = value
-        
+
         # Note: Simulator integration removed since MetabolicModel is deprecated
         # For external models, use SimulatorBasedMetabolicModel which handles objectives through external simulators
 
     @reactions.setter
     @recorder
-    def reactions(self, value: Dict[str, 'Reaction']):
+    def reactions(self, value: Dict[str, "Reaction"]):
         """
         It sets the reactions of the model. The key is the reaction identifier and the value is the `Reaction` object.
         :param value: a dictionary with the reactions of the model
@@ -337,7 +342,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
 
         return external_compartment
 
-    def _get_boundaries(self) -> Tuple[Dict[str, 'Reaction'], Dict[str, 'Reaction'], Dict[str, 'Reaction']]:
+    def _get_boundaries(self) -> Tuple[Dict[str, "Reaction"], Dict[str, "Reaction"], Dict[str, "Reaction"]]:
         """
         It returns the boundary reactions of the model.
         :return: a tuple with exchanges, sinks, demands reactions of the model
@@ -347,8 +352,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         if external_compartment is None:
             return {}, {}, {}
 
-        all_boundaries = [rxn for rxn_id, rxn in self._reactions.items()
-                          if rxn.boundary]
+        all_boundaries = [rxn for rxn_id, rxn in self._reactions.items() if rxn.boundary]
 
         exchanges = {}
         sinks = {}
@@ -356,7 +360,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
 
         for variable in all_boundaries:
 
-            if variable.types == {'reaction'}:
+            if variable.types == {"reaction"}:
 
                 if external_compartment in variable.compartments:
                     exchanges[variable.id] = variable
@@ -371,7 +375,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         return exchanges, sinks, demands
 
     @property
-    def demands(self) -> Dict[str, 'Reaction']:
+    def demands(self) -> Dict[str, "Reaction"]:
         """
         It returns the demand reactions of the model.
         Demand reactions are reactions that consume a metabolite from its compartment.
@@ -381,7 +385,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         return demands
 
     @property
-    def exchanges(self) -> Dict[str, 'Reaction']:
+    def exchanges(self) -> Dict[str, "Reaction"]:
         """
         It returns the exchange reactions of the model.
         Exchange reactions are reactions define the environmental conditions of a metabolic model.
@@ -392,7 +396,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         return exchanges
 
     @property
-    def sinks(self) -> Dict[str, 'Reaction']:
+    def sinks(self) -> Dict[str, "Reaction"]:
         """
         It returns the sink reactions of the model.
         Sink reactions are reactions that either consume or produce a metabolite in its compartment.
@@ -411,49 +415,49 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         """
         return generator(self.compartments)
 
-    def yield_demands(self) -> Generator['Reaction', None, None]:
+    def yield_demands(self) -> Generator["Reaction", None, None]:
         """
         It yields the demand reactions of the model.
         :return: a generator with the demand reactions of the model
         """
         return generator(self.demands)
 
-    def yield_exchanges(self) -> Generator['Reaction', None, None]:
+    def yield_exchanges(self) -> Generator["Reaction", None, None]:
         """
         It yields the exchange reactions of the model.
         :return: a generator with the exchange reactions of the model
         """
         return generator(self.exchanges)
 
-    def yield_genes(self) -> Generator['Gene', None, None]:
+    def yield_genes(self) -> Generator["Gene", None, None]:
         """
         It yields the genes of the model.
         :return: a generator with the genes of the model
         """
         return generator(self._genes)
 
-    def yield_gprs(self) -> Generator['Expression', None, None]:
+    def yield_gprs(self) -> Generator["Expression", None, None]:
         """
         It yields the GPRs of the model.
         :return: a generator with the GPRs of the model
         """
         return (value.gpr for value in self._reactions.values())
 
-    def yield_metabolites(self) -> Generator['Metabolite', None, None]:
+    def yield_metabolites(self) -> Generator["Metabolite", None, None]:
         """
         It yields the metabolites of the model.
         :return: a generator with the metabolites of the model
         """
         return generator(self._metabolites)
 
-    def yield_reactions(self) -> Generator['Reaction', None, None]:
+    def yield_reactions(self) -> Generator["Reaction", None, None]:
         """
         It yields the reactions of the model.
         :return: a generator with the reactions of the model
         """
         return generator(self._reactions)
 
-    def yield_sinks(self) -> Generator['Reaction', None, None]:
+    def yield_sinks(self) -> Generator["Reaction", None, None]:
         """
         It yields the sink reactions of the model.
         :return: a generator with the sink reactions of the model
@@ -463,7 +467,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
     # -----------------------------------------------------------------------------
     # Operations/Manipulations
     # -----------------------------------------------------------------------------
-    def get(self, identifier: Any, default=None) -> Union['Gene', 'Metabolite', 'Reaction']:
+    def get(self, identifier: Any, default=None) -> Union["Gene", "Metabolite", "Reaction"]:
         """
         It returns the object associated with the identifier.
         In case the identifier is not found, it returns the default value.
@@ -484,10 +488,9 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         else:
             return super(MetabolicModel, self).get(identifier=identifier, default=default)
 
-    def add(self,
-            *variables: Union['Gene', 'Metabolite', 'Reaction'],
-            comprehensive: bool = True,
-            history: bool = True):
+    def add(
+        self, *variables: Union["Gene", "Metabolite", "Reaction"], comprehensive: bool = True, history: bool = True
+    ):
         """
         It adds the given variables to the model.
         This method accepts a single variable or a list of variables to be added to specific containers in the model.
@@ -499,7 +502,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         If comprehensive is True, the variables and their related variables will be added to the model too.
         If history is True, the changes will be recorded in the history.
 
-        Note: MetabolicModel is deprecated. For external models, use SimulatorBasedMetabolicModel 
+        Note: MetabolicModel is deprecated. For external models, use SimulatorBasedMetabolicModel
         which handles model changes through the external simulator interface.
 
         :param variables: the variables to be added to the model
@@ -507,33 +510,32 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         :param history: if True, the changes will be recorded in the history
         :return:
         """
-        if self.is_a('metabolic'):
+        if self.is_a("metabolic"):
 
             for variable in variables:
 
-                if 'gene' in variable.types:
-                    self._add_variable_to_container(variable, '_genes')
+                if "gene" in variable.types:
+                    self._add_variable_to_container(variable, "_genes")
 
-                if 'metabolite' in variable.types:
-                    self._add_variable_to_container(variable, '_metabolites')
+                if "metabolite" in variable.types:
+                    self._add_variable_to_container(variable, "_metabolites")
 
-                if 'reaction' in variable.types:
+                if "reaction" in variable.types:
                     if comprehensive:
 
                         for metabolite in variable.yield_metabolites():
-                            self._add_variable_to_container(metabolite, '_metabolites')
+                            self._add_variable_to_container(metabolite, "_metabolites")
 
                         for gene in variable.yield_genes():
-                            self._add_variable_to_container(gene, '_genes')
+                            self._add_variable_to_container(gene, "_genes")
 
-                    self._add_variable_to_container(variable, '_reactions')
+                    self._add_variable_to_container(variable, "_reactions")
 
         return super(MetabolicModel, self).add(*variables, comprehensive=comprehensive, history=history)
 
-    def remove(self,
-               *variables: Union['Gene', 'Metabolite', 'Reaction'],
-               remove_orphans: bool = False,
-               history: bool = True):
+    def remove(
+        self, *variables: Union["Gene", "Metabolite", "Reaction"], remove_orphans: bool = False, history: bool = True
+    ):
         """
         It removes the given variables from the model.
         This method accepts a single variable or a list of variables to be removed from specific containers
@@ -546,7 +548,7 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         If remove_orphans is True, the variables and their related variables will be removed from the model too.
         If history is True, the changes will be recorded in the history.
 
-        Note: MetabolicModel is deprecated. For external models, use SimulatorBasedMetabolicModel 
+        Note: MetabolicModel is deprecated. For external models, use SimulatorBasedMetabolicModel
         which handles model changes through the external simulator interface.
 
         :param variables: the variables to be removed from the model
@@ -554,46 +556,50 @@ class MetabolicModel(Model, model_type='metabolic', register=True, constructor=T
         :param history: if True, the changes will be recorded in the history
         :return:
         """
-        if self.is_a('metabolic'):
+        if self.is_a("metabolic"):
 
             reactions = set()
 
             for variable in variables:
 
-                if 'gene' in variable.types:
-                    self._remove_variable_from_container(variable, '_genes')
+                if "gene" in variable.types:
+                    self._remove_variable_from_container(variable, "_genes")
 
-                if 'metabolite' in variable.types:
-                    self._remove_variable_from_container(variable, '_metabolites')
+                if "metabolite" in variable.types:
+                    self._remove_variable_from_container(variable, "_metabolites")
 
-                if 'reaction' in variable.types:
-                    self._remove_variable_from_container(variable, '_reactions')
+                if "reaction" in variable.types:
+                    self._remove_variable_from_container(variable, "_reactions")
                     reactions.add(variable)
 
             if remove_orphans:
-                orphan_metabolites = self._get_orphans(to_remove=reactions,
-                                                       first_container='metabolites',
-                                                       second_container='reactions')
+                orphan_metabolites = self._get_orphans(
+                    to_remove=reactions, first_container="metabolites", second_container="reactions"
+                )
 
                 for metabolite in orphan_metabolites:
-                    self._remove_variable_from_container(metabolite, '_metabolites')
+                    self._remove_variable_from_container(metabolite, "_metabolites")
 
-                orphan_genes = self._get_orphans(to_remove=reactions,
-                                                 first_container='genes',
-                                                 second_container='reactions')
+                orphan_genes = self._get_orphans(
+                    to_remove=reactions, first_container="genes", second_container="reactions"
+                )
 
                 for gene in orphan_genes:
-                    self._remove_variable_from_container(gene, '_genes')
+                    self._remove_variable_from_container(gene, "_genes")
 
         return super(MetabolicModel, self).remove(*variables, remove_orphans=remove_orphans, history=history)
 
-    def update(self,
-               compartments: Dict[str, str] = None,
-               objective: Dict['Reaction', Union[float, int]] = None,
-               variables: Union[List[Union['Gene', 'Metabolite', 'Reaction']],
-                                Tuple[Union['Gene', 'Metabolite', 'Reaction']],
-                                Set[Union['Gene', 'Metabolite', 'Reaction']]] = None,
-               **kwargs):
+    def update(
+        self,
+        compartments: Dict[str, str] = None,
+        objective: Dict["Reaction", Union[float, int]] = None,
+        variables: Union[
+            List[Union["Gene", "Metabolite", "Reaction"]],
+            Tuple[Union["Gene", "Metabolite", "Reaction"]],
+            Set[Union["Gene", "Metabolite", "Reaction"]],
+        ] = None,
+        **kwargs,
+    ):
         """
         It updates the model with relevant information, namely the compartments, objective and variables.
 

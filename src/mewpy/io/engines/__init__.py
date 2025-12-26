@@ -1,13 +1,13 @@
 from enum import Enum
 
 from .boolean_csv import BooleanRegulatoryCSV
-from . co_expression_csv import CoExpressionRegulatoryCSV
-from .target_regulator_csv import TargetRegulatorRegulatoryCSV
+from .co_expression_csv import CoExpressionRegulatoryCSV
 from .cobra_model import CobraModel
-from .reframed_model import ReframedModel
 from .json import JSON
 from .metabolic_sbml import MetabolicSBML
+from .reframed_model import ReframedModel
 from .regulatory_sbml import RegulatorySBML
+from .target_regulator_csv import TargetRegulatorRegulatoryCSV
 
 
 class Engines(Enum):

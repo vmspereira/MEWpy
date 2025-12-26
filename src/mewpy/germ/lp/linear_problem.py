@@ -1,25 +1,28 @@
 from abc import abstractmethod
-from typing import Union, TYPE_CHECKING, Tuple, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Tuple, Union
 
 from numpy import zeros
 
 from mewpy.germ.solution import ModelSolution
 from mewpy.solvers.solution import Solution
 from mewpy.solvers.solver import Solver
+
 from .linear_containers import ConstraintContainer, VariableContainer
 from .linear_utils import LinkedList, Node, get_solver_instance
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
 
 class LinearProblem:
 
-    def __init__(self,
-                 model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                 solver: Union[str, Solver] = None,
-                 build: bool = False,
-                 attach: bool = False):
+    def __init__(
+        self,
+        model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+        solver: Union[str, Solver] = None,
+        build: bool = False,
+        attach: bool = False,
+    ):
         """
         Linear programing base implementation. A GERM model is converted into a linear problem using reframed/mewpy
         solver interface. Both CPLEX and Gurobi solvers are currently supported. Other solvers may also be supported
@@ -55,7 +58,7 @@ class LinearProblem:
         :param attach: Whether to attach the linear problem to the model upon instantiation. Default: False
         """
         if not model:
-            raise ValueError('A valid model must be provided')
+            raise ValueError("A valid model must be provided")
 
         self._model = model
 
@@ -107,7 +110,7 @@ class LinearProblem:
         if self.solver:
             solver = self.solver.__class__.__name__
         else:
-            solver = 'None'
+            solver = "None"
 
         return f"""
         <table>
@@ -154,7 +157,7 @@ class LinearProblem:
         return self.__class__.__name__
 
     @property
-    def model(self) -> Union['Model', 'MetabolicModel', 'RegulatoryModel']:
+    def model(self) -> Union["Model", "MetabolicModel", "RegulatoryModel"]:
         """
         GERM model of this simulator
         :return: a MetabolicModel, RegulatoryModel or GERM model
@@ -285,16 +288,16 @@ class LinearProblem:
 
                     if lb == ub:
                         rhs = lb
-                        self.solver.add_constraint(constr_id=cnt_id, lhs=coef, sense='=', rhs=rhs, update=False)
+                        self.solver.add_constraint(constr_id=cnt_id, lhs=coef, sense="=", rhs=rhs, update=False)
 
                     else:
-                        cnt_id_f = f'{cnt_id}_forward'
+                        cnt_id_f = f"{cnt_id}_forward"
                         rhs = lb
-                        self.solver.add_constraint(constr_id=cnt_id_f, lhs=coef, sense='>', rhs=rhs, update=False)
+                        self.solver.add_constraint(constr_id=cnt_id_f, lhs=coef, sense=">", rhs=rhs, update=False)
 
-                        cnt_id_r = f'{cnt_id}_reverse'
+                        cnt_id_r = f"{cnt_id}_reverse"
                         rhs = ub
-                        self.solver.add_constraint(constr_id=cnt_id_r, lhs=coef, sense='<', rhs=rhs, update=False)
+                        self.solver.add_constraint(constr_id=cnt_id_r, lhs=coef, sense="<", rhs=rhs, update=False)
 
             self.solver.update()
 
@@ -306,7 +309,7 @@ class LinearProblem:
                 for k, v in self._linear_objective.items():
 
                     if k not in self._cols and k not in self._sub_cols:
-                        raise ValueError(f'{k} is not a variable of this linear problem')
+                        raise ValueError(f"{k} is not a variable of this linear problem")
 
                     linear_objective[k] = v
 
@@ -317,10 +320,10 @@ class LinearProblem:
                 for (k1, k2), v in self._quadratic_objective.items():
 
                     if k1 not in self._cols and k1 not in self._sub_cols:
-                        raise ValueError(f'{k1} is not a variable of this linear problem')
+                        raise ValueError(f"{k1} is not a variable of this linear problem")
 
                     if k2 not in self._cols and k2 not in self._sub_cols:
-                        raise ValueError(f'{k2} is not a variable of this linear problem')
+                        raise ValueError(f"{k2} is not a variable of this linear problem")
 
                     quadratic_objective[(k1, k2)] = v
 
@@ -358,7 +361,7 @@ class LinearProblem:
         """
         pass
 
-    def build(self) -> 'LinearProblem':
+    def build(self) -> "LinearProblem":
         """
         Abstract implementation
         :return:
@@ -389,10 +392,9 @@ class LinearProblem:
         """
         pass
 
-    def optimize(self,
-                 to_solver: bool = False,
-                 solver_kwargs: Dict[str, Any] = None,
-                 **kwargs) -> Union[ModelSolution, Solution]:
+    def optimize(
+        self, to_solver: bool = False, solver_kwargs: Dict[str, Any] = None, **kwargs
+    ) -> Union[ModelSolution, Solution]:
         """
         It solves the linear problem. The linear problem is solved using the solver interface.
 
@@ -433,9 +435,8 @@ class LinearProblem:
         if to_solver:
             return solution
 
-        minimize = solver_kwargs.get('minimize', self._minimize)
-        return ModelSolution.from_solver(method=self.method, solution=solution, model=self.model,
-                                         minimize=minimize)
+        minimize = solver_kwargs.get("minimize", self._minimize)
+        return ModelSolution.from_solver(method=self.method, solution=solution, model=self.model, minimize=minimize)
 
     # -----------------------------------------------------------------------------
     # Update - Observer interface
@@ -454,10 +455,12 @@ class LinearProblem:
     # -----------------------------------------------------------------------------
     # Objective
     # -----------------------------------------------------------------------------
-    def set_objective(self,
-                      linear: Union[str, Dict[str, Union[float, int]]] = None,
-                      quadratic: Dict[Tuple[str, str], Union[float, int]] = None,
-                      minimize: bool = True):
+    def set_objective(
+        self,
+        linear: Union[str, Dict[str, Union[float, int]]] = None,
+        quadratic: Dict[Tuple[str, str], Union[float, int]] = None,
+        minimize: bool = True,
+    ):
         """
         A dictionary of the objective for the linear problem.
         Keys must be variables of the linear problem,
@@ -480,13 +483,13 @@ class LinearProblem:
             linear = {linear: 1}
 
         if not isinstance(linear, dict):
-            raise TypeError(f'linear objective must be a dictionary, not {type(linear)}')
+            raise TypeError(f"linear objective must be a dictionary, not {type(linear)}")
 
         if not isinstance(quadratic, dict):
-            raise TypeError(f'quadratic objective must be a dictionary, not {type(quadratic)}')
+            raise TypeError(f"quadratic objective must be a dictionary, not {type(quadratic)}")
 
         if not isinstance(minimize, bool):
-            raise TypeError(f'minimize must be a boolean, not {type(minimize)}')
+            raise TypeError(f"minimize must be a boolean, not {type(minimize)}")
 
         self._linear_objective = linear
         self._quadratic_objective = quadratic
@@ -596,7 +599,7 @@ class LinearProblem:
         :return: the index of the variable or constraint
         """
         if variable is None and constraint is None:
-            raise ValueError('Please provide a variable or constraint')
+            raise ValueError("Please provide a variable or constraint")
 
         if constraint is not None:
 
@@ -712,12 +715,7 @@ class LinearProblem:
 
         return constraint.lbs, constraint.ubs
 
-    def get_bounds(self,
-                   variable=None,
-                   constraint=None,
-                   b_bounds=False,
-                   as_list=False,
-                   as_tuples=False):
+    def get_bounds(self, variable=None, constraint=None, b_bounds=False, as_list=False, as_tuples=False):
         """
         It returns the bounds of a variable or constraint
         :param variable: a variable container

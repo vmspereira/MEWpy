@@ -13,7 +13,7 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-""" 
+"""
 Load ODE model
 """
 import os
@@ -22,11 +22,12 @@ from math import isinf, isnan
 
 from libsbml import AssignmentRule, SBMLReader
 
-from mewpy.model.kinetic import ODEModel, Compartment, Metabolite, KineticReaction, Rule
-from mewpy.util.parsing import Node, EMPTY_LEAF
+from mewpy.model.kinetic import Compartment, KineticReaction, Metabolite, ODEModel, Rule
+from mewpy.util.parsing import EMPTY_LEAF, Node
+
 
 def load_sbml(filename):
-    """ Loads an SBML file.
+    """Loads an SBML file.
 
     :param filename: SBML file path, str.
     :returns: SBMLModel
@@ -42,7 +43,7 @@ def load_sbml(filename):
 
     if sbml_model is None:
         document.printErrors()
-        raise IOError(f'Failed to load model {filename}.')
+        raise IOError(f"Failed to load model {filename}.")
 
     return sbml_model
 
@@ -72,7 +73,7 @@ def extract_metadata(sbml_elem, elem):
 
     sboterm = sbml_elem.getSBOTermID()
     if sboterm:
-        elem.metadata['SBOTerm'] = sboterm
+        elem.metadata["SBOTerm"] = sboterm
 
     notes = sbml_elem.getNotes()
     if notes:
@@ -80,13 +81,13 @@ def extract_metadata(sbml_elem, elem):
 
     annotation = sbml_elem.getAnnotationString()
     if annotation:
-        elem.metadata['XMLAnnotation'] = annotation
+        elem.metadata["XMLAnnotation"] = annotation
 
 
 def recursive_node_parser(node, cache):
     node_data = node.getCharacters()
-    if ':' in node_data:
-        key, value = node_data.split(':', 1)
+    if ":" in node_data:
+        key, value = node_data.split(":", 1)
         cache[key.strip()] = value.strip()
 
     for i in range(node.getNumChildren()):
@@ -116,14 +117,14 @@ def _load_metabolites(sbml_model, model):
 def _load_metabolite(species):
     metabolite = Metabolite(species.getId(), species.getName(), species.getCompartment())
     try:
-        fbc_species = species.getPlugin('fbc')
+        fbc_species = species.getPlugin("fbc")
         if fbc_species.isSetChemicalFormula():
             formula = fbc_species.getChemicalFormula()
-            metabolite.metadata['FORMULA'] = formula
+            metabolite.metadata["FORMULA"] = formula
 
         if fbc_species.isSetCharge():
             charge = fbc_species.getCharge()
-            metabolite.metadata['CHARGE'] = str(charge)
+            metabolite.metadata["CHARGE"] = str(charge)
     except Exception:
         pass
     extract_metadata(species, metabolite)
@@ -172,11 +173,16 @@ def _load_ratelaws(sbml_model, odemodel):
             m_id = modifier.getSpecies()
             modifiers.append(m_id)
 
-        law = KineticReaction(reaction.getId(), formula, name=reaction.getName(), 
-                              stoichiometry=stoichiometry,
-                              parameters=parameters, modifiers=modifiers, 
-                              reversible=reaction.getReversible(),
-                              functions = odemodel.function_definition)
+        law = KineticReaction(
+            reaction.getId(),
+            formula,
+            name=reaction.getName(),
+            stoichiometry=stoichiometry,
+            parameters=parameters,
+            modifiers=modifiers,
+            reversible=reaction.getReversible(),
+            functions=odemodel.function_definition,
+        )
         odemodel.set_ratelaw(reaction.getId(), law)
 
 
@@ -187,25 +193,26 @@ def _load_assignment_rules(sbml_model, odemodel):
             odemodel.set_assignment_rule(r_id, Rule(r_id, rule.getFormula()))
 
 
-def travel(node):   
+def travel(node):
     if node.getNumChildren():
-        
+
         if node.isOperator():
             name = node.getCharacter()
         else:
             name = node.getName()
-            
+
         r = travel(node.getRightChild())
-        l = travel(node.getLeftChild())
-        return Node(name,l,r)
+        left = travel(node.getLeftChild())
+        return Node(name, left, r)
     else:
         name = node.getName()
-        return Node(name,None,None)
+        return Node(name, None, None)
+
 
 def _load_functions(sbml_model, odemodel):
     functions = OrderedDict()
     fd = sbml_model.getListOfFunctionDefinitions()
-    if not fd: 
+    if not fd:
         return
     for function in fd:
         fname = function.getName()
@@ -215,6 +222,6 @@ def _load_functions(sbml_model, odemodel):
             args.append(arg)
         body = function.getBody()
         tree = travel(body)
-        functions[fname]=(args,tree)
-        
+        functions[fname] = (args, tree)
+
     odemodel.set_functions(functions)

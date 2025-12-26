@@ -1,11 +1,10 @@
-from typing import Any, Dict, TYPE_CHECKING, Set, Union, List, Tuple, Generator, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Sequence, Set, Tuple, Union
 
-from mewpy.util.constants import ModelConstants
-
-from mewpy.util.history import recorder
-
-from mewpy.util.utilities import generator
 from mewpy.germ.models.serialization import serialize
+from mewpy.util.constants import ModelConstants
+from mewpy.util.history import recorder
+from mewpy.util.utilities import generator
+
 from .variable import Variable
 from .variables_utils import coefficients_setter, initialize_coefficients
 
@@ -13,13 +12,11 @@ if TYPE_CHECKING:
     from .reaction import Reaction
 
 
-class Gene(Variable, variable_type='gene', register=True, constructor=True, checker=True):
+class Gene(Variable, variable_type="gene", register=True, constructor=True, checker=True):
 
-    def __init__(self,
-                 identifier: Any,
-                 coefficients: Sequence[float] = None,
-                 reactions: Dict[str, 'Reaction'] = None,
-                 **kwargs):
+    def __init__(
+        self, identifier: Any, coefficients: Sequence[float] = None, reactions: Dict[str, "Reaction"] = None, **kwargs
+    ):
         """
         A metabolic gene is regularly associated with metabolic reactions. A metabolic gene is inferred from a metabolic
         model by parsing the Gene-Protein-Reactions associations usually encoded as boolean rules.
@@ -60,39 +57,41 @@ class Gene(Variable, variable_type='gene', register=True, constructor=True, chec
         """
         It returns a html dict representation.
         """
-        html_dict = {'Coefficients': self.coefficients,
-                     'Active': self.is_active,
-                     'Reactions': ', '.join(self.reactions)}
+        html_dict = {
+            "Coefficients": self.coefficients,
+            "Active": self.is_active,
+            "Reactions": ", ".join(self.reactions),
+        }
         return html_dict
 
     # -----------------------------------------------------------------------------
     # Static attributes
     # -----------------------------------------------------------------------------
-    @serialize('coefficients', 'coefficients', '_coefficients')
+    @serialize("coefficients", "coefficients", "_coefficients")
     @property
     def coefficients(self) -> Tuple[float, ...]:
         """
         The gene coefficients
         :return: The gene coefficients
         """
-        if hasattr(self, '_bounds'):
+        if hasattr(self, "_bounds"):
 
             # if it is a reaction, bounds must be returned
             return self._bounds
 
         # if it is a metabolite, the bounds coefficient of the exchange reaction must be returned
-        elif hasattr(self, 'exchange_reaction'):
+        elif hasattr(self, "exchange_reaction"):
 
-            if hasattr(self.exchange_reaction, '_bounds'):
+            if hasattr(self.exchange_reaction, "_bounds"):
 
                 # noinspection PyProtectedMember
                 return self.exchange_reaction._bounds
 
         return self._coefficients
 
-    @serialize('reactions', 'reactions', '_reactions')
+    @serialize("reactions", "reactions", "_reactions")
     @property
-    def reactions(self) -> Dict[str, 'Reaction']:
+    def reactions(self) -> Dict[str, "Reaction"]:
         """
         The reactions associated with this gene
         """
@@ -120,7 +119,7 @@ class Gene(Variable, variable_type='gene', register=True, constructor=True, chec
         coefficients_setter(self, value)
 
     @reactions.setter
-    def reactions(self, value: Dict[str, 'Reaction']):
+    def reactions(self, value: Dict[str, "Reaction"]):
         """
         The reactions associated with this gene
         :param value: The reactions associated with this gene
@@ -134,7 +133,7 @@ class Gene(Variable, variable_type='gene', register=True, constructor=True, chec
     # -----------------------------------------------------------------------------
     # Generators
     # -----------------------------------------------------------------------------
-    def yield_reactions(self) -> Generator['Reaction', None, None]:
+    def yield_reactions(self) -> Generator["Reaction", None, None]:
         """
         It yields all reactions
         """
@@ -158,18 +157,20 @@ class Gene(Variable, variable_type='gene', register=True, constructor=True, chec
         coefficients_setter(self, minimum_coefficient)
 
         if history:
-            self.history.queue_command(undo_func=coefficients_setter,
-                                       undo_kwargs={'instance': self,
-                                                    'value': old_coef},
-                                       func=self.ko,
-                                       kwargs={'minimum_coefficient': minimum_coefficient,
-                                               'history': False})
+            self.history.queue_command(
+                undo_func=coefficients_setter,
+                undo_kwargs={"instance": self, "value": old_coef},
+                func=self.ko,
+                kwargs={"minimum_coefficient": minimum_coefficient, "history": False},
+            )
         return
 
-    def update(self,
-               coefficients: Union[Set[Union[int, float]], List[Union[int, float]], Tuple[Union[int, float]]] = None,
-               reactions: Dict[str, 'Reaction'] = None,
-               **kwargs):
+    def update(
+        self,
+        coefficients: Union[Set[Union[int, float]], List[Union[int, float]], Tuple[Union[int, float]]] = None,
+        reactions: Dict[str, "Reaction"] = None,
+        **kwargs,
+    ):
         """
         It performs an update operation to this gene.
         The update operation is similar to a dictionary update.

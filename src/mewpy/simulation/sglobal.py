@@ -9,18 +9,21 @@ class MEWPYSimSolvers(Singleton):
     def build(self):
         try:
             import gurobipy
-            self._mewpy_sim_solvers.append('gurobi')
-        except ImportError as e:
+
+            self._mewpy_sim_solvers.append("gurobi")
+        except ImportError:
             pass
         try:
             import cplex
-            self._mewpy_sim_solvers.append('cplex')
-        except ImportError as e:
+
+            self._mewpy_sim_solvers.append("cplex")
+        except ImportError:
             pass
 
         try:
             import swiglpk
-            self._mewpy_sim_solvers.append('glpk')
+
+            self._mewpy_sim_solvers.append("glpk")
         except ImportError:
             pass
 

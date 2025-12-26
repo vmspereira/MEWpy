@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-""" 
+"""
 ##############################################################################
 Compartmentalized community model.
 Can build community models from models loaded from any toolbox
@@ -24,19 +24,22 @@ for which there is a Simulator implementation.
 Author: Vitor Pereira
 ##############################################################################
 """
-from mewpy.simulation import get_simulator
-from mewpy.util.parsing import build_tree, Boolean
-from mewpy.util import AttrDict
 from copy import deepcopy
+from typing import TYPE_CHECKING, Dict, List, Union
 from warnings import warn
+
 from numpy import inf
 from tqdm import tqdm
-from typing import Dict, List, Union, TYPE_CHECKING
+
+from mewpy.simulation import get_simulator
+from mewpy.util import AttrDict
+from mewpy.util.parsing import Boolean, build_tree
 
 if TYPE_CHECKING:
-    from mewpy.simulation import Simulator
     from cobra.core import Model
     from reframed.core.cbmodel import CBModel
+
+    from mewpy.simulation import Simulator
 
 
 class CommunityModel:
@@ -65,15 +68,15 @@ class CommunityModel:
             If no abundance list is provided, all organism will have equal abundance.
         :param add_compartments: If each organism external compartment is to be added
             to the community model. Default True.
-        :param balance_exchange: If the organisms uptakes should reflect their abundances. 
-            This will normalize each organism flux value in acordance to the abundance. Default True.  
+        :param balance_exchange: If the organisms uptakes should reflect their abundances.
+            This will normalize each organism flux value in acordance to the abundance. Default True.
         :param bool copy_models: if the models are to be copied, default True.
         :param str flavor: use 'cobrapy' or 'reframed. Default 'reframed'.
         """
         self.organisms = AttrDict()
         self.model_ids = list({model.id for model in models})
-        if len(self.model_ids)!= len(set(self.model_ids)):
-            raise ValueError('Each model must have a different ID.')
+        if len(self.model_ids) != len(set(self.model_ids)):
+            raise ValueError("Each model must have a different ID.")
         self.flavor = flavor
 
         self.organisms_biomass = None
@@ -106,9 +109,7 @@ class CommunityModel:
             if abundances and len(abundances) == len(self.organisms):
                 self.organisms_abundance = dict(zip(self.organisms.keys(), abundances))
             else:
-                self.organisms_abundance = {
-                    org_id: 1 for org_id in self.organisms.keys()
-                }
+                self.organisms_abundance = {org_id: 1 for org_id in self.organisms.keys()}
 
         self._comm_model = None
 
@@ -150,7 +151,7 @@ class CommunityModel:
     @property
     def balance_exchanges(self):
         return self._balance_exchange
-    
+
     @balance_exchanges.setter
     def balance_exchanges(self, value: bool):
         if value == self._balance_exchange:
@@ -159,7 +160,7 @@ class CommunityModel:
         if value:
             self._update_exchanges()
         else:
-            self._update_exchanges({k:1 for k in self.model_ids})
+            self._update_exchanges({k: 1 for k in self.model_ids})
 
     @property
     def merge_biomasses(self):
@@ -219,19 +220,19 @@ class CommunityModel:
         if self._balance_exchange:
             self._update_exchanges()
 
-    def _update_exchanges(self,abundances:dict=None):
+    def _update_exchanges(self, abundances: dict = None):
         if self.merged_model and self._merge_biomasses and self._balance_exchange:
             exchange = self.merged_model.get_exchange_reactions()
             m_r = self.merged_model.metabolite_reaction_lookup()
             for met in self.ext_mets:
                 rxns = m_r[met]
-                for rx,st in rxns.items():
+                for rx, st in rxns.items():
                     if rx in exchange:
                         continue
                     org = self.reverse_map[rx][0]
                     if abundances:
-                        ab = abundances[org] 
-                    else:   
+                        ab = abundances[org]
+                    else:
                         ab = self.organisms_abundance[org]
                     rxn = self.merged_model.get_reaction(rx)
                     stch = rxn.stoichiometry
@@ -277,16 +278,12 @@ class CommunityModel:
         comm_growth = CommunityModel.GROWTH_ID
 
         # create external compartment
-        self._comm_model.add_compartment(
-            ext_comp_id, "extracellular environment", external=True
-        )
+        self._comm_model.add_compartment(ext_comp_id, "extracellular environment", external=True)
 
         # community biomass
         if not self._merge_biomasses:
             biomass_id = "community_biomass"
-            self._comm_model.add_metabolite(
-                biomass_id, name="Total community biomass", compartment=ext_comp_id
-            )
+            self._comm_model.add_metabolite(biomass_id, name="Total community biomass", compartment=ext_comp_id)
 
         # add each organism
         for org_id, model in tqdm(self.organisms.items(), "Organism"):
@@ -322,9 +319,7 @@ class CommunityModel:
                     old_ext_comps.append(c_id)
                     if not self._add_compartments:
                         continue
-                self._comm_model.add_compartment(
-                    rename(c_id), name=f"{comp.name} ({org_id})"
-                )
+                self._comm_model.add_compartment(rename(c_id), name=f"{comp.name} ({org_id})")
 
             # add metabolites
             for m_id in model.metabolites:
@@ -339,10 +334,7 @@ class CommunityModel:
                     )
                     self.metabolite_map[(org_id, m_id)] = new_mid
 
-                if (
-                    met.compartment in old_ext_comps
-                    and r_met(m_id, False) not in self._comm_model.metabolites
-                ):
+                if met.compartment in old_ext_comps and r_met(m_id, False) not in self._comm_model.metabolites:
                     new_mid = r_met(m_id, False)
                     self._comm_model.add_metabolite(
                         new_mid,
@@ -370,10 +362,7 @@ class CommunityModel:
                 if r_id in ex_rxns:
                     mets = list(rxn.stoichiometry.keys())
 
-                    if (
-                        self._add_compartments
-                        and r_met(mets[0], False) in self.ext_mets
-                    ):
+                    if self._add_compartments and r_met(mets[0], False) in self.ext_mets:
                         new_stoichiometry = {
                             r_met(mets[0]): -1,
                             r_met(mets[0], False): 1,
@@ -388,10 +377,7 @@ class CommunityModel:
                         )
                         self.reaction_map[(org_id, r_id)] = new_id
 
-                    elif (
-                        len(mets) == 1
-                        and r_met(mets[0]) in self._comm_model.metabolites
-                    ):
+                    elif len(mets) == 1 and r_met(mets[0]) in self._comm_model.metabolites:
                         # some models (e.g. AGORA models) have sink reactions (for biomass)
                         new_stoichiometry = {r_met(mets[0]): -1}
                         self._comm_model.add_reaction(
@@ -406,15 +392,10 @@ class CommunityModel:
 
                 else:
                     if self._add_compartments:
-                        new_stoichiometry = {
-                            r_met(m_id): coeff
-                            for m_id, coeff in rxn.stoichiometry.items()
-                        }
+                        new_stoichiometry = {r_met(m_id): coeff for m_id, coeff in rxn.stoichiometry.items()}
                     else:
                         new_stoichiometry = {
-                            r_met(m_id, False)
-                            if r_met(m_id, False) in self.ext_mets
-                            else r_met(m_id): coeff
+                            r_met(m_id, False) if r_met(m_id, False) in self.ext_mets else r_met(m_id): coeff
                             for m_id, coeff in rxn.stoichiometry.items()
                         }
                     # assumes that the models' objective is the biomass
@@ -466,11 +447,7 @@ class CommunityModel:
 
         # Add exchange reactions
         for m_id in self.ext_mets:
-            m = (
-                m_id[len(self._comm_model._m_prefix) :]
-                if m_id.startswith(self._comm_model._m_prefix)
-                else m_id
-            )
+            m = m_id[len(self._comm_model._m_prefix) :] if m_id.startswith(self._comm_model._m_prefix) else m_id
             r_id = f"{self._comm_model._r_prefix}EX_{m}"
             self._comm_model.add_reaction(
                 r_id,
@@ -485,8 +462,7 @@ class CommunityModel:
             # if the biomasses are to be merged add
             # a new product to each organism biomass
             biomass_stoichiometry = {
-                met: -1 * self.organisms_abundance[org_id]
-                for org_id, met in self.organisms_biomass_metabolite.items()
+                met: -1 * self.organisms_abundance[org_id] for org_id, met in self.organisms_biomass_metabolite.items()
             }
         else:
             biomass_stoichiometry = {biomass_id: -1}

@@ -1,9 +1,10 @@
 from collections import defaultdict
-from typing import Union, TYPE_CHECKING, Dict, Tuple, Optional, Sequence
+from typing import TYPE_CHECKING, Dict, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 
 from mewpy.util.constants import ModelConstants
+
 from .analysis_utils import run_method_and_decode
 from .coregflux import CoRegFlux
 from .prom import PROM
@@ -11,16 +12,17 @@ from .rfba import RFBA
 from .srfba import SRFBA
 
 if TYPE_CHECKING:
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+    from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 
-INTEGRATED_ANALYSIS_METHODS = {'rfba': RFBA,
-                               'srfba': SRFBA}
+INTEGRATED_ANALYSIS_METHODS = {"rfba": RFBA, "srfba": SRFBA}
 
 
-def slim_rfba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-              initial_state: Dict[str, float] = None,
-              objective: Union[str, Dict[str, float]] = None,
-              constraints: Dict[str, Tuple[float, float]] = None) -> Optional[float]:
+def slim_rfba(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    initial_state: Dict[str, float] = None,
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> Optional[float]:
     """
     A Regulatory Flux Balance Analysis (RFBA) simulation of an integrated Metabolic-Regulatory model.
     A slim analysis produces a single and simple solution for the model. This method returns the objective value of
@@ -41,15 +43,18 @@ def slim_rfba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     """
     rfba = RFBA(model).build()
 
-    objective_value, _ = run_method_and_decode(method=rfba, objective=objective, constraints=constraints,
-                                               initial_state=initial_state)
+    objective_value, _ = run_method_and_decode(
+        method=rfba, objective=objective, constraints=constraints, initial_state=initial_state
+    )
     return objective_value
 
 
-def slim_srfba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-               initial_state: Dict[str, float] = None,
-               objective: Union[str, Dict[str, float]] = None,
-               constraints: Dict[str, Tuple[float, float]] = None) -> Optional[float]:
+def slim_srfba(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    initial_state: Dict[str, float] = None,
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> Optional[float]:
     """
     A Synchronous Regulatory Flux Balance Analysis (SRFBA) simulation of an integrated Metabolic-Regulatory model.
     A slim analysis produces a single and simple solution for the model. This method returns the objective value of
@@ -68,16 +73,19 @@ def slim_srfba(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     """
     srfba = SRFBA(model).build()
 
-    objective_value, _ = run_method_and_decode(method=srfba, objective=objective, constraints=constraints,
-                                               initial_state=initial_state)
+    objective_value, _ = run_method_and_decode(
+        method=srfba, objective=objective, constraints=constraints, initial_state=initial_state
+    )
     return objective_value
 
 
-def slim_prom(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-              initial_state: Dict[Tuple[str, str], float] = None,
-              regulator: str = None,
-              objective: Union[str, Dict[str, float]] = None,
-              constraints: Dict[str, Tuple[float, float]] = None) -> Optional[float]:
+def slim_prom(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    initial_state: Dict[Tuple[str, str], float] = None,
+    regulator: str = None,
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> Optional[float]:
     """
     A Probabilistic Regulation of Metabolism (PROM) simulation of an integrated Metabolic-Regulatory model.
     A slim analysis produces a single and simple solution for the model. This method returns the objective value of
@@ -102,15 +110,18 @@ def slim_prom(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
 
     prom = PROM(model).build()
 
-    objective_value, _ = run_method_and_decode(method=prom, objective=objective, constraints=constraints,
-                                               initial_state=initial_state, regulators=regulator)
+    objective_value, _ = run_method_and_decode(
+        method=prom, objective=objective, constraints=constraints, initial_state=initial_state, regulators=regulator
+    )
     return objective_value
 
 
-def slim_coregflux(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                   initial_state: Dict[str, float] = None,
-                   objective: Union[str, Dict[str, float]] = None,
-                   constraints: Dict[str, Tuple[float, float]] = None) -> Optional[float]:
+def slim_coregflux(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    initial_state: Dict[str, float] = None,
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+) -> Optional[float]:
     """
     A CoRegFlux simulation of an integrated Metabolic-Regulatory model.
     A slim analysis produces a single and simple solution for the model. This method returns the objective value of
@@ -130,18 +141,21 @@ def slim_coregflux(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     :return: the objective value of the simulation
     """
     co_reg_flux = CoRegFlux(model).build()
-    objective_value, _ = run_method_and_decode(method=co_reg_flux, objective=objective, constraints=constraints,
-                                               initial_state=initial_state)
+    objective_value, _ = run_method_and_decode(
+        method=co_reg_flux, objective=objective, constraints=constraints, initial_state=initial_state
+    )
     return objective_value
 
 
-def ifva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-         fraction: float = 1.0,
-         reactions: Sequence[str] = None,
-         objective: Union[str, Dict[str, float]] = None,
-         constraints: Dict[str, Tuple[float, float]] = None,
-         initial_state: Dict[str, float] = None,
-         method: str = 'srfba') -> pd.DataFrame:
+def ifva(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    fraction: float = 1.0,
+    reactions: Sequence[str] = None,
+    objective: Union[str, Dict[str, float]] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+    initial_state: Dict[str, float] = None,
+    method: str = "srfba",
+) -> pd.DataFrame:
     """
     Integrated Flux Variability Analysis (iFVA) of an integrated Metabolic-Regulatory model.
     iFVA is a flux variability analysis method that considers:
@@ -169,7 +183,7 @@ def ifva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
         reactions = model.reactions.keys()
 
     if objective:
-        if hasattr(objective, 'keys'):
+        if hasattr(objective, "keys"):
             obj = next(iter(objective.keys()))
         else:
             obj = str(objective)
@@ -183,8 +197,9 @@ def ifva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     LP = INTEGRATED_ANALYSIS_METHODS[method]
 
     _lp = LP(model).build()
-    objective_value, _ = run_method_and_decode(method=_lp, objective=objective, constraints=constraints,
-                                               initial_state=initial_state)
+    objective_value, _ = run_method_and_decode(
+        method=_lp, objective=objective, constraints=constraints, initial_state=initial_state
+    )
     constraints[obj] = (fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND)
 
     lp = LP(model).build()
@@ -197,14 +212,16 @@ def ifva(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
         max_val, _ = run_method_and_decode(method=lp, objective={rxn: 1.0}, constraints=constraints, minimize=False)
         result[rxn].append(max_val)
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['minimum', 'maximum'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["minimum", "maximum"])
 
 
-def isingle_gene_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                          genes: Sequence[str] = None,
-                          constraints: Dict[str, Tuple[float, float]] = None,
-                          initial_state: Dict[str, float] = None,
-                          method: str = 'srfba') -> pd.DataFrame:
+def isingle_gene_deletion(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    genes: Sequence[str] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+    initial_state: Dict[str, float] = None,
+    method: str = "srfba",
+) -> pd.DataFrame:
     """
     Integrated single gene deletion analysis of an integrated Metabolic-Regulatory model.
     Integrated single gene deletion analysis is a method to determine the effect of deleting each gene
@@ -245,14 +262,16 @@ def isingle_gene_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryMod
         else:
             initial_state.pop(gene)
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['growth', 'status'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])
 
 
-def isingle_reaction_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                              reactions: Sequence[str] = None,
-                              constraints: Dict[str, Tuple[float, float]] = None,
-                              initial_state: Dict[str, float] = None,
-                              method: str = 'srfba') -> pd.DataFrame:
+def isingle_reaction_deletion(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    reactions: Sequence[str] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+    initial_state: Dict[str, float] = None,
+    method: str = "srfba",
+) -> pd.DataFrame:
     """
     Integrated single reaction deletion analysis of an integrated Metabolic-Regulatory model.
     Integrated single reaction deletion analysis is a method to determine the effect of deleting each reaction
@@ -292,14 +311,16 @@ def isingle_reaction_deletion(model: Union['Model', 'MetabolicModel', 'Regulator
         else:
             constraints.pop(reaction)
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['growth', 'status'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])
 
 
-def isingle_regulator_deletion(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                               regulators: Sequence[str] = None,
-                               constraints: Dict[str, Tuple[float, float]] = None,
-                               initial_state: Dict[str, float] = None,
-                               method: str = 'srfba') -> pd.DataFrame:
+def isingle_regulator_deletion(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    regulators: Sequence[str] = None,
+    constraints: Dict[str, Tuple[float, float]] = None,
+    initial_state: Dict[str, float] = None,
+    method: str = "srfba",
+) -> pd.DataFrame:
     """
     Integrated single regulator deletion analysis of a regulatory model.
     Integrated single regulator deletion analysis is a method to determine the effect of deleting each regulator
@@ -342,11 +363,12 @@ def isingle_regulator_deletion(model: Union['Model', 'MetabolicModel', 'Regulato
         else:
             initial_state.pop(regulator)
 
-    return pd.DataFrame.from_dict(data=result, orient='index', columns=['growth', 'status'])
+    return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])
 
 
-def _decode_initial_state(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                          state: Dict[str, float]) -> Dict[str, float]:
+def _decode_initial_state(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"], state: Dict[str, float]
+) -> Dict[str, float]:
     """
     Method responsible for retrieving the initial state of the model.
     The initial state is the state of all regulators found in the Metabolic-Regulatory model.
@@ -375,8 +397,9 @@ def _decode_initial_state(model: Union['Model', 'MetabolicModel', 'RegulatoryMod
     return initial_state
 
 
-def _decode_interactions(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                         state: Dict[str, float]) -> Dict[str, float]:
+def _decode_interactions(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"], state: Dict[str, float]
+) -> Dict[str, float]:
     """
     Decodes the state of the model to a dictionary with the state of each gene.
     :param model: the model to be decoded
@@ -400,8 +423,9 @@ def _decode_interactions(model: Union['Model', 'MetabolicModel', 'RegulatoryMode
     return target_state
 
 
-def _decode_gprs(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                 state: Dict[str, float]) -> Dict[str, float]:
+def _decode_gprs(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"], state: Dict[str, float]
+) -> Dict[str, float]:
     """
     Decodes the state of the model to a dictionary with the state of each reaction.
     :param model: the model to be decoded
@@ -423,10 +447,12 @@ def _decode_gprs(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
     return reaction_state
 
 
-def find_conflicts(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                   strategy: str = 'two-step',
-                   constraints: Dict[str, Tuple[float, float]] = None,
-                   initial_state: Dict[str, float] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def find_conflicts(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
+    strategy: str = "two-step",
+    constraints: Dict[str, Tuple[float, float]] = None,
+    initial_state: Dict[str, float] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     It finds conflicts between the regulatory and metabolic states of an integrated GERM model.
     Setting up the regulators' initial state in integrated models is a difficult task. Most of the time,
@@ -469,27 +495,32 @@ def find_conflicts(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
 
     # 1. it performs a FBA simulation to find the optimal growth rate
     from mewpy.germ.analysis import FBA
-    solution = FBA(model).build().optimize(solver_kwargs={'constraints': constraints})
+
+    solution = FBA(model).build().optimize(solver_kwargs={"constraints": constraints})
 
     if not solution.objective_value:
-        raise RuntimeError('FBA solution is not feasible (objective value is 0). To find inconsistencies, '
-                           'the metabolic model must be feasible.')
+        raise RuntimeError(
+            "FBA solution is not feasible (objective value is 0). To find inconsistencies, "
+            "the metabolic model must be feasible."
+        )
 
     # 2. it performs an essential genes analysis using FBA
     from mewpy.germ.analysis.metabolic_analysis import single_gene_deletion
+
     gene_deletion = single_gene_deletion(model, constraints=constraints)
-    essential_genes = gene_deletion[gene_deletion['growth'] < ModelConstants.TOLERANCE]
+    essential_genes = gene_deletion[gene_deletion["growth"] < ModelConstants.TOLERANCE]
 
     from mewpy.germ.analysis.metabolic_analysis import single_reaction_deletion
+
     reaction_deletion = single_reaction_deletion(model, constraints=constraints)
-    essential_reactions = reaction_deletion[reaction_deletion['growth'] < ModelConstants.TOLERANCE]
+    essential_reactions = reaction_deletion[reaction_deletion["growth"] < ModelConstants.TOLERANCE]
 
     state = _decode_initial_state(model, initial_state)
 
     # noinspection PyTypeChecker
     regulatory_state = _decode_interactions(model, state)
 
-    if strategy == 'two-step':
+    if strategy == "two-step":
         regulatory_state = {gene: value for gene, value in regulatory_state.items() if model.get(gene).is_regulator()}
         regulatory_state = {**state, **regulatory_state}
         # noinspection PyTypeChecker
@@ -513,7 +544,7 @@ def find_conflicts(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
             # noinspection PyUnresolvedReferences
             repressed_gene = {regulator: regulatory_state[regulator] for regulator in gene.regulators}
             # noinspection PyUnresolvedReferences
-            repressed_gene['interaction'] = str(gene.interaction)
+            repressed_gene["interaction"] = str(gene.interaction)
         else:
             repressed_gene = {}
 
@@ -522,7 +553,7 @@ def find_conflicts(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
 
     if repressed_genes:
         repressed_genes = pd.concat(repressed_genes)
-        cols = ['interaction'] + [col for col in repressed_genes.columns if col != 'interaction']
+        cols = ["interaction"] + [col for col in repressed_genes.columns if col != "interaction"]
         repressed_genes = repressed_genes[cols]
     else:
         repressed_genes = pd.DataFrame()
@@ -532,14 +563,14 @@ def find_conflicts(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
         reaction = model.reactions[reaction]
 
         repressed_reaction = {gene: metabolic_state[gene] for gene in reaction.genes}
-        repressed_reaction['gpr'] = reaction.gene_protein_reaction_rule
+        repressed_reaction["gpr"] = reaction.gene_protein_reaction_rule
 
         df = pd.DataFrame(repressed_reaction, index=[reaction.id])
         repressed_reactions.append(df)
 
     if repressed_reactions:
         repressed_reactions = pd.concat(repressed_reactions)
-        cols = ['gpr'] + [col for col in repressed_reactions.columns if col != 'gpr']
+        cols = ["gpr"] + [col for col in repressed_reactions.columns if col != "gpr"]
         repressed_reactions = repressed_reactions[cols]
     else:
         repressed_reactions = pd.DataFrame()

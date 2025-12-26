@@ -1,12 +1,13 @@
-from typing import Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
 
     from io import TextIOWrapper
 
-    from mewpy.io.engines.engine import Engine
     from cobra import Model as Cobra_Model
     from reframed import CBModel as Reframed_Model
+
+    from mewpy.io.engines.engine import Engine
 
 
 class Builder:
@@ -29,7 +30,7 @@ class Builder:
         self._context = False
 
     @property
-    def engine(self) -> 'Engine':
+    def engine(self) -> "Engine":
         """
         Returns the engine associated with this builder
         :return: engine
@@ -37,7 +38,7 @@ class Builder:
         return self._engine
 
     @property
-    def io(self) -> Union[str, 'TextIOWrapper', 'Cobra_Model', 'Reframed_Model']:
+    def io(self) -> Union[str, "TextIOWrapper", "Cobra_Model", "Reframed_Model"]:
         """
         Returns the IO associated with this builder
         :return: IO
