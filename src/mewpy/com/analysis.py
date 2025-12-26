@@ -22,7 +22,7 @@ Author: Vitor Pereira
 from collections import Counter
 from itertools import chain, combinations
 from math import inf, isinf
-from typing import List, Union
+from typing import Dict, List, Optional, Tuple, Union
 from warnings import warn
 
 import pandas as pd
@@ -37,7 +37,78 @@ from mewpy.util import AttrDict
 from mewpy.util.constants import ModelConstants
 
 
-def sc_score(community, environment=None, min_growth=0.1, n_solutions=100, verbose=True, abstol=1e-6, use_pool=True):
+# Constants for SMETANA algorithms
+# Numerical tolerances
+DEFAULT_ABS_TOL = 1e-6  # Absolute tolerance for detecting non-zero fluxes
+DEFAULT_REL_TOL = 1e-4  # Relative tolerance for convergence (0.01%)
+
+# Optimization parameters
+DEFAULT_MIN_GROWTH = 0.1  # Minimum growth rate for community viability
+DEFAULT_MAX_UPTAKE = 10.0  # Maximum uptake rate for metabolites
+DEFAULT_N_SOLUTIONS = 100  # Number of alternative solutions to explore
+DEFAULT_POOL_GAP = 0.5  # Solution pool optimality gap
+
+# Big-M method defaults
+DEFAULT_BIGM_MIN = 1000  # Minimum BigM value
+DEFAULT_BIGM_MAX = 1e6  # Maximum BigM value to avoid numerical instability
+DEFAULT_BIGM_SAFETY_FACTOR = 10  # Safety margin multiplier for BigM calculation
+
+
+# Helper functions for metabolite name extraction
+def _get_exchange_metabolite(sim, r_id: str) -> str:
+    """
+    Get the metabolite ID from an exchange reaction.
+
+    Args:
+        sim: Simulator instance
+        r_id: Reaction ID
+
+    Returns:
+        str: Metabolite ID
+    """
+    return list(sim.get_reaction_metabolites(r_id).keys())[0]
+
+
+def _get_original_metabolite_id(community: CommunityModel, met_id: str) -> Optional[str]:
+    """
+    Get original metabolite ID from community metabolite map.
+
+    Args:
+        community: CommunityModel instance
+        met_id: Mapped metabolite ID
+
+    Returns:
+        Original metabolite ID if found, None otherwise
+    """
+    for k, v in community.metabolite_map.items():
+        if v == met_id:
+            return k[1]
+    return None
+
+
+def _trim_metabolite_prefix(sim, met_id: str) -> str:
+    """
+    Trim metabolite ID prefix and extract base name.
+
+    Args:
+        sim: Simulator instance
+        met_id: Metabolite ID
+
+    Returns:
+        Trimmed metabolite ID (first part after prefix)
+    """
+    return met_id[len(sim._m_prefix):].split("_")[0]
+
+
+def sc_score(
+    community: CommunityModel,
+    environment: Optional[Environment] = None,
+    min_growth: float = DEFAULT_MIN_GROWTH,
+    n_solutions: int = DEFAULT_N_SOLUTIONS,
+    verbose: bool = True,
+    abstol: float = DEFAULT_ABS_TOL,
+    use_pool: bool = True
+) -> Optional[Dict[str, Optional[Dict[str, float]]]]:
     """
     Calculate frequency of community species dependency on each other
     Zelezniak A. et al, Metabolic dependencies drive species co-occurrence in diverse microbial communities (PNAS 2015)
@@ -160,17 +231,17 @@ def sc_score(community, environment=None, min_growth=0.1, n_solutions=100, verbo
 
 
 def mu_score(
-    community,
-    environment=None,
-    min_mol_weight=False,
-    min_growth=0.1,
-    max_uptake=10.0,
-    abstol=1e-6,
-    validate=False,
-    n_solutions=100,
-    pool_gap=0.5,
-    verbose=True,
-):
+    community: CommunityModel,
+    environment: Optional[Environment] = None,
+    min_mol_weight: bool = False,
+    min_growth: float = 0.1,
+    max_uptake: float = 10.0,
+    abstol: float = 1e-6,
+    validate: bool = False,
+    n_solutions: int = 100,
+    pool_gap: float = 0.5,
+    verbose: bool = True,
+) -> Optional[Dict[str, Dict[str, float]]]:
     """
     Calculate frequency of metabolite requirement for species growth
     Zelezniak A. et al, Metabolic dependencies drive species co-occurrence in diverse microbial communities (PNAS 2015)
@@ -190,12 +261,11 @@ def mu_score(
     community.add_compartments = True
     sim = community.get_community_model()
 
+    # Helper function using module-level utilities
     def ex_met(r_id, original=False):
-        met = list(sim.get_reaction_metabolites(r_id).keys())[0]
+        met = _get_exchange_metabolite(sim, r_id)
         if original:
-            for k, v in community.metabolite_map.items():
-                if v == met:
-                    return k[1]
+            return _get_original_metabolite_id(community, met)
         else:
             return met
 
@@ -240,7 +310,11 @@ def mu_score(
     return scores
 
 
-def mp_score(community, environment=None, abstol=1e-6):
+def mp_score(
+    community: CommunityModel,
+    environment: Optional[Environment] = None,
+    abstol: float = 1e-6
+) -> Dict[str, Dict[str, int]]:
     """
     Discover metabolites which species can produce in community
     Zelezniak A. et al, Metabolic dependencies drive species co-occurrence in diverse microbial communities (PNAS 2015)
@@ -257,12 +331,11 @@ def mp_score(community, environment=None, abstol=1e-6):
     community.add_compartments = True
     sim = community.get_community_model()
 
+    # Helper function using module-level utilities
     def ex_met(r_id, original=False):
-        met = list(sim.get_reaction_metabolites(r_id).keys())[0]
+        met = _get_exchange_metabolite(sim, r_id)
         if original:
-            for k, v in community.metabolite_map.items():
-                if v == met:
-                    return k[1]
+            return _get_original_metabolite_id(community, met)
         else:
             return met
 
@@ -350,10 +423,11 @@ def mip_score(
     community.add_compartments = True
     sim = community.get_community_model()
 
+    # Helper function using module-level utilities
     def ex_met(r_id, trim=False):
-        met = list(sim.get_reaction_metabolites(r_id).keys())[0]
+        met = _get_exchange_metabolite(sim, r_id)
         if trim:
-            return met[len(sim._m_prefix) :].split("_")[0]
+            return _trim_metabolite_prefix(sim, met)
         else:
             return met
 
@@ -447,10 +521,11 @@ def mro_score(
     community.add_compartments = True
     sim = community.get_community_model()
 
+    # Helper function using module-level utilities
     def ex_met(r_id, trim=False):
-        met = list(sim.get_reaction_metabolites(r_id).keys())[0]
+        met = _get_exchange_metabolite(sim, r_id)
         if trim:
-            return met[len(sim._m_prefix) :].split("_")[0]
+            return _trim_metabolite_prefix(sim, met)
         else:
             return met
 

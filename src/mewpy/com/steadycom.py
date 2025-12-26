@@ -209,8 +209,12 @@ def build_problem(community, growth=1, bigM=None):
         if r_id in sim.get_exchange_reactions():
             solver.add_variable(r_id, reaction.lb, reaction.ub, update=False)
         else:
-            lb = -inf if reaction.lb < 0 else 0
-            ub = inf if reaction.ub > 0 else 0
+            # For internal reactions, use tighter bounds based on original reaction bounds
+            # Since fluxes are scaled by abundance (v = X * flux) and X <= 1,
+            # we can use the original bounds directly (multiplied by max abundance = 1)
+            # This provides better numerical conditioning than using (-inf, inf)
+            lb = reaction.lb if not isinf(reaction.lb) else (-bigM if reaction.lb < 0 else 0)
+            ub = reaction.ub if not isinf(reaction.ub) else (bigM if reaction.ub > 0 else 0)
             solver.add_variable(r_id, lb, ub, update=False)
 
     solver.update()
