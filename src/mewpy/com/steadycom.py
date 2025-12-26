@@ -29,6 +29,57 @@ from mewpy.util.constants import ModelConstants
 from mewpy.util.utilities import molecular_weight
 
 
+def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=10):
+    """
+    Calculate an appropriate BigM value for SteadyCom based on model characteristics.
+
+    BigM is used in SteadyCom constraints to handle reactions with infinite bounds.
+    The value must be:
+    - Large enough to not artificially constrain fluxes
+    - Small enough to avoid numerical instability in LP solvers
+    - Appropriate for the specific models in the community
+
+    Algorithm:
+    1. Find maximum finite flux bound across all organisms
+    2. Apply safety factor (default 10x)
+    3. Clamp between min_value and max_value
+
+    Args:
+        community (CommunityModel): The community model
+        min_value (float): Minimum BigM value (default 1000)
+        max_value (float): Maximum BigM value to avoid numerical issues (default 1e6)
+        safety_factor (float): Multiplier for max bound (default 10)
+
+    Returns:
+        float: Calculated BigM value
+
+    Example:
+        If max reaction bound is 100, with safety_factor=10:
+        BigM = min(1000 * 10, 1e6) = min(10000, 1e6) = 10000
+    """
+    max_bound = 0.0
+
+    for org_id, organism in community.organisms.items():
+        for r_id in organism.reactions:
+            reaction = organism.get_reaction(r_id)
+
+            # Check lower bound
+            if not isinf(reaction.lb) and abs(reaction.lb) > max_bound:
+                max_bound = abs(reaction.lb)
+
+            # Check upper bound
+            if not isinf(reaction.ub) and abs(reaction.ub) > max_bound:
+                max_bound = abs(reaction.ub)
+
+    # Apply safety factor
+    calculated_bigM = max_bound * safety_factor
+
+    # Clamp to reasonable range
+    bigM = max(min_value, min(calculated_bigM, max_value))
+
+    return bigM
+
+
 def SteadyCom(community, constraints=None, solver=None):
     """Implementation of SteadyCom (Chan et al 2017). Adapted from REFRAMED
     Args:
@@ -89,19 +140,60 @@ def SteadyComVA(community, obj_frac=1.0, constraints=None, solver=None):
     return variability
 
 
-def build_problem(community, growth=1, bigM=1000):
-    """_summary_
+def build_problem(community, growth=1, bigM=None):
+    """
+    Build the SteadyCom optimization problem.
+
+    Constructs the LP/MILP formulation for SteadyCom as described in Chan et al. 2017.
+    The formulation uses Big-M constraints to enforce abundance-scaled flux bounds:
+    lb_ij * X_i <= v_ij <= ub_ij * X_i
 
     Args:
-        community (_type_): _description_
-        growth (int, optional): _description_. Defaults to 1.
-        bigM (int, optional): _description_. Defaults to 1000.
+        community (CommunityModel): The community model to optimize
+        growth (float): Initial growth rate value for binary search. Defaults to 1.
+        bigM (float, optional): Big-M value for reactions with infinite bounds.
+            If None (default), automatically calculates based on model characteristics
+            using calculate_bigM(). Manual values should be chosen carefully:
+            - Too small: artificially constrains fluxes, may cause infeasibility
+            - Too large: numerical instability in LP solver
+            Recommended: Use automatic calculation (bigM=None)
 
     Returns:
-        _type_: _description_
+        Solver: Configured solver instance with SteadyCom problem formulation
+            - Variables: x_{org_id} (abundances), reaction fluxes
+            - Constraints: abundance sum = 1, mass balance, growth coupling, flux bounds
+            - Method: solver.update_growth(value) to update growth parameter
+
+    Note:
+        The BigM value is critical for correct results. Different BigM values can
+        yield different abundance predictions. The automatic calculation (bigM=None)
+        analyzes the model to choose an appropriate value.
+
+    Reference:
+        Chan, S. H. J., et al. (2017). SteadyCom: Predicting microbial abundances
+        while ensuring community stability. PLoS Computational Biology, 13(5), e1005539.
     """
-    # TODO : Check why different bigM yield different results.
-    # What's the proper value?
+    # Calculate BigM automatically if not provided
+    if bigM is None:
+        bigM = calculate_bigM(community)
+
+    # Validate BigM is reasonable
+    if bigM < 100:
+        warn(
+            f"BigM value ({bigM}) is very small and may artificially constrain fluxes. "
+            "This could lead to incorrect abundance predictions or infeasibility. "
+            "Consider using a larger value or automatic calculation (bigM=None).",
+            UserWarning,
+            stacklevel=2,
+        )
+    elif bigM > 1e7:
+        warn(
+            f"BigM value ({bigM}) is very large and may cause numerical instability. "
+            "This could lead to inaccurate solutions. "
+            "Consider using a smaller value or automatic calculation (bigM=None).",
+            UserWarning,
+            stacklevel=2,
+        )
 
     solver = solver_instance()
     community.add_compartments = False
@@ -117,8 +209,12 @@ def build_problem(community, growth=1, bigM=1000):
         if r_id in sim.get_exchange_reactions():
             solver.add_variable(r_id, reaction.lb, reaction.ub, update=False)
         else:
-            lb = -inf if reaction.lb < 0 else 0
-            ub = inf if reaction.ub > 0 else 0
+            # For internal reactions, use tighter bounds based on original reaction bounds
+            # Since fluxes are scaled by abundance (v = X * flux) and X <= 1,
+            # we can use the original bounds directly (multiplied by max abundance = 1)
+            # This provides better numerical conditioning than using (-inf, inf)
+            lb = reaction.lb if not isinf(reaction.lb) else (-bigM if reaction.lb < 0 else 0)
+            ub = reaction.ub if not isinf(reaction.ub) else (bigM if reaction.ub > 0 else 0)
             solver.add_variable(r_id, lb, ub, update=False)
 
     solver.update()
@@ -166,17 +262,57 @@ def build_problem(community, growth=1, bigM=1000):
     return solver
 
 
-def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30, abs_tol=1e-3, constraints=None):
+def binary_search(
+    solver,
+    objective,
+    obj_frac=1,
+    minimize=False,
+    max_iters=30,
+    abs_tol=1e-6,
+    rel_tol=1e-4,
+    constraints=None,
+    raise_on_fail=False,
+):
+    """
+    Binary search to find maximum community growth rate.
+
+    Args:
+        solver: Solver instance with update_growth method
+        objective: Objective dictionary
+        obj_frac: Fraction of optimal growth to use (default 1.0)
+        minimize: Whether to minimize objective (default False)
+        max_iters: Maximum iterations (default 30)
+        abs_tol: Absolute tolerance for convergence (default 1e-6)
+        rel_tol: Relative tolerance for convergence (default 1e-4, i.e., 0.01%)
+        constraints: Additional constraints
+        raise_on_fail: Raise exception on non-convergence (default False for backward compatibility)
+
+    Returns:
+        Solution object
+
+    Raises:
+        RuntimeError: If raise_on_fail=True and binary search does not converge
+        ValueError: If community has no feasible growth (all attempts infeasible)
+    """
     previous_value = 0
     value = 1
     fold = 2
     feasible = False
     last_feasible = 0
+    converged = False
 
     for i in range(max_iters):
         diff = value - previous_value
 
-        if diff < abs_tol:
+        # Check convergence with both absolute and relative tolerance
+        # Use absolute tolerance for small growth rates, relative for large
+        if last_feasible > 0:
+            rel_diff = abs(diff) / last_feasible
+            if abs(diff) < abs_tol or rel_diff < rel_tol:
+                converged = True
+                break
+        elif abs(diff) < abs_tol:
+            converged = True
             break
 
         if feasible:
@@ -193,14 +329,33 @@ def binary_search(solver, objective, obj_frac=1, minimize=False, max_iters=30, a
 
         feasible = sol.status == Status.OPTIMAL
 
+    # Check if we found any feasible solution
+    if last_feasible == 0:
+        raise ValueError(
+            "Community has no viable growth rate (all attempts infeasible). "
+            "Check that organisms can grow and have compatible metabolic capabilities."
+        )
+
+    # Final solve at optimal growth rate
     if feasible:
         solver.update_growth(obj_frac * value)
     else:
         solver.update_growth(obj_frac * last_feasible)
     sol = solver.solve(objective, minimize=minimize, constraints=constraints)
 
-    if i == max_iters - 1:
-        warn("Max iterations exceeded.")
+    # Handle non-convergence
+    if not converged:
+        msg = (
+            f"Binary search did not converge in {max_iters} iterations. "
+            f"Last feasible growth: {last_feasible:.6f}, "
+            f"difference: {abs(diff):.2e}, "
+            f"relative difference: {abs(diff)/last_feasible if last_feasible > 0 else 'N/A'}. "
+            f"Consider increasing max_iters or adjusting tolerance."
+        )
+        if raise_on_fail:
+            raise RuntimeError(msg)
+        else:
+            warn(msg)
 
     return sol
 
