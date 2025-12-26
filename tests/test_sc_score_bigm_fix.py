@@ -34,12 +34,7 @@ class TestSCScoreBigMFix(unittest.TestCase):
     def test_sc_score_runs_without_error(self):
         """Test that SC score completes without errors."""
         scores = sc_score(
-            self.community,
-            environment=None,
-            min_growth=0.01,
-            n_solutions=10,
-            verbose=False,
-            use_pool=True
+            self.community, environment=None, min_growth=0.01, n_solutions=10, verbose=False, use_pool=True
         )
 
         self.assertIsNotNone(scores, "SC score should not return None")
@@ -47,12 +42,7 @@ class TestSCScoreBigMFix(unittest.TestCase):
     def test_sc_score_returns_valid_values(self):
         """Test that SC score returns values in valid range [0, 1]."""
         scores = sc_score(
-            self.community,
-            environment=None,
-            min_growth=0.01,
-            n_solutions=10,
-            verbose=False,
-            use_pool=True
+            self.community, environment=None, min_growth=0.01, n_solutions=10, verbose=False, use_pool=True
         )
 
         for org_id, org_scores in scores.items():
@@ -64,20 +54,14 @@ class TestSCScoreBigMFix(unittest.TestCase):
     def test_identical_organisms_low_dependency(self):
         """Test that identical organisms in same environment have low mutual dependency."""
         scores = sc_score(
-            self.community,
-            environment=None,
-            min_growth=0.01,
-            n_solutions=10,
-            verbose=False,
-            use_pool=True
+            self.community, environment=None, min_growth=0.01, n_solutions=10, verbose=False, use_pool=True
         )
 
         # For identical organisms that can both grow independently,
         # dependency should be very low (close to 0)
         for org_id, org_scores in scores.items():
             for other_org, score in org_scores.items():
-                self.assertLess(score, 0.5,
-                                f"Identical organisms should have low dependency, got {score}")
+                self.assertLess(score, 0.5, f"Identical organisms should have low dependency, got {score}")
 
 
 if __name__ == "__main__":

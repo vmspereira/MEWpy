@@ -32,8 +32,7 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
         community = CommunityModel([model1, model2])
 
         # Should default to False
-        self.assertFalse(community.balance_exchanges,
-                         "balance_exchange should default to False")
+        self.assertFalse(community.balance_exchanges, "balance_exchange should default to False")
 
     def test_balance_exchange_explicit_false_no_warning(self):
         """Test that balance_exchange=False does not trigger warning."""
@@ -52,8 +51,9 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
 
             # Check no DeprecationWarning was raised
             deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-            self.assertEqual(len(deprecation_warnings), 0,
-                             "No deprecation warning should be raised when balance_exchange=False")
+            self.assertEqual(
+                len(deprecation_warnings), 0, "No deprecation warning should be raised when balance_exchange=False"
+            )
 
     def test_balance_exchange_true_triggers_warning(self):
         """Test that balance_exchange=True triggers DeprecationWarning."""
@@ -72,8 +72,9 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
 
             # Check that DeprecationWarning was raised
             deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-            self.assertGreater(len(deprecation_warnings), 0,
-                               "DeprecationWarning should be raised when balance_exchange=True")
+            self.assertGreater(
+                len(deprecation_warnings), 0, "DeprecationWarning should be raised when balance_exchange=True"
+            )
 
             # Check warning message content
             warning_msg = str(deprecation_warnings[0].message)
@@ -99,8 +100,9 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
 
             # Check that DeprecationWarning was raised
             deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-            self.assertGreater(len(deprecation_warnings), 0,
-                               "DeprecationWarning should be raised when setting balance_exchanges=True")
+            self.assertGreater(
+                len(deprecation_warnings), 0, "DeprecationWarning should be raised when setting balance_exchanges=True"
+            )
 
     def test_community_fba_works_with_default_false(self):
         """Test that community FBA works correctly with default balance_exchange=False."""
@@ -120,8 +122,7 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
 
         # Should work and produce positive growth
         self.assertIsNotNone(result)
-        self.assertGreater(result.objective_value, 0,
-                           "Community should grow with balance_exchange=False")
+        self.assertGreater(result.objective_value, 0, "Community should grow with balance_exchange=False")
 
     def test_mass_balance_documentation(self):
         """
