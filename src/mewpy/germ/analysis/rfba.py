@@ -55,19 +55,8 @@ class RFBA(_RegulatoryAnalysisBase):
         Creates the solver instance and sets up the objective function.
         For models without regulatory networks, this is equivalent to FBA.
         """
-        # Get simulator from RegulatoryExtension
-        simulator = self.model.simulator
-
-        # Create solver from simulator
-        self._solver = solver_instance(simulator)
-
-        # Set up objective (always string keys from simulator)
-        self._linear_objective = dict(self.model.objective)
-        self._minimize = False
-
-        # Mark as synchronized
-        self._synchronized = True
-
+        # Use base class build() which handles both RegulatoryExtension and legacy models
+        super().build()
         return self
 
     def decode_regulatory_state(self, state: Dict[str, float]) -> Dict[str, float]:
@@ -81,12 +70,12 @@ class RFBA(_RegulatoryAnalysisBase):
         :return: Dictionary mapping target gene IDs to their resulting states
         """
         # If no regulatory network, return empty dict
-        if not self.model.has_regulatory_network():
+        if not self._has_regulatory_network():
             return {}
 
         # Evaluate all interactions synchronously
         result = {}
-        for interaction in self.model.yield_interactions():
+        for interaction in self._get_interactions():
             # An interaction can have multiple regulatory events
             # (e.g., coefficient 1.0 if condition A, 0.0 otherwise)
             for coefficient, event in interaction.regulatory_events.items():
@@ -127,8 +116,8 @@ class RFBA(_RegulatoryAnalysisBase):
 
         # Evaluate GPRs for all reactions
         for rxn_id in self.model.reactions:
-            # Get cached parsed GPR expression from RegulatoryExtension
-            gpr = self.model.get_parsed_gpr(rxn_id)
+            # Get cached parsed GPR expression
+            gpr = self._get_gpr(rxn_id)
 
             if gpr.is_none:
                 continue
@@ -155,9 +144,9 @@ class RFBA(_RegulatoryAnalysisBase):
         # Initialize all regulators to active (1.0) by default
         state = {}
 
-        if self.model.has_regulatory_network():
+        if self._has_regulatory_network():
             # Get all regulators
-            for reg_id, regulator in self.model.yield_regulators():
+            for reg_id, regulator in self._get_regulators():
                 # Use user-provided state if available, otherwise default to active
                 state[reg_id] = initial_state.get(reg_id, 1.0)
 
@@ -297,7 +286,7 @@ class RFBA(_RegulatoryAnalysisBase):
         new_state = current_state.copy()
 
         # If no regulatory network, return unchanged
-        if not self.model.has_regulatory_network():
+        if not self._has_regulatory_network():
             return new_state
 
         # Update regulator states based on solution

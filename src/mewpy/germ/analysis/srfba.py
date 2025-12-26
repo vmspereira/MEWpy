@@ -54,7 +54,7 @@ class SRFBA(_RegulatoryAnalysisBase):
             return self._model_default_lb
 
         # Get bounds from simulator
-        bounds = [self.model.get_reaction(rxn_id).get('lb', ModelConstants.REACTION_LOWER_BOUND)
+        bounds = [self._get_reaction(rxn_id).get('lb', ModelConstants.REACTION_LOWER_BOUND)
                   for rxn_id in self.model.reactions]
         self._model_default_lb = min(bounds) if bounds else ModelConstants.REACTION_LOWER_BOUND
         return self._model_default_lb
@@ -66,7 +66,7 @@ class SRFBA(_RegulatoryAnalysisBase):
             return self._model_default_ub
 
         # Get bounds from simulator
-        bounds = [self.model.get_reaction(rxn_id).get('ub', ModelConstants.REACTION_UPPER_BOUND)
+        bounds = [self._get_reaction(rxn_id).get('ub', ModelConstants.REACTION_UPPER_BOUND)
                   for rxn_id in self.model.reactions]
         self._model_default_ub = max(bounds) if bounds else ModelConstants.REACTION_UPPER_BOUND
         return self._model_default_ub
@@ -89,7 +89,7 @@ class SRFBA(_RegulatoryAnalysisBase):
         super().build()
 
         # Build GPR and regulatory interaction constraints
-        if self.model.has_regulatory_network():
+        if self._has_regulatory_network():
             self._build_gprs()
             self._build_interactions()
 
@@ -98,16 +98,16 @@ class SRFBA(_RegulatoryAnalysisBase):
     def _build_gprs(self):
         """Build the GPR (Gene-Protein-Reaction) constraints for the solver."""
         for rxn_id in self.model.reactions:
-            gpr = self.model.get_parsed_gpr(rxn_id)
+            gpr = self._get_gpr(rxn_id)
             if not gpr.is_none:
                 # Get reaction bounds from simulator
-                rxn_data = self.model.get_reaction(rxn_id)
+                rxn_data = self._get_reaction(rxn_id)
                 self._add_gpr_constraint(rxn_id, gpr, rxn_data)
 
     def _build_interactions(self):
         """Build the regulatory interaction constraints for the solver."""
-        if self.model.has_regulatory_network():
-            for interaction in self.model.yield_interactions():
+        if self._has_regulatory_network():
+            for interaction in self._get_interactions():
                 self._add_interaction_constraint(interaction)
 
     def _add_gpr_constraint(self, rxn_id: str, gpr, rxn_data: Dict):
@@ -542,7 +542,7 @@ class SRFBA(_RegulatoryAnalysisBase):
             initial_state = {}
 
         # Apply regulatory constraints via initial_state
-        if self.model.has_regulatory_network() and initial_state:
+        if self._has_regulatory_network() and initial_state:
             constraints = solver_kwargs.get('constraints', {})
             constraints.update(initial_state)
             solver_kwargs['constraints'] = constraints

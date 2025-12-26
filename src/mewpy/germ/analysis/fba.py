@@ -64,6 +64,74 @@ class _RegulatoryAnalysisBase:
             # TODO: Implement attach functionality if needed
             pass
 
+    # Backwards compatibility helpers (work with both RegulatoryExtension and legacy models)
+    def _has_regulatory_network(self) -> bool:
+        """Check if model has a regulatory network (works with both model types)."""
+        if hasattr(self.model, 'has_regulatory_network'):
+            return self.model.has_regulatory_network()
+        # Legacy model - check for interactions
+        return hasattr(self.model, 'interactions') and len(self.model.interactions) > 0
+
+    def _get_interactions(self):
+        """Get interactions (works with both model types)."""
+        if hasattr(self.model, 'yield_interactions'):
+            return self.model.yield_interactions()
+        # Legacy model
+        return self.model.interactions.values() if hasattr(self.model, 'interactions') else []
+
+    def _get_regulators(self):
+        """Get regulators (works with both model types)."""
+        if hasattr(self.model, 'yield_regulators'):
+            # RegulatoryExtension yields (id, regulator) tuples
+            # Legacy models yield single Regulator objects
+            # We need to normalize to always return (id, regulator) tuples
+            for item in self.model.yield_regulators():
+                if isinstance(item, tuple) and len(item) == 2:
+                    # Already a tuple (RegulatoryExtension)
+                    yield item
+                else:
+                    # Single Regulator object (legacy model) - wrap in tuple with ID
+                    yield (item.id, item)
+        # Legacy model without yield_regulators (shouldn't happen but handle it)
+        elif hasattr(self.model, 'regulators'):
+            regulators = self.model.regulators
+            # Check if it's a dict
+            if isinstance(regulators, dict):
+                for reg_id, regulator in regulators.items():
+                    yield (reg_id, regulator)
+        # No regulators available
+        return
+
+    def _get_gpr(self, rxn_id):
+        """Get GPR expression (works with both model types)."""
+        if hasattr(self.model, 'get_parsed_gpr'):
+            return self.model.get_parsed_gpr(rxn_id)
+        # Legacy model - get reaction and parse GPR
+        from mewpy.germ.algebra import parse_expression, Expression, Symbol
+        if hasattr(self.model, 'reactions') and rxn_id in self.model.reactions:
+            rxn = self.model.reactions[rxn_id]
+            if hasattr(rxn, 'gpr'):
+                return rxn.gpr
+        # No GPR available
+        return Expression(Symbol('true'), {})
+
+    def _get_reaction(self, rxn_id):
+        """Get reaction data (works with both model types)."""
+        if hasattr(self.model, 'get_reaction'):
+            # RegulatoryExtension - returns dict
+            return self.model.get_reaction(rxn_id)
+        # Legacy model - reactions is a dict of Reaction objects
+        if hasattr(self.model, 'reactions') and rxn_id in self.model.reactions:
+            rxn = self.model.reactions[rxn_id]
+            # Convert Reaction object to dict format
+            return {
+                'id': rxn.id,
+                'lb': rxn.lower_bound if hasattr(rxn, 'lower_bound') else rxn.bounds[0] if hasattr(rxn, 'bounds') else -1000,
+                'ub': rxn.upper_bound if hasattr(rxn, 'upper_bound') else rxn.bounds[1] if hasattr(rxn, 'bounds') else 1000,
+                'gpr': str(rxn.gpr) if hasattr(rxn, 'gpr') else ''
+            }
+        return {'id': rxn_id, 'lb': -1000, 'ub': 1000, 'gpr': ''}
+
     def build(self):
         """
         Build the optimization problem.

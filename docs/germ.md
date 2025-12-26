@@ -23,6 +23,51 @@ The following simulation methods are available in **`mewpy.germ.analysis`** modu
 
 ![](germ_overview.png)
 
+## Architecture Overview
+
+MEWpy's GERM module uses a clean architecture that integrates regulatory networks with external metabolic models (COBRApy or reframed). This design provides:
+
+- **No data duplication**: Metabolic data stays in external simulators (COBRApy/reframed)
+- **Clean separation**: GERM handles regulatory logic only
+- **Flexibility**: Works with any COBRApy or reframed model
+- **Performance**: Simplified code paths, no synchronization overhead
+
+### Model Types
+
+MEWpy supports two ways to work with integrated models:
+
+#### 1. Legacy Models (read_model)
+The `read_model()` function creates integrated models that work out-of-the-box:
+
+```python
+from mewpy.io import read_model, Reader, Engines
+
+gem_reader = Reader(Engines.MetabolicSBML, 'model.xml')
+trn_reader = Reader(Engines.BooleanRegulatoryCSV, 'regulatory.csv', sep=',')
+model = read_model(gem_reader, trn_reader)  # Returns integrated model
+```
+
+#### 2. RegulatoryExtension (Clean Architecture)
+For advanced use cases, wrap external simulators directly:
+
+```python
+import cobra
+from mewpy.simulation import get_simulator
+from mewpy.germ.models import RegulatoryExtension, RegulatoryModel
+
+# Load metabolic model from COBRApy
+cobra_model = cobra.io.read_sbml_model('model.xml')
+simulator = get_simulator(cobra_model)
+
+# Load regulatory network
+regulatory = RegulatoryModel(...)
+
+# Create integrated model
+model = RegulatoryExtension(simulator, regulatory)
+```
+
+**All analysis methods work with both model types!** The implementation automatically detects the model type and adapts accordingly.
+
 ## Reading GERM models
 In this example, we will be using the integrated _E. coli_ core model published by 
 [Orth _et al_, 2010](https://doi.org/10.1128/ecosalplus.10.2.1).
