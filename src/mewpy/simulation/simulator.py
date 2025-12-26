@@ -34,6 +34,7 @@ map_model_simulator = {
     'mewpy.germ.models.regulatory.RegulatoryModel': ('mewpy.simulation.germ', 'Simulation'),
     'mewpy.germ.models.model.MetabolicRegulatoryModel': ('mewpy.simulation.germ', 'Simulation'),
     'mewpy.germ.models.model.RegulatoryMetabolicModel': ('mewpy.simulation.germ', 'Simulation'),
+    'mewpy.germ.models.simulator_model.SimulatorBasedMetabolicModel': ('mewpy.simulation.germ', 'Simulation'),
 }
 
 

@@ -384,7 +384,7 @@ def _decode_interactions(model: Union['Model', 'MetabolicModel', 'RegulatoryMode
     :return: a dictionary with the state of each gene
     """
     target_state = {}
-    for interaction in model.yield_interactions():
+    for _, interaction in model.yield_interactions():
 
         for coefficient, event in interaction.regulatory_events.items():
             if event.is_none:

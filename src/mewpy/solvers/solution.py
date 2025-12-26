@@ -51,13 +51,53 @@ class Solution(object):
     """
 
     def __init__(self, status=Status.UNKNOWN, message=None, fobj=None, values=None,
-                 shadow_prices=None, reduced_costs=None):
+                 shadow_prices=None, reduced_costs=None, method=None, model=None, 
+                 simulator=None, objective_direction='maximize', objective_value=None):
+        # Handle backward compatibility: objective_value is an alias for fobj
+        if objective_value is not None and fobj is None:
+            fobj = objective_value
+        
         self.status = status
         self.message = message
         self.fobj = fobj
-        self.values = values
-        self.shadow_prices = shadow_prices
-        self.reduced_costs = reduced_costs
+        self.values = values or {}
+        self.shadow_prices = shadow_prices or {}
+        self.reduced_costs = reduced_costs or {}
+        # Additional attributes for ModelSolution compatibility
+        self._method = method
+        self._model = model
+        self._simulator = simulator
+        self._objective_direction = objective_direction
+
+    @property
+    def objective_value(self):
+        """Backward compatibility alias for fobj attribute (ModelSolution API)."""
+        return self.fobj
+
+    @property
+    def x(self):
+        """Backward compatibility alias for values attribute (ModelSolution API)."""
+        return self.values
+
+    @property
+    def method(self):
+        """The analysis method used to obtain the solution."""
+        return self._method
+
+    @property
+    def model(self):
+        """The model used to obtain the solution."""
+        return self._model
+
+    @property
+    def simulator(self):
+        """The simulator used to obtain the solution."""
+        return self._simulator
+
+    @property
+    def objective_direction(self):
+        """The direction of the objective function."""
+        return self._objective_direction
 
     def __str__(self):
         return f"Objective: {self.fobj}\nStatus: {self.status.value}\n"
@@ -77,6 +117,37 @@ class Solution(object):
             raise RuntimeError("Pandas is not installed.")
 
         return pd.DataFrame(self.values.values(), columns=["value"], index=self.values.keys())
+
+    def to_series(self):
+        """Convert solution values to pandas Series (ModelSolution compatibility)."""
+        try:
+            import pandas as pd
+        except ImportError:
+            raise RuntimeError("Pandas is not installed.")
+        return pd.Series(self.values)
+
+    def to_frame(self, dimensions=None):
+        """Basic to_frame method for ModelSolution compatibility."""
+        # For basic compatibility, just return the dataframe version
+        return self.to_dataframe()
+
+    @classmethod
+    def from_solver(cls, method, solution, **kwargs):
+        """Create a Solution from another solution object (ModelSolution compatibility)."""
+        minimize = kwargs.pop('minimize', False)
+        objective_direction = 'minimize' if minimize else 'maximize'
+        
+        return cls(
+            status=getattr(solution, 'status', Status.UNKNOWN),
+            message=getattr(solution, 'message', None),
+            fobj=getattr(solution, 'fobj', getattr(solution, 'objective_value', 0)),
+            values=getattr(solution, 'values', {}),
+            shadow_prices=getattr(solution, 'shadow_prices', {}),
+            reduced_costs=getattr(solution, 'reduced_costs', {}),
+            method=method,
+            objective_direction=objective_direction,
+            **kwargs
+        )
 
 def to_simulation_result(model, objective_value, constraints, sim, solution, method=None):
     res = SimulationResult(model.model if isinstance(model, Simulator) else model,

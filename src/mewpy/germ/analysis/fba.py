@@ -1,83 +1,252 @@
+"""
+Internal base class for regulatory analysis methods.
+
+This module provides a minimal base class for regulatory analysis methods
+(RFBA, SRFBA, PROM, CoRegFlux). It is NOT intended for direct use by end users.
+
+For pure FBA without regulatory networks, use the simulator directly:
+    solution = model.simulator.optimize()
+
+Or use COBRApy/reframed FBA implementations directly:
+    solution = cobra_model.optimize()  # COBRApy
+    solution = reframed_model.optimize()  # reframed
+"""
 from typing import Union, Dict
 
-from mewpy.germ.lp import ConstraintContainer, VariableContainer, LinearProblem
-from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.solvers.solution import Solution
-from mewpy.solvers.solver import VarType, Solver
+from mewpy.solvers.solver import Solver
+from mewpy.solvers import solver_instance
 
 
-class FBA(LinearProblem):
+class _RegulatoryAnalysisBase:
+    """
+    Internal base class for regulatory analysis methods.
+
+    This class provides common functionality for regulatory analysis methods:
+    - Solver management
+    - Build pattern (create solver from simulator)
+    - Basic optimization interface
+
+    NOT intended for direct use. For pure FBA, use:
+    - model.simulator.optimize() for RegulatoryExtension
+    - cobra_model.optimize() for COBRApy
+    - reframed_model.optimize() for reframed
+
+    Subclasses: RFBA, SRFBA, PROM, CoRegFlux
+    """
 
     def __init__(self,
-                 model: Union[Model, MetabolicModel, RegulatoryModel],
+                 model: RegulatoryExtension,
                  solver: Union[str, Solver, None] = None,
                  build: bool = False,
                  attach: bool = False):
         """
-        Flux Balance Analysis (FBA) of a metabolic model. Regular implementation of a FBA for a metabolic model.
+        Initialize regulatory analysis base.
 
-        For more details consult: https://dx.doi.org/10.1038%2Fnbt.1614
-
-        :param model: a MetabolicModel, RegulatoryModel or GERM model. The model is used to retrieve
-        variables and constraints to the linear problem
-        :param solver: A Solver, CplexSolver, GurobiSolver or OptLangSolver instance.
-        Alternatively, the name of the solver is also accepted.
-        The solver interface will be used to load and solve a linear problem in a given solver.
-        If none, a new solver is instantiated. An instantiated solver may be used,
-        but it will be overwritten if build is true.
-        :param build: Whether to build the linear problem upon instantiation. Default: False
-        :param attach: Whether to attach the linear problem to the model upon instantiation. Default: False
+        :param model: A RegulatoryExtension instance wrapping a simulator
+        :param solver: A Solver instance or solver name. If None, a new solver is instantiated.
+        :param build: Whether to build the problem upon instantiation. Default: False
+        :param attach: Whether to attach the problem to the model upon instantiation. Default: False
+                       **Note:** This parameter is kept for backwards compatibility but is not used.
+                       In the new architecture, analysis methods do not attach to models via observer pattern.
         """
-        super().__init__(model=model, solver=solver, build=build, attach=attach)
+        self.model = model
+        self.solver_name = solver
+        self._solver = None
+        self._linear_objective = None
+        self._minimize = False
+        self._synchronized = False
+        self.method = "FBA"  # Subclasses should override
 
-    def _build_mass_constraints(self):
-        gene_state = {gene.id: max(gene.coefficients) for gene in self.model.yield_genes()}
+        if build:
+            self.build()
 
-        constraints = {metabolite.id: ConstraintContainer(name=metabolite.id, lbs=[0.0], ubs=[0.0], coefs=[{}])
-                       for metabolite in self.model.yield_metabolites()}
-        variables = {}
+        # attach parameter is kept for backwards compatibility but is unused
+        # In the new architecture with RegulatoryExtension, analysis methods do not
+        # attach to models via observer pattern - they access data on-demand
 
-        for reaction in self.model.yield_reactions():
-            if reaction.gpr.is_none:
-                lb, ub = reaction.bounds
+    # Backwards compatibility helpers (work with both RegulatoryExtension and legacy models)
+    def _has_regulatory_network(self) -> bool:
+        """Check if model has a regulatory network (works with both model types)."""
+        if hasattr(self.model, 'has_regulatory_network'):
+            return self.model.has_regulatory_network()
+        # Legacy model - check for interactions
+        return hasattr(self.model, 'interactions') and len(self.model.interactions) > 0
 
-            else:
-                res = reaction.gpr.evaluate(values=gene_state)
-                if not res:
-                    lb, ub = 0.0, 0.0
+    def _get_interactions(self):
+        """
+        Get interactions (works with both model types).
+
+        Yields just the Interaction objects, unpacking tuples from RegulatoryExtension.
+        """
+        if hasattr(self.model, 'yield_interactions'):
+            # RegulatoryExtension yields (id, interaction) tuples - unpack to get just interaction
+            for item in self.model.yield_interactions():
+                if isinstance(item, tuple) and len(item) == 2:
+                    # New format: (id, interaction)
+                    yield item[1]
                 else:
-                    lb, ub = reaction.bounds
+                    # Legacy format: just interaction (shouldn't happen with RegulatoryExtension)
+                    yield item
+        # Legacy model - dict.values() yields just interaction objects
+        elif hasattr(self.model, 'interactions'):
+            for interaction in self.model.interactions.values():
+                yield interaction
 
-            variable = VariableContainer(name=reaction.id, sub_variables=[reaction.id],
-                                         lbs=[float(lb)], ubs=[float(ub)], variables_type=[VarType.CONTINUOUS])
-            variables[reaction.id] = variable
-
-            for metabolite, stoichiometry in reaction.stoichiometry.items():
-                constraints[metabolite.id].coefs[0][reaction.id] = stoichiometry
-
-        self.add_variables(*variables.values())
-        self.add_constraints(*constraints.values())
+    def _get_regulators(self):
+        """Get regulators (works with both model types)."""
+        if hasattr(self.model, 'yield_regulators'):
+            # RegulatoryExtension yields (id, regulator) tuples
+            # Legacy models yield single Regulator objects
+            # We need to normalize to always return (id, regulator) tuples
+            for item in self.model.yield_regulators():
+                if isinstance(item, tuple) and len(item) == 2:
+                    # Already a tuple (RegulatoryExtension)
+                    yield item
+                else:
+                    # Single Regulator object (legacy model) - wrap in tuple with ID
+                    yield (item.id, item)
+        # Legacy model without yield_regulators (shouldn't happen but handle it)
+        elif hasattr(self.model, 'regulators'):
+            regulators = self.model.regulators
+            # Check if it's a dict
+            if isinstance(regulators, dict):
+                for reg_id, regulator in regulators.items():
+                    yield (reg_id, regulator)
+        # No regulators available
         return
 
-    def _build(self):
-        """
-        It builds the linear problem from the model. The linear problem is built from the model
-        variables and constraints. The linear problem is then loaded into the solver.
-        :return:
-        """
-        if self.model.is_metabolic():
-            # mass balance constraints and reactions' variables
-            self._build_mass_constraints()
+    def _get_gpr(self, rxn_id):
+        """Get GPR expression (works with both model types)."""
+        if hasattr(self.model, 'get_parsed_gpr'):
+            return self.model.get_parsed_gpr(rxn_id)
+        # Legacy model - get reaction and parse GPR
+        from mewpy.germ.algebra import parse_expression, Expression, Symbol
+        if hasattr(self.model, 'reactions') and rxn_id in self.model.reactions:
+            rxn = self.model.reactions[rxn_id]
+            if hasattr(rxn, 'gpr'):
+                return rxn.gpr
+        # No GPR available
+        return Expression(Symbol('true'), {})
 
-            self._linear_objective = {var.id: value for var, value in self.model.objective.items()}
-            self._minimize = False
+    def _get_reaction(self, rxn_id):
+        """Get reaction data (works with both model types)."""
+        if hasattr(self.model, 'get_reaction'):
+            # RegulatoryExtension - returns dict
+            return self.model.get_reaction(rxn_id)
+        # Legacy model - reactions is a dict of Reaction objects
+        if hasattr(self.model, 'reactions') and rxn_id in self.model.reactions:
+            rxn = self.model.reactions[rxn_id]
+            # Convert Reaction object to dict format
+            return {
+                'id': rxn.id,
+                'lb': rxn.lower_bound if hasattr(rxn, 'lower_bound') else rxn.bounds[0] if hasattr(rxn, 'bounds') else -1000,
+                'ub': rxn.upper_bound if hasattr(rxn, 'upper_bound') else rxn.bounds[1] if hasattr(rxn, 'bounds') else 1000,
+                'gpr': str(rxn.gpr) if hasattr(rxn, 'gpr') else ''
+            }
+        return {'id': rxn_id, 'lb': -1000, 'ub': 1000, 'gpr': ''}
 
-        return
-
-    def _optimize(self, solver_kwargs: Dict = None, **kwargs) -> Solution:
+    def build(self):
         """
-        It optimizes the linear problem. The linear problem is solved by the solver interface.
+        Build the optimization problem.
+
+        Creates the solver instance from the simulator and sets up the objective function.
+        Subclasses should call super().build() and then add their specific constraints.
+        """
+        # Get simulator - support both RegulatoryExtension and legacy models
+        if hasattr(self.model, 'simulator'):
+            # RegulatoryExtension
+            simulator = self.model.simulator
+        else:
+            # Legacy model or direct simulator
+            # Try to get a simulator from it
+            from mewpy.simulation import get_simulator
+            try:
+                simulator = get_simulator(self.model)
+            except:
+                # If that fails, assume it's already a simulator
+                simulator = self.model
+
+        # Create solver directly from simulator
+        self._solver = solver_instance(simulator)
+
+        # Set up objective
+        if hasattr(self.model, 'objective'):
+            objective = self.model.objective
+            # Handle different objective formats
+            if isinstance(objective, dict):
+                # Already a dict - check if keys are objects or strings
+                first_key = next(iter(objective.keys())) if objective else None
+                if first_key and hasattr(first_key, 'id'):
+                    # Keys are objects (legacy), convert to string keys
+                    self._linear_objective = {var.id: value for var, value in objective.items()}
+                else:
+                    # Keys are already strings
+                    self._linear_objective = dict(objective)
+            else:
+                # Some other format
+                self._linear_objective = dict(objective)
+        else:
+            self._linear_objective = {}
+
+        self._minimize = False
+
+        # Mark as synchronized
+        self._synchronized = True
+
+        # Return self for chaining
+        return self
+
+    @property
+    def synchronized(self):
+        """Whether the solver is synchronized with the model."""
+        return self._synchronized
+
+    @property
+    def solver(self):
+        """Get the solver instance."""
+        if self._solver is None:
+            self.build()
+        return self._solver
+
+    def optimize(self, solver_kwargs: Dict = None, **kwargs) -> Solution:
+        """
+        Optimize the problem.
+
+        This basic implementation is used by some subclasses (e.g., SRFBA).
+        Other subclasses (e.g., RFBA) override this completely.
+
         :param solver_kwargs: A dictionary of keyword arguments to be passed to the solver.
         :return: A Solution instance.
         """
-        return self.solver.solve(**solver_kwargs)
+        if not self.synchronized:
+            self.build()
+
+        if not solver_kwargs:
+            solver_kwargs = {}
+
+        # Make a copy to avoid modifying the original
+        solver_kwargs_copy = solver_kwargs.copy()
+
+        # Remove conflicting arguments that we set explicitly
+        solver_kwargs_copy.pop('linear', None)
+        solver_kwargs_copy.pop('minimize', None)
+
+        # Solve using simulator
+        solution = self.solver.solve(
+            linear=self._linear_objective,
+            minimize=self._minimize,
+            **solver_kwargs_copy
+        )
+
+        # Set the method attribute for compatibility
+        solution._method = self.method
+        solution._model = self.model
+
+        return solution
+
+
+# Alias for backwards compatibility during transition
+# Users should not use this directly - use simulator.optimize() instead
+FBA = _RegulatoryAnalysisBase

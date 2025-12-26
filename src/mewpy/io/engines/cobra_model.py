@@ -3,7 +3,7 @@ from typing import Union, TYPE_CHECKING
 
 from mewpy.io.dto import VariableRecord, DataTransferObject, CompartmentRecord, FunctionTerm
 from mewpy.germ.algebra import Expression
-from mewpy.germ.models import MetabolicModel
+from mewpy.germ.models.unified_factory import unified_factory
 from .engine import Engine
 from .engines_utils import build_symbolic, expression_warning, cobra_warning
 
@@ -28,7 +28,7 @@ class CobraModel(Engine):
         if self._model is None:
             identifier = self.get_identifier()
 
-            return MetabolicModel(identifier=identifier)
+            return unified_factory(identifier)
 
         return self._model
 

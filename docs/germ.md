@@ -23,6 +23,86 @@ The following simulation methods are available in **`mewpy.germ.analysis`** modu
 
 ![](germ_overview.png)
 
+## Architecture Overview
+
+MEWpy's GERM module uses a clean architecture that integrates regulatory networks with external metabolic models (reframed or COBRApy). This design provides:
+
+- **No data duplication**: Metabolic data stays in external simulators (reframed/COBRApy)
+- **Clean separation**: GERM handles regulatory logic only
+- **Flexibility**: Works with any reframed or COBRApy model
+- **Performance**: Simplified code paths, no synchronization overhead
+- **Lightweight**: Uses reframed by default (more lightweight than COBRApy)
+
+### Model Types
+
+MEWpy supports two ways to work with integrated models:
+
+#### 1. Legacy Models (read_model)
+The `read_model()` function creates integrated models that work out-of-the-box:
+
+```python
+from mewpy.io import read_model, Reader, Engines
+
+gem_reader = Reader(Engines.MetabolicSBML, 'model.xml')
+trn_reader = Reader(Engines.BooleanRegulatoryCSV, 'regulatory.csv', sep=',')
+model = read_model(gem_reader, trn_reader)  # Returns integrated model
+```
+
+#### 2. RegulatoryExtension (Clean Architecture)
+For advanced use cases, use factory methods to create models easily:
+
+**Option A: Load from files (simplest)**
+```python
+from mewpy.germ.models import RegulatoryExtension
+
+# Load metabolic model only (uses reframed by default - lightweight)
+model = RegulatoryExtension.from_sbml('ecoli_core.xml')
+
+# Load with regulatory network from CSV
+model = RegulatoryExtension.from_sbml(
+    'ecoli_core.xml',
+    'ecoli_core_trn.csv',
+    sep=','
+)
+
+# Use COBRApy instead if needed
+model = RegulatoryExtension.from_sbml('ecoli_core.xml', flavor='cobra')
+```
+
+**Option B: From COBRApy/reframed model**
+```python
+import cobra
+from mewpy.germ.models import RegulatoryExtension
+
+cobra_model = cobra.io.read_sbml_model('ecoli_core.xml')
+model = RegulatoryExtension.from_model(
+    cobra_model,
+    'ecoli_core_trn.csv',
+    sep=','
+)
+```
+
+**Option C: Manual construction (for full control)**
+```python
+import cobra
+from mewpy.simulation import get_simulator
+from mewpy.germ.models import RegulatoryExtension
+from mewpy.io import Reader, Engines, read_model
+
+# Load metabolic model
+cobra_model = cobra.io.read_sbml_model('model.xml')
+simulator = get_simulator(cobra_model)
+
+# Load regulatory network
+regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, 'regulatory.csv', sep=',')
+regulatory = read_model(regulatory_reader, warnings=False)
+
+# Create integrated model
+model = RegulatoryExtension(simulator, regulatory)
+```
+
+**All analysis methods work with both model types!** The implementation automatically detects the model type and adapts accordingly.
+
 ## Reading GERM models
 In this example, we will be using the integrated _E. coli_ core model published by 
 [Orth _et al_, 2010](https://doi.org/10.1128/ecosalplus.10.2.1).

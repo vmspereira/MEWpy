@@ -120,7 +120,7 @@ class GERMModel(ModelContainer):
                     'stoichiometry': {met.id: c for met, c in reaction.stoichiometry.items()},
                     'gpr': reaction.gene_protein_reaction_rule,
                 }
-                AttrDict(reaction)
+                return AttrDict(reaction)
         return AttrDict()
 
     def get_gene(self, g_id: str) -> AttrDict:
@@ -618,16 +618,95 @@ class Simulation(GERMModel, Simulator):
     # -----------------------------------------------------------------------------
     @dispatcher.register(SimulationMethod.FBA)
     def _fba(self, model, objective, minimize, constraints, *args, **kwargs):
+        # Check if this is a SimulatorBasedMetabolicModel - if so, delegate to external simulator
+        from mewpy.germ.models.simulator_model import SimulatorBasedMetabolicModel
+        
+        if isinstance(model, SimulatorBasedMetabolicModel):
+            # Delegate to external simulator for better performance and accuracy
+            external_sim = model.simulator
+            
+            # Convert GERM constraints to simulator format
+            sim_constraints = {}
+            if constraints:
+                for rxn_id, bounds in constraints.items():
+                    if isinstance(bounds, (tuple, list)) and len(bounds) == 2:
+                        sim_constraints[rxn_id] = bounds
+                    else:
+                        sim_constraints[rxn_id] = (bounds, bounds)
+            
+            # Convert GERM objective to simulator format
+            sim_objective = {}
+            if objective:
+                for rxn_id, coeff in objective.items():
+                    sim_objective[rxn_id] = coeff
+            
+            # Use external simulator
+            result = external_sim.simulate(
+                objective=sim_objective,
+                maximize=not minimize,
+                constraints=sim_constraints
+            )
+            
+            # Convert result to GERM Solution format
+            from mewpy.solvers.solution import Solution, Status
+            # Convert SStatus back to solver Status for proper mapping
+            solver_status = Status[result.status.name]
+            return Solution(
+                status=solver_status,
+                fobj=result.objective_value,
+                values=result.fluxes
+            )
+        
+        # Fallback to native GERM FBA for regulatory models or pure metabolic models
         fba = FBA(model).build()
-
         solver_kwargs = {'linear': objective, 'minimize': minimize, 'constraints': constraints}
         sol = fba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
         return sol
 
     @dispatcher.register(SimulationMethod.pFBA)
     def _pfba(self, model, objective, minimize, constraints, *args, **kwargs):
+        # Check if this is a SimulatorBasedMetabolicModel - if so, delegate to external simulator
+        from mewpy.germ.models.simulator_model import SimulatorBasedMetabolicModel
+        
+        if isinstance(model, SimulatorBasedMetabolicModel):
+            # Delegate to external simulator for pFBA
+            external_sim = model.simulator
+            
+            # Convert constraints and objective as above
+            sim_constraints = {}
+            if constraints:
+                for rxn_id, bounds in constraints.items():
+                    if isinstance(bounds, (tuple, list)) and len(bounds) == 2:
+                        sim_constraints[rxn_id] = bounds
+                    else:
+                        sim_constraints[rxn_id] = (bounds, bounds)
+            
+            sim_objective = {}
+            if objective:
+                for rxn_id, coeff in objective.items():
+                    sim_objective[rxn_id] = coeff
+            
+            # Use external simulator with pFBA method
+            from mewpy.simulation import SimulationMethod as ExtSimMethod
+            result = external_sim.simulate(
+                objective=sim_objective,
+                method=ExtSimMethod.pFBA,
+                maximize=not minimize,
+                constraints=sim_constraints
+            )
+            
+            # Convert result to GERM Solution format
+            from mewpy.solvers.solution import Solution, Status
+            # Convert SStatus back to solver Status for proper mapping
+            solver_status = Status[result.status.name]
+            return Solution(
+                status=solver_status,
+                fobj=result.objective_value,
+                values=result.fluxes
+            )
+        
+        # Fallback to native GERM pFBA for regulatory models or pure metabolic models
         pfba = pFBA(model).build()
-
         solver_kwargs = {'linear': objective, 'minimize': minimize, 'constraints': constraints}
         sol = pfba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
         return sol
@@ -726,6 +805,24 @@ class Simulation(GERMModel, Simulator):
 
         :return: A dictionary or data frame of flux variation ranges.
         """
+
+        # Check if this is a SimulatorBasedMetabolicModel and delegate to external simulator
+        from ..germ.models.simulator_model import SimulatorBasedMetabolicModel
+        if isinstance(self.model, SimulatorBasedMetabolicModel):
+            # Prepare constraints for external simulator
+            external_constraints = {}
+            if constraints:
+                external_constraints.update(constraints)
+            external_constraints.update(self.constraints)
+            external_constraints.update(self.environmental_conditions)
+            
+            # Delegate to external simulator
+            return self.model.simulator.FVA(
+                reactions=reactions,
+                constraints=external_constraints,
+                obj_frac=obj_frac,
+                format=format
+            )
 
         if not constraints:
             constraints = {}

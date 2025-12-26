@@ -425,7 +425,6 @@ class TestGERMModel(unittest.TestCase):
         sol = simulator.optimize(initial_state=predicted_expression)
         self.assertGreater(sol.objective_value, 0)
 
-    @pytest.mark.xfail
     def test_simulation(self):
         """
         Tests model simulation
