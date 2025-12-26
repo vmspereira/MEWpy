@@ -29,6 +29,57 @@ from mewpy.util.constants import ModelConstants
 from mewpy.util.utilities import molecular_weight
 
 
+def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=10):
+    """
+    Calculate an appropriate BigM value for SteadyCom based on model characteristics.
+
+    BigM is used in SteadyCom constraints to handle reactions with infinite bounds.
+    The value must be:
+    - Large enough to not artificially constrain fluxes
+    - Small enough to avoid numerical instability in LP solvers
+    - Appropriate for the specific models in the community
+
+    Algorithm:
+    1. Find maximum finite flux bound across all organisms
+    2. Apply safety factor (default 10x)
+    3. Clamp between min_value and max_value
+
+    Args:
+        community (CommunityModel): The community model
+        min_value (float): Minimum BigM value (default 1000)
+        max_value (float): Maximum BigM value to avoid numerical issues (default 1e6)
+        safety_factor (float): Multiplier for max bound (default 10)
+
+    Returns:
+        float: Calculated BigM value
+
+    Example:
+        If max reaction bound is 100, with safety_factor=10:
+        BigM = min(1000 * 10, 1e6) = min(10000, 1e6) = 10000
+    """
+    max_bound = 0.0
+
+    for org_id, organism in community.organisms.items():
+        for r_id in organism.reactions:
+            reaction = organism.get_reaction(r_id)
+
+            # Check lower bound
+            if not isinf(reaction.lb) and abs(reaction.lb) > max_bound:
+                max_bound = abs(reaction.lb)
+
+            # Check upper bound
+            if not isinf(reaction.ub) and abs(reaction.ub) > max_bound:
+                max_bound = abs(reaction.ub)
+
+    # Apply safety factor
+    calculated_bigM = max_bound * safety_factor
+
+    # Clamp to reasonable range
+    bigM = max(min_value, min(calculated_bigM, max_value))
+
+    return bigM
+
+
 def SteadyCom(community, constraints=None, solver=None):
     """Implementation of SteadyCom (Chan et al 2017). Adapted from REFRAMED
     Args:
@@ -89,19 +140,60 @@ def SteadyComVA(community, obj_frac=1.0, constraints=None, solver=None):
     return variability
 
 
-def build_problem(community, growth=1, bigM=1000):
-    """_summary_
+def build_problem(community, growth=1, bigM=None):
+    """
+    Build the SteadyCom optimization problem.
+
+    Constructs the LP/MILP formulation for SteadyCom as described in Chan et al. 2017.
+    The formulation uses Big-M constraints to enforce abundance-scaled flux bounds:
+    lb_ij * X_i <= v_ij <= ub_ij * X_i
 
     Args:
-        community (_type_): _description_
-        growth (int, optional): _description_. Defaults to 1.
-        bigM (int, optional): _description_. Defaults to 1000.
+        community (CommunityModel): The community model to optimize
+        growth (float): Initial growth rate value for binary search. Defaults to 1.
+        bigM (float, optional): Big-M value for reactions with infinite bounds.
+            If None (default), automatically calculates based on model characteristics
+            using calculate_bigM(). Manual values should be chosen carefully:
+            - Too small: artificially constrains fluxes, may cause infeasibility
+            - Too large: numerical instability in LP solver
+            Recommended: Use automatic calculation (bigM=None)
 
     Returns:
-        _type_: _description_
+        Solver: Configured solver instance with SteadyCom problem formulation
+            - Variables: x_{org_id} (abundances), reaction fluxes
+            - Constraints: abundance sum = 1, mass balance, growth coupling, flux bounds
+            - Method: solver.update_growth(value) to update growth parameter
+
+    Note:
+        The BigM value is critical for correct results. Different BigM values can
+        yield different abundance predictions. The automatic calculation (bigM=None)
+        analyzes the model to choose an appropriate value.
+
+    Reference:
+        Chan, S. H. J., et al. (2017). SteadyCom: Predicting microbial abundances
+        while ensuring community stability. PLoS Computational Biology, 13(5), e1005539.
     """
-    # TODO : Check why different bigM yield different results.
-    # What's the proper value?
+    # Calculate BigM automatically if not provided
+    if bigM is None:
+        bigM = calculate_bigM(community)
+
+    # Validate BigM is reasonable
+    if bigM < 100:
+        warn(
+            f"BigM value ({bigM}) is very small and may artificially constrain fluxes. "
+            "This could lead to incorrect abundance predictions or infeasibility. "
+            "Consider using a larger value or automatic calculation (bigM=None).",
+            UserWarning,
+            stacklevel=2
+        )
+    elif bigM > 1e7:
+        warn(
+            f"BigM value ({bigM}) is very large and may cause numerical instability. "
+            "This could lead to inaccurate solutions. "
+            "Consider using a smaller value or automatic calculation (bigM=None).",
+            UserWarning,
+            stacklevel=2
+        )
 
     solver = solver_instance()
     community.add_compartments = False
