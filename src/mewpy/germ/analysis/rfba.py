@@ -1,453 +1,336 @@
-from typing import Union, Dict, Tuple, List
+"""
+Regulatory Flux Balance Analysis (RFBA) - Clean Implementation
+
+This module implements RFBA using RegulatoryExtension only.
+No backwards compatibility with legacy GERM models.
+"""
+from typing import Union, Dict, Tuple
 from warnings import warn
 
-from mewpy.germ.analysis import FBA
+from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
 from mewpy.solvers import Solution
 from mewpy.solvers.solver import Solver
 from mewpy.solvers import solver_instance
-from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.util.constants import ModelConstants
 from mewpy.germ.solution import DynamicSolution
 
 
-def _get_boolean_state_from_reaction_flux(flux_rate: float) -> bool:
-    # A reaction can have different flux values between two solutions,
-    # though the state remains the same. Thus, non-zero flux stands for ON state
-    # while zero flux stands for OFF state
-    if abs(flux_rate) > ModelConstants.TOLERANCE:
-        return True
-
-    return False
-
-
-def _find_duplicated_state(state, regulatory_solution, regulatory_reactions, regulatory_metabolites):
-    mask = []
-    for regulator, value in regulatory_solution.items():
-
-        state_value = state[regulator]
-
-        if regulator in regulatory_reactions or regulator in regulatory_metabolites:
-            state_value = _get_boolean_state_from_reaction_flux(state_value)
-            value = _get_boolean_state_from_reaction_flux(value)
-
-        mask.append(value == state_value)
-
-    return all(mask)
-
-
-class RFBA(FBA):
+class RFBA(_RegulatoryAnalysisBase):
     """
-    Regulatory Flux Balance Analysis (RFBA) using pure simulator-based approach.
-    
-    This implementation uses simulators as the foundation. For simulator models 
-    without regulatory layers, it falls back to FBA.
+    Regulatory Flux Balance Analysis (RFBA) using RegulatoryExtension.
+
+    RFBA integrates transcriptional regulatory networks with metabolic models
+    to predict cellular behavior under regulatory constraints.
+
+    This implementation:
+    - Works exclusively with RegulatoryExtension instances
+    - Delegates all metabolic operations to external simulators (cobrapy/reframed)
+    - Stores only regulatory network information
+    - Falls back to FBA if no regulatory network present
+
+    For more details: Covert et al. 2004, https://doi.org/10.1038/nature02456
     """
 
     def __init__(self,
-                 model: Union[Model, MetabolicModel, RegulatoryModel],
+                 model: RegulatoryExtension,
                  solver: Union[str, Solver, None] = None,
                  build: bool = False,
                  attach: bool = False):
         """
-        Regulatory Flux Balance Analysis (RFBA) of a metabolic-regulatory model.
-        Pure simulator-based implementation.
+        Initialize RFBA with a RegulatoryExtension model.
 
-        For more details consult Covert et al. 2004 at https://doi.org/10.1038/nature02456
-
-        :param model: a MetabolicModel, RegulatoryModel or GERM model. The model is used to retrieve
-        the simulator for optimization
-        :param solver: A Solver, CplexSolver, GurobiSolver or OptLangSolver instance.
-        Alternatively, the name of the solver is also accepted.
-        The solver interface will be used to load and solve a linear problem in a given solver.
-        If none, a new solver is instantiated.
-        :param build: Whether to build the linear problem upon instantiation. Default: False
-        :param attach: Whether to attach the linear problem to the model upon instantiation. Default: False
+        :param model: A RegulatoryExtension instance wrapping a simulator
+        :param solver: Solver instance or name. If None, uses default solver.
+        :param build: If True, builds the problem immediately. Default: False
+        :param attach: If True, attaches problem to model. Default: False
         """
-        self._regulatory_reactions = []
-        self._regulatory_metabolites = []
         super().__init__(model=model, solver=solver, build=build, attach=attach)
+        self.method = "RFBA"
 
     def build(self):
         """
-        Build the RFBA problem using pure simulator approach.
-        For external models without regulatory layers, falls back to FBA.
-        """
-        # Get simulator from any model type
-        simulator = self._get_simulator()
-        
-        # Create solver directly from simulator
-        self._solver = solver_instance(simulator)
-        
-        # Set up the objective based on the model's objective
-        self._linear_objective = {var.id: value for var, value in self.model.objective.items()}
-        self._minimize = False
-        
-        # Check if this is a native GERM model with regulatory capabilities
-        if hasattr(self.model, 'is_regulatory') and self.model.is_regulatory():
-            # Native GERM model with regulatory layer
-            self._regulatory_reactions = [rxn.id
-                                          for rxn in self.model.yield_reactions()
-                                          if rxn.is_regulator()]
+        Build the RFBA linear problem.
 
-            self._regulatory_metabolites = [met.id
-                                            for met in self.model.yield_metabolites()
-                                            if met.is_regulator()]
-        else:
-            # External model or model without regulatory layer - no regulatory elements
-            self._regulatory_reactions = []
-            self._regulatory_metabolites = []
-        
+        Creates the solver instance and sets up the objective function.
+        For models without regulatory networks, this is equivalent to FBA.
+        """
+        # Get simulator from RegulatoryExtension
+        simulator = self.model.simulator
+
+        # Create solver from simulator
+        self._solver = solver_instance(simulator)
+
+        # Set up objective (always string keys from simulator)
+        self._linear_objective = dict(self.model.objective)
+        self._minimize = False
+
         # Mark as synchronized
         self._synchronized = True
-        
-        # Return self for chaining
+
         return self
 
     def decode_regulatory_state(self, state: Dict[str, float]) -> Dict[str, float]:
         """
-        It solves the boolean regulatory network for a given specific state.
-        It also updates all targets having a valid regulatory interaction associated with it for the resulting state
+        Solve the boolean regulatory network for a given state.
 
-        :param state: dict of regulatory variable keys (regulators) and a value of 0, 1 or float
-        (reactions and metabolites predicates)
-        :return: dict of target keys and a value of the resulting state
+        Evaluates all regulatory interactions and returns the resulting
+        target gene states.
+
+        :param state: Dictionary mapping regulator IDs to their states (0.0 or 1.0)
+        :return: Dictionary mapping target gene IDs to their resulting states
         """
-        if not hasattr(self.model, 'is_regulatory') or not self.model.is_regulatory():
+        # If no regulatory network, return empty dict
+        if not self.model.has_regulatory_network():
             return {}
 
-        # Solving the whole regulatory model synchronously, as asynchronously would take too much time
-        # Targets are associated with a single regulatory interaction
+        # Evaluate all interactions synchronously
         result = {}
         for interaction in self.model.yield_interactions():
-
-            # an interaction can have multiple regulatory events, namely one for 0 and another for 1
+            # An interaction can have multiple regulatory events
+            # (e.g., coefficient 1.0 if condition A, 0.0 otherwise)
             for coefficient, event in interaction.regulatory_events.items():
                 if event.is_none:
                     continue
 
+                # Evaluate the regulatory event with current state
                 eval_result = event.evaluate(values=state)
                 if eval_result:
                     result[interaction.target.id] = coefficient
                 else:
                     result[interaction.target.id] = 0.0
+
         return result
 
     def decode_metabolic_state(self, state: Dict[str, float]) -> Dict[str, float]:
         """
-        It decodes metabolic state from regulatory state.
-        This is identical to decode_regulatory_state for most models.
+        Decode metabolic state from regulatory state.
 
-        :param state: dict of regulatory variable keys (regulators) and a value of 0, 1 or float
-        (reactions and metabolites predicates)
-        :return: dict of target keys and a value of the resulting state
+        For most models, this is identical to decode_regulatory_state.
+
+        :param state: Dictionary mapping regulator IDs to their states
+        :return: Dictionary mapping metabolic gene IDs to their states
         """
-        # For most models, metabolic state decoding is the same as regulatory state decoding
         return self.decode_regulatory_state(state)
 
     def decode_constraints(self, state: Dict[str, float]) -> Dict[str, Tuple[float, float]]:
         """
-        Method responsible for decoding the RFBA metabolic state, namely the state of all metabolic genes associated
-        at least with one reaction in the GPRs rule.
+        Decode metabolic constraints from gene states.
 
-        :param state: dict of regulatory/metabolic variable keys (metabolic target) and a value of 0 or 1
-        :return: dict of constraints of the resulting metabolic state
+        Evaluates GPR rules for all reactions and returns constraints
+        for reactions whose GPRs evaluate to False (genes knocked out).
+
+        :param state: Dictionary mapping gene IDs to their states (0.0 or 1.0)
+        :return: Dictionary mapping reaction IDs to bounds (0.0, 0.0) for inactive reactions
         """
-        # This method retrieves the constraints associated with a given metabolic/regulatory state
-
-        if not hasattr(self.model, 'is_metabolic') or not self.model.is_metabolic():
-            return {}
-
         constraints = {}
-        for rxn in self.model.yield_reactions():
 
-            if rxn.gpr.is_none:
+        # Evaluate GPRs for all reactions
+        for rxn_id in self.model.reactions:
+            # Get cached parsed GPR expression from RegulatoryExtension
+            gpr = self.model.get_parsed_gpr(rxn_id)
+
+            if gpr.is_none:
                 continue
 
-            res = rxn.gpr.evaluate(values=state)
+            # Evaluate GPR with current gene states
+            is_active = gpr.evaluate(values=state)
 
-            if not res:
-                constraints[rxn.id] = (0.0, 0.0)
+            if not is_active:
+                # Reaction is knocked out - set bounds to zero
+                constraints[rxn_id] = (0.0, 0.0)
 
         return constraints
 
-    def next_state(self, state: Dict[str, float], solver_kwargs: Dict = None) -> Tuple[Dict[str, float], Solution]:
+    def initial_state(self, initial_state: Dict[str, float] = None) -> Dict[str, float]:
         """
-        Retrieves the next state for the provided state using pure simulator approach.
+        Get initial regulatory state for RFBA simulation.
 
-        Solves the boolean regulatory model and decodes the metabolic state
-        for that state or initial state.
-
-        :param state: dict of regulatory/metabolic variable keys (regulatory and metabolic target) and a value of 0, 1
-        or float (reactions and metabolites predicates)
-        :param solver_kwargs: solver kwargs
-        :return: dict of all regulatory/metabolic variables keys and a value of the resulting state
+        :param initial_state: Optional user-provided initial state
+        :return: Complete initial state dictionary
         """
-        state = state.copy()
-
-        if not solver_kwargs:
-            solver_kwargs = {}
-
-        # Regulatory state from a synchronous boolean simulation
-        regulatory_state = self.decode_regulatory_state(state=state)
-
-        # Next state is the previous state plus the regulatory state
-        next_state = {**state, **regulatory_state}
-
-        # After a simulation of the regulators outputs, the state of the targets are retrieved now
-        metabolic_state = self.decode_metabolic_state(state=next_state)
-
-        # Get regulatory constraints from metabolic state
-        regulatory_constraints = self.decode_constraints(metabolic_state)
-
-        # Apply constraints to the solver
-        solver_kwargs_modified = solver_kwargs.copy()
-        if regulatory_constraints:
-            # Instead of modifying solver bounds, add constraints to solver_kwargs
-            if 'constraints' in solver_kwargs_modified:
-                existing_constraints = solver_kwargs_modified['constraints'].copy()
-            else:
-                existing_constraints = {}
-            
-            # Merge regulatory constraints with existing ones
-            all_constraints = {**existing_constraints, **regulatory_constraints}
-            solver_kwargs_modified['constraints'] = all_constraints
-
-        # Solve with current regulatory constraints
-        solver_solution = self.solver.solve(
-            linear=self._linear_objective,
-            minimize=self._minimize,
-            **solver_kwargs_modified
-        )
-
-        if solver_solution.values:
-            solver_solution.values = {**metabolic_state, **solver_solution.values}
-        else:
-            solver_solution.values = {**metabolic_state, **{rxn: 0.0 for rxn in self.model.reactions}}
-
-        # update the next state with the regulatory/metabolic state
-        for reaction in self._regulatory_reactions:
-            next_state[reaction] = solver_solution.values.get(reaction, 0.0)
-
-        for metabolite in self._regulatory_metabolites:
-            reaction = self.model.metabolites[metabolite].exchange_reaction
-
-            if reaction:
-                next_state[metabolite] = solver_solution.values.get(reaction.id, 0.0)
-
-        return next_state, solver_solution
-
-    def _steady_state_optimize(self,
-                              initial_state: Dict[str, float] = None,
-                              to_solver: bool = False,
-                              solver_kwargs: Dict = None) -> Union[Solution, Solution]:
-        """
-        RFBA steady-state simulation using pure simulator approach.
-
-        :param initial_state: a dictionary of variable ids and their values to set as initial state
-        :param to_solver: Whether to return the solution as a SolverSolution instance. Default: False
-        :param solver_kwargs: A dictionary with the solver arguments. Default: None
-        :return: A Solution instance or a SolverSolution instance if to_solver is True.
-        """
-        if not initial_state:
+        if initial_state is None:
             initial_state = {}
 
-        if not solver_kwargs:
+        # Initialize all regulators to active (1.0) by default
+        state = {}
+
+        if self.model.has_regulatory_network():
+            # Get all regulators
+            for reg_id, regulator in self.model.yield_regulators():
+                # Use user-provided state if available, otherwise default to active
+                state[reg_id] = initial_state.get(reg_id, 1.0)
+
+        # Override with any user-provided states
+        state.update(initial_state)
+
+        return state
+
+    def optimize(self,
+                 initial_state: Dict[str, float] = None,
+                 dynamic: bool = False,
+                 to_solver: bool = False,
+                 solver_kwargs: Dict = None) -> Union[Solution, DynamicSolution]:
+        """
+        Solve the RFBA problem.
+
+        :param initial_state: Initial regulatory state. If None, all regulators start active.
+        :param dynamic: If True, performs dynamic RFBA (iterative). Default: False
+        :param to_solver: If True, returns raw solver solution. Default: False
+        :param solver_kwargs: Additional arguments for solver
+        :return: Solution object (or DynamicSolution for dynamic=True)
+        """
+        # Build solver if not synchronized
+        if not self.synchronized:
+            self.build()
+
+        if solver_kwargs is None:
             solver_kwargs = {}
 
-        # It takes the initial state from the model and then updates with the initial state provided as input
-        initial_state = self.initial_state(initial_state)
+        # Get initial state
+        state = self.initial_state(initial_state)
 
-        # Regulatory state from a synchronous boolean simulation
-        regulatory_state = self.decode_regulatory_state(state=initial_state)
+        if not dynamic:
+            # Steady-state RFBA
+            return self._optimize_steady_state(state, to_solver, solver_kwargs)
+        else:
+            # Dynamic RFBA (iterative until convergence)
+            return self._optimize_dynamic(state, to_solver, solver_kwargs)
 
-        # After a simulation of the regulators outputs, the state of the targets are retrieved now
-        metabolic_state = self.decode_metabolic_state(state={**initial_state, **regulatory_state})
+    def _optimize_steady_state(self,
+                                state: Dict[str, float],
+                                to_solver: bool,
+                                solver_kwargs: Dict) -> Solution:
+        """
+        Perform steady-state RFBA simulation.
 
-        # Get regulatory constraints and apply them
-        regulatory_constraints = self.decode_constraints(metabolic_state)
+        :param state: Initial regulatory state
+        :param to_solver: Whether to return raw solver solution
+        :param solver_kwargs: Solver arguments
+        :return: Solution object
+        """
+        # Decode regulatory state to metabolic state
+        metabolic_state = self.decode_metabolic_state(state)
 
-        # Apply regulatory constraints to solver
-        solver_kwargs_modified = solver_kwargs.copy()
-        if regulatory_constraints:
-            # Add regulatory constraints to solver_kwargs
-            if 'constraints' in solver_kwargs_modified:
-                existing_constraints = solver_kwargs_modified['constraints'].copy()
-            else:
-                existing_constraints = {}
-            
-            # Merge regulatory constraints with existing ones
-            all_constraints = {**existing_constraints, **regulatory_constraints}
-            solver_kwargs_modified['constraints'] = all_constraints
+        # Get constraints from metabolic state
+        constraints = self.decode_constraints(metabolic_state)
 
-        # Solve with regulatory constraints
+        # Merge with user-provided constraints
+        if 'constraints' in solver_kwargs:
+            constraints.update(solver_kwargs['constraints'])
+
+        # Solve
         solution = self.solver.solve(
             linear=self._linear_objective,
             minimize=self._minimize,
-            **solver_kwargs_modified
+            constraints=constraints,
+            get_values=True,
+            **solver_kwargs
         )
-
-        if solution.values:
-            solution.values = {**initial_state, **regulatory_state, **solution.values}
 
         if to_solver:
             return solution
 
-        minimize = solver_kwargs.get('minimize', self._minimize)
-        return Solution.from_solver(method="RFBA", solution=solution, model=self.model, minimize=minimize)
-
-    def _dynamic_optimize(self,
-                          initial_state: Dict[str, float] = None,
-                          iterations: int = 10,
-                          to_solver: bool = False,
-                          solver_kwargs: Dict = None) -> Union[DynamicSolution, List[Solution]]:
-        """
-        RFBA model dynamic simulation using pure simulator approach (until the metabolic-regulatory steady-state is reached).
-
-        :param initial_state: a dictionary of variable ids and their values to set as initial state
-        :param iterations: The maximum number of iterations. Default: 10
-        :param to_solver: Whether to return the solution as a SolverSolution instance. Default: False
-        :param solver_kwargs: Keyword arguments to pass to the solver.
-        :return: A DynamicSolution instance or a list of solver Solutions if to_solver is True.
-        """
-        if not initial_state:
-            initial_state = {}
-
-        if not solver_kwargs:
-            solver_kwargs = {}
-
-        # It takes the initial state from the model and then updates with the initial state provided as input
-        initial_state = self.initial_state(initial_state)
-
-        regulatory_solutions = []
-        solver_solutions = []
-
-        # solve using the initial state
-        state, solver_solution = self.next_state(state=initial_state, solver_kwargs=solver_kwargs)
-        regulatory_solutions.append(state)
-        solver_solutions.append(solver_solution)
-
-        i = 1
-        steady_state = False
-        while not steady_state:
-            # Updating state upon state. See next state for further detail
-            state, solver_solution = self.next_state(state=state, solver_kwargs=solver_kwargs)
-
-            for regulatory_solution in regulatory_solutions:
-
-                is_duplicated = _find_duplicated_state(state=state, regulatory_solution=regulatory_solution,
-                                                       regulatory_reactions=self._regulatory_reactions,
-                                                       regulatory_metabolites=self._regulatory_metabolites)
-                if not is_duplicated:
-                    continue
-
-                steady_state = True
-                break
-
-            # add the new state to the list of regulatory solutions
-            regulatory_solutions.append(state)
-            solver_solutions.append(solver_solution)
-
-            # if the maximum number of iterations is reached, the simulation is stopped
-            if i < iterations:
-                i += 1
-
-            else:
-                warn("Iteration limit reached", UserWarning, stacklevel=2)
-                steady_state = True
-
-        if to_solver:
-            return solver_solutions
-
-        # Convert solutions to Solution objects for DynamicSolution
-        model_solutions = []
-        for sol in solver_solutions:
-            if hasattr(sol, 'fobj'):  # It's already a solution object
-                model_solutions.append(Solution.from_solver(method="RFBA", solution=sol, model=self.model, minimize=self._minimize))
-            else:
-                model_solutions.append(sol)
-        
-        return DynamicSolution(*model_solutions, time=list(range(len(model_solutions))))
-
-    def optimize(self,
-                 solver_kwargs: Dict = None,
-                 initial_state: Dict[str, float] = None,
-                 dynamic: bool = False,
-                 iterations: int = 10,
-                 to_solver: bool = False,
-                 **kwargs) -> Union[DynamicSolution, Solution, Solution]:
-        """
-        RFBA simulation using pure simulator approach.
-        
-        For external models without regulatory layers, this falls back to FBA.
-        For native GERM models with regulatory layers, implements full RFBA logic.
-
-        :param solver_kwargs: Keyword arguments to pass to the solver.
-        :param initial_state: a dictionary of variable ids and their values to set as initial state
-        :param dynamic: If True, the model is simulated until the metabolic-regulatory steady-state is reached.
-        :param iterations: The maximum number of iterations. Default: 10
-        :param to_solver: Whether to return the solution as a SolverSolution instance. Default: False
-        :return: A Solution instance.
-        """
-        # If not synchronized, rebuild
-        if not self.synchronized:
-            self.build()
-
-        if not solver_kwargs:
-            solver_kwargs = {}
-
-        # Check if model has regulatory capabilities
-        if hasattr(self.model, 'is_regulatory') and self.model.is_regulatory():
-            # Full RFBA for native GERM models with regulatory layers
-            if dynamic:
-                return self._dynamic_optimize(initial_state=initial_state, iterations=iterations,
-                                            to_solver=to_solver, solver_kwargs=solver_kwargs)
-            else:
-                return self._steady_state_optimize(initial_state=initial_state, to_solver=to_solver,
-                                                 solver_kwargs=solver_kwargs)
-        else:
-            # Fallback to FBA for external models or models without regulatory layers
-            return self._optimize_simulator_fba(solver_kwargs=solver_kwargs, **kwargs)
-
-    def _optimize_simulator_fba(self, solver_kwargs: Dict = None, **kwargs) -> Solution:
-        """
-        Simple FBA-like optimization for simulator models (no regulatory layer).
-        """
-        if solver_kwargs is None:
-            solver_kwargs = {}
-        
-        # For simulator models without regulatory layers, just do FBA
-        return self.solver.solve(
-            linear=self._linear_objective,
-            minimize=self._minimize,
-            **solver_kwargs
+        return Solution.from_solver(
+            method=self.method,
+            solution=solution,
+            model=self.model,
+            minimize=self._minimize
         )
 
-    def initial_state(self, state: Dict[str, float] = None) -> Dict[str, float]:
+    def _optimize_dynamic(self,
+                          state: Dict[str, float],
+                          to_solver: bool,
+                          solver_kwargs: Dict) -> DynamicSolution:
         """
-        Method responsible for retrieving the initial state of the model.
-        The initial state is the state of all regulators found in the Metabolic-Regulatory model.
-        :param state: the initial state of the model
-        :return: dict of regulatory/metabolic variable keys (regulators) and a value of 0 or 1
+        Perform dynamic RFBA simulation (iterative until convergence).
+
+        Dynamic RFBA iteratively:
+        1. Solves FBA with current regulatory state
+        2. Updates regulatory state based on solution
+        3. Repeats until steady state (no changes) or max iterations
+
+        :param state: Initial regulatory state
+        :param to_solver: Whether to return raw solver solutions
+        :param solver_kwargs: Solver arguments
+        :return: DynamicSolution containing all iterations
         """
-        if not state:
-            state = {}
+        solutions = []
+        max_iterations = 100  # Safety limit
 
-        if not hasattr(self.model, 'is_regulatory') or not self.model.is_regulatory():
-            return state
+        for iteration in range(max_iterations):
+            # Solve with current state
+            solution = self._optimize_steady_state(state, to_solver=True, solver_kwargs=solver_kwargs)
+            solutions.append(solution)
 
-        initial_state = {}
-        for regulator in self.model.yield_regulators():
-            if regulator.id in state:
-                initial_state[regulator.id] = state[regulator.id]
+            # Check if solution is optimal
+            if solution.status.name != 'OPTIMAL':
+                warn(f"Non-optimal solution at iteration {iteration}")
+                break
 
-            elif regulator.is_metabolite() and regulator.exchange_reaction:
-                if regulator.exchange_reaction.id in state:
-                    initial_state[regulator.id] = state[regulator.exchange_reaction.id]
+            # Get new regulatory state from solution
+            # Update state based on reaction fluxes and metabolite concentrations
+            new_state = self._update_state_from_solution(state, solution)
 
-                else:
-                    initial_state[regulator.id] = abs(regulator.exchange_reaction.lower_bound)
+            # Check for convergence (state hasn't changed)
+            if self._states_equal(state, new_state):
+                break
 
-            else:
-                initial_state[regulator.id] = max(regulator.coefficients)
+            # Update state for next iteration
+            state = new_state
 
-        return initial_state
+        return DynamicSolution(solutions=solutions, method=self.method)
+
+    def _update_state_from_solution(self,
+                                     current_state: Dict[str, float],
+                                     solution) -> Dict[str, float]:
+        """
+        Update regulatory state based on FBA solution.
+
+        This examines reaction fluxes and metabolite concentrations
+        to determine new regulator states.
+
+        :param current_state: Current regulatory state
+        :param solution: FBA solution
+        :return: Updated regulatory state
+        """
+        new_state = current_state.copy()
+
+        # If no regulatory network, return unchanged
+        if not self.model.has_regulatory_network():
+            return new_state
+
+        # Update regulator states based on solution
+        # Note: This is model-specific logic that may need customization
+        # For now, we use a simple approach based on flux values
+
+        for reg_id in new_state.keys():
+            # Check if regulator is a reaction or metabolite
+            if reg_id in self.model.reactions:
+                # Regulator is a reaction - update based on flux
+                flux = solution.values.get(reg_id, 0.0)
+                new_state[reg_id] = 1.0 if abs(flux) > ModelConstants.TOLERANCE else 0.0
+
+            elif reg_id in self.model.metabolites:
+                # Regulator is a metabolite - could use concentration if available
+                # For now, keep current state
+                pass
+
+        return new_state
+
+    def _states_equal(self, state1: Dict[str, float], state2: Dict[str, float]) -> bool:
+        """
+        Check if two regulatory states are equal.
+
+        :param state1: First state
+        :param state2: Second state
+        :return: True if states are equal, False otherwise
+        """
+        if set(state1.keys()) != set(state2.keys()):
+            return False
+
+        for key in state1:
+            if abs(state1[key] - state2[key]) > ModelConstants.TOLERANCE:
+                return False
+
+        return True

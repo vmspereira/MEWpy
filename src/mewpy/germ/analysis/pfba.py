@@ -43,11 +43,18 @@ class pFBA(FBA):
     def build(self, fraction: float = None):
         """
         Build the pFBA problem using pure simulator approach.
-        
+
         :param fraction: Fraction of optimal objective value to maintain. Default: None (exact optimal)
         """
-        # Get simulator from any model type
-        simulator = self._get_simulator()
+        # Get simulator - support both RegulatoryExtension and legacy models
+        if hasattr(self.model, 'simulator'):
+            simulator = self.model.simulator
+        else:
+            from mewpy.simulation import get_simulator
+            try:
+                simulator = get_simulator(self.model)
+            except:
+                simulator = self.model
         
         # Create solver directly from simulator
         self._solver = solver_instance(simulator)
@@ -141,7 +148,14 @@ class pFBA(FBA):
         # Handle infeasible solutions by providing a default solution with zero values
         if solution.status == Status.INFEASIBLE:
             # Get all reactions from the model to create zero solution
-            simulator = self._get_simulator()
+            if hasattr(self.model, 'simulator'):
+                simulator = self.model.simulator
+            else:
+                from mewpy.simulation import get_simulator
+                try:
+                    simulator = get_simulator(self.model)
+                except:
+                    simulator = self.model
             zero_values = {r_id: 0.0 for r_id in simulator.reactions}
             solution = Solution(
                 status=Status.OPTIMAL,

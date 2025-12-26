@@ -1,40 +1,44 @@
+"""
+Steady-state Regulatory Flux Balance Analysis (SRFBA) - Clean Implementation
+
+This module implements SRFBA using RegulatoryExtension only.
+No backwards compatibility with legacy GERM models.
+"""
 from typing import Union, Dict, TYPE_CHECKING
 from warnings import warn
-from functools import partial
 
 from mewpy.util.constants import ModelConstants
-from mewpy.germ.analysis import FBA
-from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
+from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
+from mewpy.germ.models.regulatory_extension import RegulatoryExtension
+from mewpy.germ.algebra import parse_expression
 from mewpy.solvers import Solution
 from mewpy.solvers.solver import VarType
 
 if TYPE_CHECKING:
-    from mewpy.germ.variables import Reaction, Interaction
+    from mewpy.germ.variables import Interaction
 
 
-class SRFBA(FBA):
+class SRFBA(_RegulatoryAnalysisBase):
     """
-    Steady-state Regulatory Flux Balance Analysis (SRFBA) using pure simulator-based approach.
-    
-    This implementation provides full SRFBA functionality including boolean algebra
+    Steady-state Regulatory Flux Balance Analysis (SRFBA) using RegulatoryExtension.
+
+    This implementation works exclusively with RegulatoryExtension instances that wrap
+    external simulators and provides full SRFBA functionality including boolean algebra
     constraint handling for regulatory logic (AND, OR, NOT, equal, unequal).
+
+    For more details: Shlomi et al. 2007, https://dx.doi.org/10.1038%2Fmsb4100141
     """
 
     def __init__(self,
-                 model: Union[Model, MetabolicModel, RegulatoryModel],
+                 model: RegulatoryExtension,
                  solver: Union[str, None] = None,
                  build: bool = False,
                  attach: bool = False):
         """
-        Steady-state Regulatory Flux Balance Analysis (SRFBA) of a metabolic-regulatory model.
-        Full implementation using pure simulator-based approach with boolean algebra constraints.
+        Steady-state Regulatory Flux Balance Analysis (SRFBA).
 
-        For more details consult Shlomi et al. 2007 at https://dx.doi.org/10.1038%2Fmsb4100141
-
-        :param model: a MetabolicModel, RegulatoryModel or GERM model. The model is used to retrieve
-        the simulator for optimization
-        :param solver: A solver name. The solver interface will be used to load and solve the optimization problem.
-        If none, a new solver is instantiated.
+        :param model: A RegulatoryExtension instance wrapping a simulator
+        :param solver: A solver name. If None, a new solver is instantiated.
         :param build: Whether to build the problem upon instantiation. Default: False
         :param attach: Whether to attach the problem to the model upon instantiation. Default: False
         """
@@ -45,115 +49,114 @@ class SRFBA(FBA):
 
     @property
     def model_default_lb(self) -> float:
-        """
-        The default lower bound for the model reactions.
-        :return:
-        """
+        """The default lower bound for the model reactions."""
         if self.synchronized:
             return self._model_default_lb
 
-        if hasattr(self.model, 'yield_reactions'):
-            self._model_default_lb = min(reaction.lower_bound for reaction in self.model.yield_reactions())
+        # Get bounds from simulator
+        bounds = [self.model.get_reaction(rxn_id).get('lb', ModelConstants.REACTION_LOWER_BOUND)
+                  for rxn_id in self.model.reactions]
+        self._model_default_lb = min(bounds) if bounds else ModelConstants.REACTION_LOWER_BOUND
         return self._model_default_lb
 
     @property
     def model_default_ub(self) -> float:
-        """
-        The default upper bound for the model reactions.
-        :return:
-        """
+        """The default upper bound for the model reactions."""
         if self.synchronized:
             return self._model_default_ub
 
-        if hasattr(self.model, 'yield_reactions'):
-            self._model_default_ub = max(reaction.upper_bound for reaction in self.model.yield_reactions())
+        # Get bounds from simulator
+        bounds = [self.model.get_reaction(rxn_id).get('ub', ModelConstants.REACTION_UPPER_BOUND)
+                  for rxn_id in self.model.reactions]
+        self._model_default_ub = max(bounds) if bounds else ModelConstants.REACTION_UPPER_BOUND
         return self._model_default_ub
 
     def build(self):
         """
-        Build the SRFBA problem using pure simulator approach.
-        
-        This implementation provides SRFBA functionality including:
+        Build the SRFBA problem.
+
+        This implementation provides full SRFBA functionality including:
         - Basic metabolic constraints (from FBA)
-        - Framework for GPR and regulatory constraints
-        
-        Note: Full boolean algebra constraint system is implemented but currently
-        disabled as it makes the problem too restrictive for the test cases.
-        The complete constraint handling methods (AND, OR, NOT, equal, unequal)
-        are available and can be enabled by calling self._build_gprs() and 
-        self._build_interactions() when needed.
+        - GPR constraints using boolean algebra
+        - Regulatory interaction constraints
+        - Complete boolean operator support (AND, OR, NOT, equal, unequal)
+
+        The boolean algebra constraint system is fully enabled, providing
+        comprehensive integration of gene-protein-reaction rules and
+        regulatory network logic into the optimization problem.
         """
         # Build the base metabolic model first
         super().build()
-        
-        # Framework for regulatory constraints is available but disabled for compatibility
-        # if hasattr(self.model, 'is_regulatory') and self.model.is_regulatory():
-        #     self._build_gprs()
-        #     self._build_interactions()
-        
+
+        # Build GPR and regulatory interaction constraints
+        if self.model.has_regulatory_network():
+            self._build_gprs()
+            self._build_interactions()
+
         return self
 
     def _build_gprs(self):
-        """
-        Build the GPR (Gene-Protein-Reaction) constraints for the solver.
-        """
-        for reaction in self.model.yield_reactions():
-            self._add_gpr_constraint(reaction)
+        """Build the GPR (Gene-Protein-Reaction) constraints for the solver."""
+        for rxn_id in self.model.reactions:
+            gpr = self.model.get_parsed_gpr(rxn_id)
+            if not gpr.is_none:
+                # Get reaction bounds from simulator
+                rxn_data = self.model.get_reaction(rxn_id)
+                self._add_gpr_constraint(rxn_id, gpr, rxn_data)
 
     def _build_interactions(self):
-        """
-        Build the regulatory interaction constraints for the solver.
-        """
-        for interaction in self.model.yield_interactions():
-            self._add_interaction_constraint(interaction)
+        """Build the regulatory interaction constraints for the solver."""
+        if self.model.has_regulatory_network():
+            for interaction in self.model.yield_interactions():
+                self._add_interaction_constraint(interaction)
 
-    def _add_gpr_constraint(self, reaction: 'Reaction'):
+    def _add_gpr_constraint(self, rxn_id: str, gpr, rxn_data: Dict):
         """
-        Add GPR constraint for a given reaction using boolean algebra.
-        
-        :param reaction: the reaction with GPR
+        Add GPR constraint for a reaction using boolean algebra.
+
+        :param rxn_id: Reaction identifier
+        :param gpr: Parsed GPR expression
+        :param rxn_data: Reaction data dict from simulator
         """
-        if not hasattr(reaction, 'gpr') or reaction.gpr is None:
-            return
-        
         # Check if GPR has a symbolic representation
-        if not hasattr(reaction.gpr, 'symbolic') or reaction.gpr.symbolic is None:
+        if not hasattr(gpr, 'symbolic') or gpr.symbolic is None:
             return
-            
+
         # Skip if GPR is none/empty
-        if hasattr(reaction.gpr, 'is_none') and reaction.gpr.is_none:
+        if hasattr(gpr, 'is_none') and gpr.is_none:
             return
 
         # Create boolean variable for the reaction
-        boolean_variable = f'bool_{reaction.id}'
-        self._boolean_variables[boolean_variable] = reaction.id
-        
+        boolean_variable = f'bool_{rxn_id}'
+        self._boolean_variables[boolean_variable] = rxn_id
+
         # Add the boolean variable to solver
         self.solver.add_variable(boolean_variable, 0.0, 1.0, VarType.INTEGER, update=False)
-        
+
         # Add constraints linking reaction flux to boolean variable
-        lb, ub = reaction.bounds
-        
+        lb = rxn_data.get('lb', ModelConstants.REACTION_LOWER_BOUND)
+        ub = rxn_data.get('ub', ModelConstants.REACTION_UPPER_BOUND)
+
         # V - Y*Vmax <= 0  ->  V <= Y*Vmax
         if ub != 0:
             self.solver.add_constraint(
-                f'gpr_upper_{reaction.id}',
-                {reaction.id: 1.0, boolean_variable: -float(ub)},
+                f'gpr_upper_{rxn_id}',
+                {rxn_id: 1.0, boolean_variable: -float(ub)},
                 '<', 0.0, update=False
             )
-        
+
         # V - Y*Vmin >= 0  ->  V >= Y*Vmin
         if lb != 0:
             self.solver.add_constraint(
-                f'gpr_lower_{reaction.id}',
-                {reaction.id: 1.0, boolean_variable: -float(lb)},
+                f'gpr_lower_{rxn_id}',
+                {rxn_id: 1.0, boolean_variable: -float(lb)},
                 '>', 0.0, update=False
             )
-        
+
         # Add constraints for the GPR expression if it's properly parsed
         try:
-            self._linearize_expression(boolean_variable, reaction.gpr.symbolic)
-        except Exception as e:
+            self._linearize_expression(boolean_variable, gpr.symbolic)
+        except Exception:
             # If linearization fails, just skip this constraint
             # The reaction will still work with just the flux bounds
             pass
@@ -161,7 +164,7 @@ class SRFBA(FBA):
     def _add_interaction_constraint(self, interaction: 'Interaction'):
         """
         Add regulatory interaction constraint using boolean algebra.
-        
+
         :param interaction: the regulatory interaction
         """
         try:
@@ -177,24 +180,24 @@ class SRFBA(FBA):
             # Get target bounds
             lb = float(min(interaction.target.coefficients))
             ub = float(max(interaction.target.coefficients))
-            
+
             # Determine variable type
             var_type = VarType.INTEGER if (lb, ub) in [(0, 1), (0.0, 1.0)] else VarType.CONTINUOUS
-            
+
             # Add target variable
             target_id = interaction.target.id
             self.solver.add_variable(target_id, lb, ub, var_type, update=False)
-            
+
             # Add constraints for the regulatory expression
             self._linearize_expression(target_id, symbolic)
-        except Exception as e:
+        except Exception:
             # If constraint building fails for this interaction, skip it
             pass
 
     def _linearize_expression(self, boolean_variable: str, symbolic):
         """
         Linearize a boolean expression into solver constraints.
-        
+
         :param boolean_variable: the boolean variable name
         :param symbolic: the symbolic expression to linearize
         """
@@ -206,7 +209,7 @@ class SRFBA(FBA):
     def _linearize_atomic_expression(self, boolean_variable: str, symbolic):
         """
         Linearize an atomic boolean expression.
-        
+
         :param boolean_variable: the boolean variable name
         :param symbolic: the atomic symbolic expression
         """
@@ -215,12 +218,12 @@ class SRFBA(FBA):
             name = symbolic.key()
             lb, ub = symbolic.bounds
             var_type = VarType.INTEGER if (float(lb), float(ub)) in [(0, 1), (0.0, 1.0)] else VarType.CONTINUOUS
-            
+
             try:
                 self.solver.add_variable(name, float(lb), float(ub), var_type, update=False)
             except:
                 pass  # Variable already exists
-        
+
         # Add constraint based on symbolic type
         constraint_coefs, lb, ub = self._get_atomic_constraint(boolean_variable, symbolic)
         if constraint_coefs:
@@ -232,18 +235,18 @@ class SRFBA(FBA):
     def _linearize_complex_expression(self, boolean_variable: str, symbolic):
         """
         Linearize a complex boolean expression with operators.
-        
-        :param boolean_variable: the boolean variable name  
+
+        :param boolean_variable: the boolean variable name
         :param symbolic: the complex symbolic expression
         """
         auxiliary_variables = []
         last_variable = None
-        
+
         # Process each atom in the expression
         for atom in symbolic:
             last_variable = atom
             var_name = atom.key()
-            
+
             # Add auxiliary variables for operators
             if atom.is_and or atom.is_or:
                 for i, _ in enumerate(atom.variables[:-1]):
@@ -254,7 +257,7 @@ class SRFBA(FBA):
                 aux_var = f'{var_name}_0'
                 auxiliary_variables.append(aux_var)
                 self.solver.add_variable(aux_var, 0.0, 1.0, VarType.INTEGER, update=False)
-            
+
             # Add symbol variables
             if atom.is_symbol:
                 try:
@@ -263,16 +266,16 @@ class SRFBA(FBA):
                     self.solver.add_variable(var_name, float(lb), float(ub), var_type, update=False)
                 except:
                     pass  # Variable already exists
-            
+
             # Add operator constraints
             self._add_operator_constraints(atom)
-        
+
         # Link the final result to the boolean variable
         if last_variable:
             last_var_name = last_variable.key()
             names = [f'{last_var_name}_{i}' for i, _ in enumerate(last_variable.variables[:-1])]
             final_var = names[-1] if names else last_var_name
-            
+
             self.solver.add_constraint(
                 f'link_{boolean_variable}',
                 {boolean_variable: 1.0, final_var: -1.0},
@@ -280,9 +283,7 @@ class SRFBA(FBA):
             )
 
     def _get_atomic_constraint(self, boolean_variable: str, symbolic):
-        """
-        Get constraint coefficients for atomic expressions.
-        """
+        """Get constraint coefficients for atomic expressions."""
         if symbolic.is_true:
             return {boolean_variable: 1.0}, 1.0, 1.0
         elif symbolic.is_false:
@@ -292,13 +293,11 @@ class SRFBA(FBA):
             return {boolean_variable: 1.0}, val, val
         elif symbolic.is_symbol:
             return {boolean_variable: 1.0, symbolic.key(): -1.0}, 0.0, 0.0
-        
+
         return {}, 0.0, 1.0
 
     def _add_operator_constraints(self, symbolic):
-        """
-        Add constraints for boolean operators (AND, OR, NOT).
-        """
+        """Add constraints for boolean operators (AND, OR, NOT)."""
         if symbolic.is_and:
             self._add_and_constraints(symbolic)
         elif symbolic.is_or:
@@ -319,18 +318,18 @@ class SRFBA(FBA):
         """
         name = symbolic.key()
         names = [f'{name}_{i}' for i, _ in enumerate(symbolic.variables[:-1])]
-        
+
         # Handle first AND operation
         and_op = names[0]
         op_l = symbolic.variables[0]
         op_r = symbolic.variables[1]
-        
+
         coefs = {and_op: -4.0}
         if not (op_l.is_one or op_l.is_true):
             coefs[op_l.key()] = 2.0
         if not (op_r.is_one or op_r.is_true):
             coefs[op_r.key()] = 2.0
-            
+
         self.solver.add_constraint(
             f'and_{and_op}',
             coefs, '>', -1.0, update=False
@@ -339,18 +338,18 @@ class SRFBA(FBA):
             f'and_{and_op}_ub',
             coefs, '<', 3.0, update=False
         )
-        
+
         # Handle nested AND operations
         if len(symbolic.variables) > 2:
             children = symbolic.variables[2:]
             for i, op_r in enumerate(children):
                 op_l_name = names[i]
                 and_op = names[i + 1]
-                
+
                 coefs = {and_op: -4.0, op_l_name: 2.0}
                 if not (op_r.is_one or op_r.is_true):
                     coefs[op_r.key()] = 2.0
-                
+
                 self.solver.add_constraint(
                     f'and_{and_op}',
                     coefs, '>', -1.0, update=False
@@ -367,18 +366,18 @@ class SRFBA(FBA):
         """
         name = symbolic.key()
         names = [f'{name}_{i}' for i, _ in enumerate(symbolic.variables[:-1])]
-        
+
         # Handle first OR operation
         or_op = names[0]
         op_l = symbolic.variables[0]
         op_r = symbolic.variables[1]
-        
+
         coefs = {or_op: -4.0}
         if not (op_l.is_one or op_l.is_true):
             coefs[op_l.key()] = 2.0
         if not (op_r.is_one or op_r.is_true):
             coefs[op_r.key()] = 2.0
-            
+
         self.solver.add_constraint(
             f'or_{or_op}',
             coefs, '>', -2.0, update=False
@@ -387,18 +386,18 @@ class SRFBA(FBA):
             f'or_{or_op}_ub',
             coefs, '<', 1.0, update=False
         )
-        
+
         # Handle nested OR operations
         if len(symbolic.variables) > 2:
             children = symbolic.variables[2:]
             for i, op_r in enumerate(children):
                 op_l_name = names[i]
                 or_op = names[i + 1]
-                
+
                 coefs = {or_op: -4.0, op_l_name: 2.0}
                 if not (op_r.is_one or op_r.is_true):
                     coefs[op_r.key()] = 2.0
-                
+
                 self.solver.add_constraint(
                     f'or_{or_op}',
                     coefs, '>', -2.0, update=False
@@ -414,38 +413,36 @@ class SRFBA(FBA):
         Constraint: a + b = 1
         """
         op_l = symbolic.variables[0]
-        
+
         if op_l.is_numeric:
             coefs = {symbolic.key(): 1.0}
             val = float(op_l.value)
         else:
             coefs = {symbolic.key(): 1.0, op_l.key(): 1.0}
             val = 1.0
-        
+
         self.solver.add_constraint(
             f'not_{symbolic.key()}',
             coefs, '=', val, update=False
         )
 
     def _add_greater_constraints(self, symbolic):
-        """
-        Add constraints for GREATER operator: a => r > value
-        """
+        """Add constraints for GREATER operator: a => r > value"""
         greater_op = symbolic.key()
         op_l = symbolic.variables[0]
         op_r = symbolic.variables[1]
-        
+
         if op_l.is_numeric:
             operand = op_r
             c_val = float(op_l.value)
         else:
             operand = op_l
             c_val = float(op_r.value)
-        
+
         _lb, _ub = operand.bounds
         _lb = float(_lb)
         _ub = float(_ub)
-        
+
         # First constraint: a(value + tolerance - r_UB) + r <= value + tolerance
         coefs1 = {
             greater_op: c_val + ModelConstants.TOLERANCE - _ub,
@@ -455,7 +452,7 @@ class SRFBA(FBA):
             f'greater_{greater_op}_1',
             coefs1, '<', c_val + ModelConstants.TOLERANCE, update=False
         )
-        
+
         # Second constraint: a(r_LB - value - tolerance) + r >= r_LB
         coefs2 = {
             greater_op: _lb - c_val - ModelConstants.TOLERANCE,
@@ -467,24 +464,22 @@ class SRFBA(FBA):
         )
 
     def _add_less_constraints(self, symbolic):
-        """
-        Add constraints for LESS operator: a => r < value
-        """
+        """Add constraints for LESS operator: a => r < value"""
         less_op = symbolic.key()
         op_l = symbolic.variables[0]
         op_r = symbolic.variables[1]
-        
+
         if op_l.is_numeric:
             operand = op_r
             c_val = float(op_l.value)
         else:
             operand = op_l
             c_val = float(op_r.value)
-        
+
         _lb, _ub = operand.bounds
         _lb = float(_lb)
         _ub = float(_ub)
-        
+
         # First constraint: a(value + tolerance - r_LB) + r >= value + tolerance
         coefs1 = {
             less_op: c_val + ModelConstants.TOLERANCE - _lb,
@@ -494,7 +489,7 @@ class SRFBA(FBA):
             f'less_{less_op}_1',
             coefs1, '>', c_val + ModelConstants.TOLERANCE, update=False
         )
-        
+
         # Second constraint: a(r_UB - value - tolerance) + r <= r_UB
         coefs2 = {
             less_op: _ub - c_val - ModelConstants.TOLERANCE,
@@ -506,37 +501,32 @@ class SRFBA(FBA):
         )
 
     def _add_equal_constraints(self, symbolic):
-        """
-        Add constraints for EQUAL operator: a => r = value
-        """
+        """Add constraints for EQUAL operator: a => r = value"""
         equal_op = symbolic.key()
         op_l = symbolic.variables[0]
         op_r = symbolic.variables[1]
-        
+
         if op_l.is_numeric:
             operand = op_r
             c_val = float(op_l.value)
         else:
             operand = op_l
             c_val = float(op_r.value)
-        
+
         coefs = {equal_op: -c_val, operand.key(): 1.0}
         self.solver.add_constraint(
             f'equal_{equal_op}',
             coefs, '=', 0.0, update=False
         )
 
-    def optimize(self, 
-                 solver_kwargs: Dict = None, 
+    def optimize(self,
+                 solver_kwargs: Dict = None,
                  initial_state: Dict[str, float] = None,
                  to_solver: bool = False,
                  **kwargs) -> Solution:
         """
-        Optimize the SRFBA problem using pure simulator approach.
-        
-        This simplified implementation provides regulatory-aware optimization
-        without mixed-integer programming complexity.
-        
+        Optimize the SRFBA problem.
+
         :param solver_kwargs: A dictionary of keyword arguments to be passed to the solver.
         :param initial_state: Initial state for regulatory variables
         :param to_solver: Whether to return the solution as a SolverSolution instance. Default: False
@@ -544,63 +534,28 @@ class SRFBA(FBA):
         """
         if not self.synchronized:
             self.build()
-        
+
         if not solver_kwargs:
             solver_kwargs = {}
-            
+
         if not initial_state:
             initial_state = {}
-        
-        # Check if model has regulatory capabilities
-        if hasattr(self.model, 'is_regulatory') and self.model.is_regulatory():
-            # Apply regulatory constraints via initial_state
-            if initial_state:
-                constraints = solver_kwargs.get('constraints', {})
-                constraints.update(initial_state)
-                solver_kwargs['constraints'] = constraints
-        
+
+        # Apply regulatory constraints via initial_state
+        if self.model.has_regulatory_network() and initial_state:
+            constraints = solver_kwargs.get('constraints', {})
+            constraints.update(initial_state)
+            solver_kwargs['constraints'] = constraints
+
         # Use the base FBA optimization with regulatory constraints
         solution = super().optimize(solver_kwargs=solver_kwargs, **kwargs)
-        
+
         if to_solver:
             return solution
-        
+
         # Convert to Solution if needed
         if not isinstance(solution, Solution):
             minimize = solver_kwargs.get('minimize', self._minimize)
             return Solution.from_solver(method="SRFBA", solution=solution, model=self.model, minimize=minimize)
-        
+
         return solution
-
-    # Legacy method signatures for backward compatibility
-    def _optimize(self,
-                  to_solver: bool = False,
-                  solver_kwargs: Dict = None,
-                  initial_state: Dict[str, float] = None,
-                  **kwargs) -> Solution:
-        """
-        Legacy optimization method for backward compatibility.
-        """
-        return self.optimize(solver_kwargs=solver_kwargs, 
-                           initial_state=initial_state, 
-                           to_solver=to_solver, 
-                           **kwargs)
-
-    # Simplified constraint generation methods (for interface compatibility)
-    def gpr_constraint(self, reaction):
-        """
-        Simplified GPR constraint handling for pure simulator approach.
-        Returns empty constraints as GPRs are handled by the simulator.
-        """
-        warn("GPR constraints are handled automatically by the simulator in this implementation.",
-             UserWarning, stacklevel=2)
-        return [], []
-
-    def interaction_constraint(self, interaction):
-        """
-        Simplified interaction constraint handling for pure simulator approach.
-        Returns empty constraints as interactions are handled by the simulator.
-        """
-        warn("Interaction constraints are handled automatically by the simulator in this implementation.",
-             UserWarning, stacklevel=2)
-        return [], []

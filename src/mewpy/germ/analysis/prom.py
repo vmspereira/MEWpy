@@ -1,16 +1,22 @@
+"""
+Probabilistic Regulation of Metabolism (PROM) - Clean Implementation
+
+This module implements PROM using RegulatoryExtension only.
+No backwards compatibility with legacy GERM models.
+"""
 from typing import Union, Dict, TYPE_CHECKING, Any, Sequence, Tuple
 
 import pandas as pd
 
-from mewpy.germ.analysis import FBA
+from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
 from mewpy.germ.solution import KOSolution
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
 from mewpy.util.constants import ModelConstants
+from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 
 if TYPE_CHECKING:
     from mewpy.germ.variables import Regulator, Gene, Target
-    from mewpy.germ.models import Model, MetabolicModel, RegulatoryModel
 
 
 def _run_and_decode_solver(lp,
@@ -32,71 +38,76 @@ def _run_and_decode_solver(lp,
         return
 
 
-class PROM(FBA):
+class PROM(_RegulatoryAnalysisBase):
+    """
+    Probabilistic Regulation of Metabolism (PROM) using RegulatoryExtension.
+
+    PROM predicts the growth phenotype and flux response after transcriptional
+    perturbation, given a metabolic and regulatory network. PROM introduces
+    probabilities to represent gene states and gene-transcription factor interactions.
+
+    For more details: https://doi.org/10.1073/pnas.1005139107
+    """
 
     def __init__(self,
-                 model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
+                 model: RegulatoryExtension,
                  solver: Union[str, Solver] = None,
                  build: bool = False,
                  attach: bool = False):
         """
-        The Probabilistic Regulation of Metabolism (PROM) algorithm predicts the growth phenotype and the flux response
-        after transcriptional perturbation, given a metabolic and regulatory network.
-        PROM introduces probabilities to represent gene states and gene-transcription factor interactions.
+        Initialize PROM with a RegulatoryExtension model.
 
-        For more detail consult: https://doi.org/10.1073/pnas.1005139107
-        :param model: The metabolic and regulatory model to be simulated.
+        :param model: A RegulatoryExtension instance wrapping a simulator
         :param solver: The solver to be used. If None, a new instance will be created from the default solver.
         :param build: If True, the linear problem will be built upon initialization.
-        If False, the linear problem can be built later by calling the build() method.
         :param attach: If True, the linear problem will be attached to the model.
         """
         super().__init__(model=model, solver=solver, build=build, attach=attach)
-        self.method = "PROM"  # Override method name for PROM
+        self.method = "PROM"
 
     def _build(self):
         """
-        It builds the PROM problem. It also builds a regular FBA problem to be used for the growth prediction.
+        Build the PROM problem.
+
+        It also builds a regular FBA problem to be used for the growth prediction.
         The linear problem is then loaded into the solver.
-        :return:
         """
         self._build_mass_constraints()
-        self._linear_objective = {var.id: value for var, value in self.model.objective.items()}
+        self._linear_objective = dict(self.model.objective)
         self._minimize = False
 
     def _max_rates(self, solver_kwargs: Dict[str, Any]):
-        # wt-type reference
+        """Compute maximum rates for all reactions using FVA."""
+        # Wild-type reference
         reference = self.solver.solve(**solver_kwargs)
         if reference.status != Status.OPTIMAL:
             raise RuntimeError('The solver did not find an optimal solution for the wild-type conditions.')
         reference = reference.values.copy()
         reference_constraints = {key: (reference[key] * 0.99, reference[key])
-                                 for key in self._linear_objective}
+                                for key in self._linear_objective}
 
-        # fva of the reaction at fraction of 0.99 (for wild-type growth rate)
+        # FVA of the reaction at fraction of 0.99 (for wild-type growth rate)
         rates = {}
         for reaction in self.model.reactions:
             min_rxn = _run_and_decode_solver(self,
-                                             additional_constraints=reference_constraints,
-                                             **{**solver_kwargs,
-                                                'get_values': False,
-                                                'linear': {reaction: 1},
-                                                'minimize': True})
+                                            additional_constraints=reference_constraints,
+                                            **{**solver_kwargs,
+                                               'get_values': False,
+                                               'linear': {reaction: 1},
+                                               'minimize': True})
             max_rxn = _run_and_decode_solver(self,
-                                             additional_constraints=reference_constraints,
-                                             **{**solver_kwargs,
-                                                'get_values': False,
-                                                'linear': {reaction: 1},
-                                                'minimize': False})
+                                            additional_constraints=reference_constraints,
+                                            **{**solver_kwargs,
+                                               'get_values': False,
+                                               'linear': {reaction: 1},
+                                               'minimize': False})
 
             reference_rate = reference[reaction]
 
             if reference_rate < 0:
                 value = min((min_rxn, max_rxn, reference_rate))
-
             elif reference_rate > 0:
                 value = max((min_rxn, max_rxn, reference_rate))
-
             else:
                 value = max((abs(min_rxn), abs(max_rxn), abs(reference_rate)))
 
@@ -108,59 +119,58 @@ class PROM(FBA):
         return rates
 
     def _optimize_ko(self,
-                     probabilities: Dict[Tuple[str, str], float],
-                     regulator: Union['Gene', 'Regulator'],
-                     reference: Dict[str, float],
-                     max_rates: Dict[str, float],
-                     to_solver: bool = False,
-                     solver_kwargs: Dict[str, Any] = None):
+                    probabilities: Dict[Tuple[str, str], float],
+                    regulator: Union['Gene', 'Regulator'],
+                    reference: Dict[str, float],
+                    max_rates: Dict[str, float],
+                    to_solver: bool = False,
+                    solver_kwargs: Dict[str, Any] = None):
+        """Optimize with regulator knockout."""
         solver_constrains = solver_kwargs.get('constraints', {})
 
-        prom_constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
-        state = {gene: 1 for gene in self.model.genes.keys()}
+        # Get reaction bounds from simulator
+        prom_constraints = {}
+        for rxn_id in self.model.reactions:
+            rxn_data = self.model.get_reaction(rxn_id)
+            prom_constraints[rxn_id] = (rxn_data.get('lb', ModelConstants.REACTION_LOWER_BOUND),
+                                       rxn_data.get('ub', ModelConstants.REACTION_UPPER_BOUND))
 
-        # if the regulator to be ko is a metabolic gene, the associated reactions are ko too
-        # prom constraints of the associated reactions are set to threshold
+        genes = self.model.genes
+        state = {gene: 1 for gene in genes}
+
+        # If the regulator to be KO is a metabolic gene, the associated reactions are KO too
         if regulator.is_gene():
-
             for reaction in regulator.reactions.keys():
                 prom_constraints[reaction] = (-ModelConstants.TOLERANCE, ModelConstants.TOLERANCE)
 
-        # finds the target genes of the deleted regulator.
-        # finds the reactions associated with these target genes.
-        # The reactions' bounds might be changed next, but for now the flag is set to False
+        # Find the target genes of the deleted regulator
         target_reactions = {}
         for target in regulator.yield_targets():
-
             if target.is_gene():
-                # after the regulator ko iteration, this is reset
                 state[target.id] = 0
-
                 target_reactions.update({reaction.id: reaction for reaction in target.yield_reactions()})
 
-        # GPR evaluation of each reaction previously found, but using the changed gene_state.
-        # If the GPR is evaluated to zero, the reaction bounds will be changed in the future.
-        # For that, the reactions dictionary flags must be updated to True.
+        # GPR evaluation using changed gene state
         inactive_reactions = {}
-        for reaction in target_reactions.values():
+        for rxn_id in target_reactions.keys():
+            gpr = self.model.get_parsed_gpr(rxn_id)
 
-            if reaction.gpr.is_none:
+            if gpr.is_none:
                 continue
 
-            if reaction.gpr.evaluate(values=state):
+            if gpr.evaluate(values=state):
                 continue
 
-            inactive_reactions[reaction.id] = reaction
+            inactive_reactions[rxn_id] = rxn_id
 
-        # for each target regulated by the regulator
+        # For each target regulated by the regulator
         for target in regulator.yield_targets():
-
             if not target.is_gene():
                 continue
 
             target: Union['Target', 'Gene']
 
-            # composed key for interactions_probabilities
+            # Composed key for interactions_probabilities
             target_regulator = (target.id, regulator.id)
 
             if target_regulator not in probabilities:
@@ -168,136 +178,110 @@ class PROM(FBA):
 
             interaction_probability = probabilities[target_regulator]
 
-            # for each reaction associated with this single target
+            # For each reaction associated with this single target
             for reaction in target.yield_reactions():
-
-                # if the gpr has been evaluated previously to zero,
-                # it means that the metabolic genes regulated by this regulator can affect the state of the
-                # reaction. Thus, the reaction bounds can be changed using PROM probability.
-                # Nevertheless, it is only useful to do that if the probability is inferior to 1, otherwise
-                # nothing is changed
                 if reaction.id not in inactive_reactions:
                     continue
 
                 if interaction_probability >= 1:
                     continue
 
-                # reaction old bounds
+                # Reaction old bounds
                 rxn_lb, rxn_ub = tuple(prom_constraints[reaction.id])
 
-                # probability flux is the upper or lower bound that this reaction can take
-                # when the regulator is KO. This is calculated as follows:
-                # interaction probability times the reaction maximum limit (determined by fva)
+                # Probability flux
                 probability_flux = max_rates[reaction.id] * interaction_probability
 
-                # wild-type flux value for this reaction
+                # Wild-type flux value
                 wt_flux = reference[reaction.id]
 
-                # update flux bounds according to probability flux
+                # Get reaction bounds from simulator
+                rxn_data = self.model.get_reaction(reaction.id)
+                reaction_lower_bound = rxn_data.get('lb', ModelConstants.REACTION_LOWER_BOUND)
+                reaction_upper_bound = rxn_data.get('ub', ModelConstants.REACTION_UPPER_BOUND)
+
+                # Update flux bounds according to probability flux
                 if wt_flux < 0:
-
-                    rxn_lb = max((reaction.lower_bound, probability_flux, rxn_lb))
+                    rxn_lb = max((reaction_lower_bound, probability_flux, rxn_lb))
                     rxn_lb = min((rxn_lb, -ModelConstants.TOLERANCE))
-
                 elif wt_flux > 0:
-
-                    rxn_ub = min((reaction.upper_bound, probability_flux, rxn_ub))
+                    rxn_ub = min((reaction_upper_bound, probability_flux, rxn_ub))
                     rxn_ub = max((rxn_ub, ModelConstants.TOLERANCE))
-
                 else:
-
-                    # if it is zero, the reaction is not changed, so that reactions are not activated
-                    # by PROM. Only reaction ko is forced by PROM.
-
+                    # If it is zero, the reaction is not changed
                     continue
 
                 prom_constraints[reaction.id] = (rxn_lb, rxn_ub)
 
         solution = self.solver.solve(**{**solver_kwargs,
-                                        'linear': self._linear_objective,
-                                        'minimize': self._minimize,
-                                        'get_values': True,
-                                        'constraints': {**solver_constrains, **prom_constraints}})
+                                       'linear': self._linear_objective,
+                                       'minimize': self._minimize,
+                                       'get_values': True,
+                                       'constraints': {**solver_constrains, **prom_constraints}})
 
         if to_solver:
             return solution
 
         minimize = solver_kwargs.get('minimize', self._minimize)
         return Solution.from_solver(method=self.method, solution=solution, model=self.model,
-                                         minimize=minimize)
+                                   minimize=minimize)
 
     def _optimize(self,
-                  initial_state: Dict[Tuple[str, str], float] = None,
-                  regulators: Sequence[Union['Gene', 'Regulator']] = None,
-                  to_solver: bool = False,
-                  solver_kwargs: Dict[str, Any] = None) -> Union[Dict[str, Solution], Dict[str, Solution]]:
-        # wild-type reference
+                 initial_state: Dict[Tuple[str, str], float] = None,
+                 regulators: Sequence[Union['Gene', 'Regulator']] = None,
+                 to_solver: bool = False,
+                 solver_kwargs: Dict[str, Any] = None) -> Union[Dict[str, Solution], Dict[str, Solution]]:
+        """Internal optimization method."""
+        # Wild-type reference
         solver_kwargs['get_values'] = True
-        reference = self.solver.solve(linear=self._linear_objective, 
-                                      minimize=self._minimize, 
-                                      **solver_kwargs)
+        reference = self.solver.solve(linear=self._linear_objective,
+                                     minimize=self._minimize,
+                                     **solver_kwargs)
         if reference.status != Status.OPTIMAL:
             raise RuntimeError('The solver did not find an optimal solution for the wild-type conditions.')
         reference = reference.values.copy()
 
-        # max and min fluxes of the reactions
+        # Max and min fluxes of the reactions
         max_rates = self._max_rates(solver_kwargs=solver_kwargs)
 
-        # a single regulator knockout
+        # Single regulator knockout
         if len(regulators) == 1:
             ko_solution = self._optimize_ko(probabilities=initial_state,
-                                            regulator=regulators[0],
-                                            reference=reference,
-                                            max_rates=max_rates,
-                                            to_solver=to_solver,
-                                            solver_kwargs=solver_kwargs)
-            # Return as dictionary to be compatible with KOSolution
+                                           regulator=regulators[0],
+                                           reference=reference,
+                                           max_rates=max_rates,
+                                           to_solver=to_solver,
+                                           solver_kwargs=solver_kwargs)
             return {regulators[0].id: ko_solution}
 
-        # multiple regulator knockouts
+        # Multiple regulator knockouts
         kos = {}
         for regulator in regulators:
             ko_solution = self._optimize_ko(probabilities=initial_state,
-                                            regulator=regulator,
-                                            reference=reference,
-                                            max_rates=max_rates,
-                                            to_solver=to_solver,
-                                            solver_kwargs=solver_kwargs)
+                                           regulator=regulator,
+                                           reference=reference,
+                                           max_rates=max_rates,
+                                           to_solver=to_solver,
+                                           solver_kwargs=solver_kwargs)
             kos[regulator.id] = ko_solution
         return kos
 
     def optimize(self,
-                 initial_state: Dict[Tuple[str, str], float] = None,
-                 regulators: Union[str, Sequence['str']] = None,
-                 to_solver: bool = False,
-                 solver_kwargs: Dict[str, Any] = None) -> Union[KOSolution, Dict[str, Solution]]:
+                initial_state: Dict[Tuple[str, str], float] = None,
+                regulators: Union[str, Sequence['str']] = None,
+                to_solver: bool = False,
+                solver_kwargs: Dict[str, Any] = None) -> Union[KOSolution, Dict[str, Solution]]:
         """
-        It solves the PROM linear problem. The linear problem is solved using the solver interface.
+        Solve the PROM linear problem.
 
-        The optimize method allows setting temporary changes to the linear problem. The changes are
-        applied to the linear problem reverted to the original state afterward.
-        Objective, constraints and solver parameters can be set temporarily.
-        :param initial_state: dictionary with the probabilities of
-        the interactions between the regulators and the targets.
-        :param regulators: list of regulators to be knocked out. If None, all regulators are knocked out.
+        :param initial_state: Dictionary with the probabilities of the interactions
+                            between the regulators and the targets.
+        :param regulators: List of regulators to be knocked out. If None, all regulators are knocked out.
         :param to_solver: Whether to return the solution as a SolverSolution instance. Default: False.
-        Otherwise, a Solution is returned.
         :param solver_kwargs: Solver parameters to be set temporarily.
-            - linear: A dictionary of linear coefficients to be set temporarily. The keys are the variable names
-            and the values are the coefficients. Default: None
-            - quadratic: A dictionary of quadratic coefficients to be set temporarily. The keys are tuples of
-            variable names and the values are the coefficients. Default: None
-            - minimize: Whether to minimize the objective. Default: False
-            - constraints: A dictionary with the constraints bounds. The keys are the constraint ids and the values
-            are tuples with the lower and upper bounds. Default: None
-            - get_values: Whether to retrieve the solution values. Default: True
-            - shadow_prices: Whether to retrieve the shadow prices. Default: False
-            - reduced_costs: Whether to retrieve the reduced costs. Default: False
-            - pool_size: The size of the solution pool. Default: 0
-            - pool_gap: The gap between the best solution and the worst solution in the pool. Default: None
-        :return: A KOSolution instance or a list of SolverSolution instance if to_solver is True.
+        :return: A KOSolution instance or a list of SolverSolution instances if to_solver is True.
         """
-        # build solver if out of sync
+        # Build solver if out of sync
         if not self.synchronized:
             self.build()
 
@@ -309,17 +293,16 @@ class PROM(FBA):
         else:
             if isinstance(regulators, str):
                 regulators = [regulators]
-
             regulators = [self.model.get(regulator) for regulator in regulators]
 
         if not solver_kwargs:
             solver_kwargs = {}
 
-        # concrete optimize
+        # Concrete optimize
         solutions = self._optimize(initial_state=initial_state,
-                                   regulators=regulators,
-                                   to_solver=to_solver,
-                                   solver_kwargs=solver_kwargs)
+                                  regulators=regulators,
+                                  to_solver=to_solver,
+                                  solver_kwargs=solver_kwargs)
 
         if to_solver:
             return solutions
@@ -330,35 +313,37 @@ class PROM(FBA):
 # ----------------------------------------------------------------------------------------------------------------------
 # Probability of Target-Regulator interactions
 # ----------------------------------------------------------------------------------------------------------------------
-def target_regulator_interaction_probability(model: Union['Model', 'MetabolicModel', 'RegulatoryModel'],
-                                             expression: pd.DataFrame,
-                                             binary_expression: pd.DataFrame) -> Tuple[Dict[Tuple[str, str], float],
-                                                                                       Dict[Tuple[str, str], float]]:
+def target_regulator_interaction_probability(model: RegulatoryExtension,
+                                            expression: pd.DataFrame,
+                                            binary_expression: pd.DataFrame) -> Tuple[Dict[Tuple[str, str], float],
+                                                                                      Dict[Tuple[str, str], float]]:
     """
-    It computes the conditional probability of a target gene being active when the regulator is inactive.
-    It uses the following formula:
+    Compute the conditional probability of a target gene being active when the regulator is inactive.
+
+    Uses the formula:
         P(target = 1 | regulator = 0) = count(target = 1, regulator = 0) / # samples
+
     This probability is computed for each combination of target-regulator.
     This method is used in PROM analysis.
 
-    :param model: an integrated Metabolic-Regulatory model aka a GERM model
+    :param model: A RegulatoryExtension instance
     :param expression: Quantile preprocessed expression matrix
     :param binary_expression: Quantile preprocessed expression matrix binarized
     :return: Dictionary with the conditional probability of a target gene being active when the regulator is inactive,
-    Dictionary with missed interactions
+            Dictionary with missed interactions
     """
     try:
         # noinspection PyPackageRequirements
         from scipy.stats import ks_2samp
     except ImportError:
         raise ImportError('The package scipy is not installed. '
-                          'To compute the probability of target-regulator interactions, please install scipy '
-                          '(pip install scipy).')
+                         'To compute the probability of target-regulator interactions, please install scipy '
+                         '(pip install scipy).')
+
     missed_interactions = {}
     interactions_probabilities = {}
 
     for interaction in model.yield_interactions():
-
         target = interaction.target
 
         if not interaction.regulators or target.id not in expression.index:
@@ -370,7 +355,6 @@ def target_regulator_interaction_probability(model: Union['Model', 'MetabolicMod
         target_binary = binary_expression.loc[target.id]
 
         for regulator in interaction.yield_regulators():
-
             if regulator.id not in expression.index:
                 missed_interactions[(target.id, regulator.id)] = 1
                 interactions_probabilities[(target.id, regulator.id)] = 1
@@ -389,12 +373,9 @@ def target_regulator_interaction_probability(model: Union['Model', 'MetabolicMod
             _, p_val = ks_2samp(target_expression_1_regulator, target_expression_0_regulator)
             if p_val < 0.05:
                 target_binary_0_regulator = target_binary[regulator_binary == 0]
-
                 probability = sum(target_binary_0_regulator) / len(target_binary_0_regulator)
-
                 interactions_probabilities[(target.id, regulator.id)] = probability
                 missed_interactions[(target.id, regulator.id)] = 0
-
             else:
                 missed_interactions[(target.id, regulator.id)] = 1
                 interactions_probabilities[(target.id, regulator.id)] = 1

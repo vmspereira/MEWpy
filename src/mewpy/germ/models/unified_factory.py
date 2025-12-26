@@ -1,19 +1,126 @@
 """
-Unified factory for creating MetabolicModel instances from external simulators.
+Unified factory for creating integrated metabolic-regulatory models.
 
-This factory provides a consistent interface for creating GERM-compatible models
-from external simulators (COBRApy, reframed) using either:
-1. Original MetabolicModel with simulator backends
-2. SimulatorBasedMetabolicModel (pure simulator wrapper)
-
-The factory automatically selects the best approach and provides a unified interface.
+This factory provides functions for creating RegulatoryExtension instances that
+wrap external simulators (COBRApy, reframed) and optionally add regulatory networks.
 """
-from typing import Union, Any, TYPE_CHECKING
+from typing import Union, Any, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from mewpy.simulation.simulation import Simulator
     from .metabolic import MetabolicModel
     from .simulator_model import SimulatorBasedMetabolicModel
+    from .regulatory_extension import RegulatoryExtension
+    from .regulatory import RegulatoryModel
+
+
+# ============================================================================
+# NEW FACTORY FUNCTIONS FOR REGULATORYEXTENSION
+# ============================================================================
+
+def create_regulatory_extension(simulator: 'Simulator',
+                               regulatory_network: Optional['RegulatoryModel'] = None,
+                               identifier: Optional[str] = None) -> 'RegulatoryExtension':
+    """
+    Create a RegulatoryExtension from a simulator and optional regulatory network.
+
+    This is the recommended way to create integrated metabolic-regulatory models.
+
+    :param simulator: Simulator instance (COBRApy, reframed, etc.)
+    :param regulatory_network: Optional RegulatoryModel instance
+    :param identifier: Optional model identifier
+    :return: RegulatoryExtension instance
+    """
+    from .regulatory_extension import RegulatoryExtension
+    return RegulatoryExtension(simulator, regulatory_network, identifier)
+
+
+def load_integrated_model(metabolic_path: str,
+                          regulatory_path: Optional[str] = None,
+                          backend: str = 'cobra',
+                          identifier: Optional[str] = None,
+                          **kwargs) -> Union['Simulator', 'RegulatoryExtension']:
+    """
+    Load metabolic model and optionally add regulatory network.
+
+    :param metabolic_path: Path to metabolic model file (SBML, JSON, etc.)
+    :param regulatory_path: Optional path to regulatory network file
+    :param backend: 'cobra' or 'reframed'
+    :param identifier: Optional model identifier
+    :param kwargs: Additional arguments for simulator creation
+    :return: Simulator (if no regulatory network) or RegulatoryExtension
+    """
+    from mewpy.simulation import get_simulator
+
+    # Load metabolic model
+    if backend == 'cobra':
+        try:
+            import cobra
+            cobra_model = cobra.io.read_sbml_model(metabolic_path)
+            simulator = get_simulator(cobra_model, **kwargs)
+        except ImportError:
+            raise ImportError("COBRApy is required. Install with: pip install cobra")
+
+    elif backend == 'reframed':
+        try:
+            from reframed.io.sbml import load_cbmodel
+            ref_model = load_cbmodel(metabolic_path)
+            simulator = get_simulator(ref_model, **kwargs)
+        except ImportError:
+            raise ImportError("reframed is required. Install with: pip install reframed")
+    else:
+        raise ValueError(f"Unknown backend: {backend}. Use 'cobra' or 'reframed'")
+
+    # Add regulatory network if provided
+    if regulatory_path:
+        from .regulatory import RegulatoryModel
+        reg_network = RegulatoryModel.from_file(regulatory_path)
+        return create_regulatory_extension(simulator, reg_network, identifier)
+
+    return simulator
+
+
+def from_cobra_model_with_regulation(cobra_model,
+                                     regulatory_network: Optional['RegulatoryModel'] = None,
+                                     identifier: Optional[str] = None,
+                                     **kwargs) -> 'RegulatoryExtension':
+    """
+    Create RegulatoryExtension from COBRApy model.
+
+    :param cobra_model: COBRApy Model instance
+    :param regulatory_network: Optional RegulatoryModel instance
+    :param identifier: Optional model identifier
+    :param kwargs: Additional simulator arguments
+    :return: RegulatoryExtension instance
+    """
+    from mewpy.simulation import get_simulator
+
+    simulator = get_simulator(cobra_model, **kwargs)
+    return create_regulatory_extension(simulator, regulatory_network, identifier)
+
+
+def from_reframed_model_with_regulation(reframed_model,
+                                       regulatory_network: Optional['RegulatoryModel'] = None,
+                                       identifier: Optional[str] = None,
+                                       **kwargs) -> 'RegulatoryExtension':
+    """
+    Create RegulatoryExtension from reframed model.
+
+    :param reframed_model: reframed CBModel instance
+    :param regulatory_network: Optional RegulatoryModel instance
+    :param identifier: Optional model identifier
+    :param kwargs: Additional simulator arguments
+    :return: RegulatoryExtension instance
+    """
+    from mewpy.simulation import get_simulator
+
+    simulator = get_simulator(reframed_model, **kwargs)
+    return create_regulatory_extension(simulator, regulatory_network, identifier)
+
+
+# ============================================================================
+# LEGACY FACTORY FUNCTIONS (DEPRECATED - use RegulatoryExtension instead)
+# ============================================================================
 
 def create_model_from_simulator(simulator: 'Simulator', 
                                approach: str = 'wrapper',
