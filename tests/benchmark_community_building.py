@@ -88,9 +88,9 @@ def main():
             efficiency = ((organism_ratio - time_ratio) / organism_ratio) * 100
             print(f"✓ Performance is better than linear: {efficiency:.1f}% efficiency gain")
         elif time_ratio > organism_ratio * 1.5:
-            print(f"⚠ Performance is worse than linear (may indicate O(n²) behavior)")
+            print("⚠ Performance is worse than linear (may indicate O(n²) behavior)")
         else:
-            print(f"✓ Performance scales approximately linearly")
+            print("✓ Performance scales approximately linearly")
 
     print()
     print("Optimizations applied:")

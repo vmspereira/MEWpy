@@ -77,7 +77,7 @@ class TestSCScoreBigMFix(unittest.TestCase):
         for org_id, org_scores in scores.items():
             for other_org, score in org_scores.items():
                 self.assertLess(score, 0.5,
-                    f"Identical organisms should have low dependency, got {score}")
+                                f"Identical organisms should have low dependency, got {score}")
 
 
 if __name__ == "__main__":
