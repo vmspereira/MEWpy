@@ -54,7 +54,7 @@ class CommunityModel:
         merge_biomasses: bool = True,
         copy_models: bool = False,
         add_compartments=True,
-        balance_exchange=True,
+        balance_exchange=False,
         flavor: str = "reframed",
     ):
         """Community Model.
@@ -68,8 +68,13 @@ class CommunityModel:
             If no abundance list is provided, all organism will have equal abundance.
         :param add_compartments: If each organism external compartment is to be added
             to the community model. Default True.
-        :param balance_exchange: If the organisms uptakes should reflect their abundances.
-            This will normalize each organism flux value in acordance to the abundance. Default True.
+        :param balance_exchange: **DEPRECATED - May violate mass conservation.**
+            If True, modifies stoichiometric coefficients of exchange metabolites
+            based on organism abundances. This approach is mathematically problematic
+            as it violates conservation of mass (e.g., 1 mol consumed produces only
+            0.3 mol if abundance=0.3). Default False.
+            Note: Abundance scaling is already handled through the merged biomass equation.
+            This parameter will be removed in a future version.
         :param bool copy_models: if the models are to be copied, default True.
         :param str flavor: use 'cobrapy' or 'reframed. Default 'reframed'.
         """
@@ -95,6 +100,20 @@ class CommunityModel:
         self._merge_biomasses = True if abundances is not None else merge_biomasses
         self._add_compartments = add_compartments
         self._balance_exchange = balance_exchange
+
+        # Warn if balance_exchange is enabled (deprecated feature with mass balance issues)
+        if balance_exchange:
+            warn(
+                "balance_exchange=True is deprecated and may violate conservation of mass. "
+                "Stoichiometric coefficients of exchange reactions are being modified based on "
+                "organism abundances, which can lead to mass imbalance (e.g., 1 mol consumed "
+                "producing only 0.3 mol if abundance=0.3). "
+                "Abundance scaling is already handled through the merged biomass equation. "
+                "This parameter will be removed in a future version. "
+                "Set balance_exchange=False to suppress this warning.",
+                DeprecationWarning,
+                stacklevel=2
+            )
 
         if len(self.model_ids) < len(models):
             warn("Model ids are not unique, repeated models will be discarded.")
@@ -156,6 +175,13 @@ class CommunityModel:
     def balance_exchanges(self, value: bool):
         if value == self._balance_exchange:
             return
+        if value:
+            warn(
+                "balance_exchange=True is deprecated and may violate conservation of mass. "
+                "This parameter will be removed in a future version.",
+                DeprecationWarning,
+                stacklevel=2
+            )
         self._balance_exchange = value
         if value:
             self._update_exchanges()
@@ -193,7 +219,7 @@ class CommunityModel:
         if any([x < 0 for x in abundances.values()]):
             raise ValueError("All abundance value need to be non negative.")
         if sum(list(abundances.values())) == 0:
-            raise ValueError("At leat one organism need to have a positive abundance.")
+            raise ValueError("At least one organism needs to have a positive abundance.")
         # update the biomass equation
         self.organisms_abundance.update(abundances)
         if rebuild:
@@ -221,6 +247,21 @@ class CommunityModel:
             self._update_exchanges()
 
     def _update_exchanges(self, abundances: dict = None):
+        """
+        Update exchange reaction stoichiometry based on organism abundances.
+
+        WARNING: This method modifies stoichiometric coefficients which violates
+        conservation of mass. For example, if abundance=0.3, a transport reaction
+        M_org <-> M_ext with stoichiometry {M_org: -1, M_ext: 1} becomes
+        {M_org: -1, M_ext: 0.3}, meaning 1 mol consumed produces only 0.3 mol.
+
+        This feature is DEPRECATED and will be removed in a future version.
+        Abundance scaling should be handled through flux constraints or is already
+        addressed by the merged biomass equation.
+
+        :param abundances: Optional dict of organism abundances to use instead of
+                          self.organisms_abundance
+        """
         if self.merged_model and self._merge_biomasses and self._balance_exchange:
             exchange = self.merged_model.get_exchange_reactions()
             m_r = self.merged_model.metabolite_reaction_lookup()
