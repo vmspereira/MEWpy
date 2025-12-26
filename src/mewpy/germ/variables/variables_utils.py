@@ -4,6 +4,22 @@ if TYPE_CHECKING:
     from mewpy.germ.variables import Variable
 
 
+def initialize_coefficients(coefficients: Union[Tuple[float, ...], None]) -> Tuple[float, ...]:
+    """
+    Initialize coefficients for Gene, Target, or Regulator variables.
+
+    Helper function to standardize coefficient initialization across variable types.
+    If no coefficients provided, defaults to (0.0, 1.0) for inactive/active states.
+
+    :param coefficients: Optional tuple of coefficients, or None for defaults
+    :return: Tuple of coefficients (minimum 0.0, 1.0 if None)
+    """
+    if not coefficients:
+        return (0.0, 1.0)
+    else:
+        return tuple(coefficients)
+
+
 def coefficients_setter(instance: 'Variable', value: Union[Tuple[float, float], Tuple[float], float]):
     """
     Setter for the coefficients attribute of a variable.

@@ -75,11 +75,24 @@ class _RegulatoryAnalysisBase:
         return hasattr(self.model, 'interactions') and len(self.model.interactions) > 0
 
     def _get_interactions(self):
-        """Get interactions (works with both model types)."""
+        """
+        Get interactions (works with both model types).
+
+        Yields just the Interaction objects, unpacking tuples from RegulatoryExtension.
+        """
         if hasattr(self.model, 'yield_interactions'):
-            return self.model.yield_interactions()
-        # Legacy model
-        return self.model.interactions.values() if hasattr(self.model, 'interactions') else []
+            # RegulatoryExtension yields (id, interaction) tuples - unpack to get just interaction
+            for item in self.model.yield_interactions():
+                if isinstance(item, tuple) and len(item) == 2:
+                    # New format: (id, interaction)
+                    yield item[1]
+                else:
+                    # Legacy format: just interaction (shouldn't happen with RegulatoryExtension)
+                    yield item
+        # Legacy model - dict.values() yields just interaction objects
+        elif hasattr(self.model, 'interactions'):
+            for interaction in self.model.interactions.values():
+                yield interaction
 
     def _get_regulators(self):
         """Get regulators (works with both model types)."""

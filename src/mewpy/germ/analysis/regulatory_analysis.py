@@ -30,7 +30,8 @@ def regulatory_truth_table(model: Union['Model', 'MetabolicModel', 'RegulatoryMo
     :return: A pandas DataFrame with the results of the analysis
     """
     if not interactions:
-        interactions = model.yield_interactions()
+        # Unpack tuples from yield_interactions() to get just the interaction objects
+        interactions = [interaction for _, interaction in model.yield_interactions()]
     else:
         interactions = [model.interactions[interaction] for interaction in interactions]
 

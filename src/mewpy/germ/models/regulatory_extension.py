@@ -515,14 +515,18 @@ class RegulatoryExtension:
         for tgt_id, target in self._targets.items():
             yield tgt_id, target
 
-    def yield_interactions(self) -> Generator['Interaction', None, None]:
+    def yield_interactions(self) -> Generator[Tuple[str, 'Interaction'], None, None]:
         """
         Yield all interactions.
 
-        :return: Generator of Interaction instances
+        :return: Generator of (interaction_id, Interaction) tuples
+
+        **Note:** Changed in v1.0 to return tuples for API consistency with
+        yield_regulators() and yield_targets(). If you need just the interaction
+        objects, use: `for _, interaction in model.yield_interactions(): ...`
         """
-        for interaction in self._interactions.values():
-            yield interaction
+        for int_id, interaction in self._interactions.items():
+            yield int_id, interaction
 
     def yield_reactions(self) -> Generator[str, None, None]:
         """

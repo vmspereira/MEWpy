@@ -5,7 +5,7 @@ from mewpy.util.history import recorder
 from mewpy.germ.models.serialization import serialize
 from mewpy.util.utilities import generator
 from .variable import Variable
-from .variables_utils import coefficients_setter
+from .variables_utils import coefficients_setter, initialize_coefficients
 
 if TYPE_CHECKING:
     from .interaction import Interaction
@@ -36,12 +36,8 @@ class Target(Variable, variable_type='target', register=True, constructor=True, 
         These coefficients can be expanded later. 0 and 1 are added by default
         :param interactions: the  interaction to which the target is associated with
         """
-
-        # the coefficient initializer sets minimum and maximum coefficients of 0.0 and 1.0
-        if not coefficients:
-            coefficients = (0.0, 1.0)
-        else:
-            coefficients = tuple(coefficients)
+        # Initialize coefficients with defaults (0.0, 1.0) if not provided
+        coefficients = initialize_coefficients(coefficients)
 
         if not interaction:
             interaction = None

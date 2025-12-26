@@ -7,7 +7,7 @@ from mewpy.util.history import recorder
 from mewpy.util.utilities import generator
 from mewpy.germ.models.serialization import serialize
 from .variable import Variable
-from .variables_utils import coefficients_setter
+from .variables_utils import coefficients_setter, initialize_coefficients
 
 if TYPE_CHECKING:
     from .reaction import Reaction
@@ -36,12 +36,8 @@ class Gene(Variable, variable_type='gene', register=True, constructor=True, chec
         These coefficients can be expanded later. 0 and 1 are added by default
         :param reactions: the dictionary of reactions to which the gene is associated with
         """
-        # the coefficient initializer sets minimum and maximum coefficients of 0.0 and 1.0
-        if not coefficients:
-            coefficients = (0.0, 1.0)
-
-        else:
-            coefficients = tuple(coefficients)
+        # Initialize coefficients with defaults (0.0, 1.0) if not provided
+        coefficients = initialize_coefficients(coefficients)
 
         if not reactions:
             reactions = {}

@@ -55,7 +55,7 @@ print(f"  - ID: {model_integrated.id}")
 print(f"  - Reactions: {len(model_integrated.reactions)}")
 print(f"  - Genes: {len(model_integrated.genes)}")
 print(f"  - Has regulatory network: {model_integrated.has_regulatory_network()}")
-print(f"  - Interactions: {len(list(model_integrated.yield_interactions()))}")
+print(f"  - Interactions: {len(list(model_integrated.yield_interactions()))}")  # Counts (id, interaction) tuples
 
 # =============================================================================
 # Method 2: from_model() - From COBRApy/reframed Model
@@ -79,7 +79,7 @@ model_from_cobra = RegulatoryExtension.from_model(
 
 print(f"Created RegulatoryExtension from COBRApy model:")
 print(f"  - Reactions: {len(model_from_cobra.reactions)}")
-print(f"  - Interactions: {len(list(model_from_cobra.yield_interactions()))}")
+print(f"  - Interactions: {len(list(model_from_cobra.yield_interactions()))}")  # Counts (id, interaction) tuples
 
 # =============================================================================
 # Method 3: Using the Models in Analysis

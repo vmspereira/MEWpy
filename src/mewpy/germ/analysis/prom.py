@@ -343,7 +343,7 @@ def target_regulator_interaction_probability(model: RegulatoryExtension,
     missed_interactions = {}
     interactions_probabilities = {}
 
-    for interaction in model.yield_interactions():
+    for _, interaction in model.yield_interactions():
         target = interaction.target
 
         if not interaction.regulators or target.id not in expression.index:
