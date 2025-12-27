@@ -186,7 +186,7 @@ class AbstractProblem(ABC):
 
     @abstractmethod
     def solution_to_constraints(self, solution):
-        """Converts a decoded solution to metabolict constraints."""
+        """Converts a decoded solution to metabolic constraints."""
         raise NotImplementedError
 
     def get_name(self):
@@ -265,7 +265,7 @@ class AbstractProblem(ABC):
 
     def get_constraints(self, solution):
         """
-        :returns: The constrainst enconded into an individual.
+        :returns: The constraints encoded into an individual.
         """
         return self.solution_to_constraints(self.decode(solution.candidate))
 
@@ -487,7 +487,10 @@ class AbstractOUProblem(AbstractProblem):
                 lv = self.levels[lv_idx]
                 decoded[rxn] = lv
             except IndexError:
-                raise IndexError("Index out of range")
+                raise IndexError(
+                    f"Index out of range: target_list[{idx}] or levels[{lv_idx}] "
+                    f"(target_list size: {len(self.target_list)}, levels size: {len(self.levels)})"
+                )
         return decoded
 
     def encode(self, candidate):

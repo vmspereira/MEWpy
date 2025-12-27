@@ -34,7 +34,8 @@ from ..util.parsing import Boolean, GeneEvaluator, build_tree
 from .problem import AbstractOUProblem
 
 
-# TODO: should it be in io?
+# TODO: Consider moving this function to the io module as it primarily handles
+# file I/O operations for loading regulatory models from CSV files
 def load_optram(gene_filename, tf_filename, matrix_filename, gene_prefix=""):
     """
     Loads a OptRAM regulatory model from csv files:

@@ -203,7 +203,7 @@ class GeckoOUProblem(AbstractOUProblem):
     def solution_to_constraints(self, candidate):
         """
         Converts a candidate, a dict {protein:lv}, into a dictionary of constraints
-        Reverseble reactions associated to proteins with over expression are KO
+        Reversible reactions associated to proteins with over expression are KO
         according to the flux volume in the wild type.
 
         :param candidate: The candidate to be decoded.
@@ -256,7 +256,7 @@ class GeckoOUProblem(AbstractOUProblem):
             else:
                 constraints[rxn] = (lv * flux_wt, ModelConstants.REACTION_UPPER_BOUND)
                 # Deals with reverse reactions associated with the protein.
-                # This should not be necessery if arm reaction are well defined. But,
+                # This should not be necessary if arm reactions are well defined. But,
                 # just in case it is not so...
                 # Strategy: The reaction direction with no flux in the wild type (reference) is KO.
                 if prot in self.prot_rev_reactions.keys():
