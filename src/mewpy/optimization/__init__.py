@@ -5,6 +5,7 @@ Heuristic Optimization modules
 Author: Vítor Pereira
 ##############################################################################
 """
+
 import logging
 
 from ..util.constants import EAConstants
