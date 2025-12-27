@@ -49,6 +49,7 @@ dependencies = [
     "httpx",
     "pandas",
     "numexpr",
+    "ray>=2.0.0",
 ]
 
 [project.optional-dependencies]
