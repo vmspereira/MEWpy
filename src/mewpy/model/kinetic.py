@@ -22,10 +22,10 @@ Authors: Vitor Pereira
 """
 import warnings
 from collections import OrderedDict
-from math import *
 from typing import Any, Dict, List
 
 import numpy as np
+import numexpr as ne
 
 from mewpy.util.parsing import Arithmetic, Latex, build_tree
 from mewpy.util.utilities import AttrDict
@@ -194,7 +194,11 @@ class Rule(object):
             s = set(self.parse_parameters()) - set(param.keys())
             raise ValueError(f"Values missing for parameters: {s}")
         t = self.replace(param)
-        rate = eval(t)
+        # Use numexpr for safe evaluation (prevents code injection)
+        try:
+            rate = ne.evaluate(t, local_dict={}).item()
+        except Exception as e:
+            raise ValueError(f"Failed to evaluate rate expression '{t}': {e}")
         return rate
 
     def __str__(self):
@@ -315,12 +319,16 @@ class KineticReaction(Rule):
             # check for missing parameters distributions
             r = s - set(self.parameter_distributions.keys())
             if r:
-                raise ValueError(f"Missing values or distribuitions for parameters: {r}")
+                raise ValueError(f"Missing values or distributions for parameters: {r}")
             else:
                 for p in s:
                     param[p] = self.parameter_distributions[p].rvs()
         t = self.replace(param)
-        rate = eval(t)
+        # Use numexpr for safe evaluation (prevents code injection)
+        try:
+            rate = ne.evaluate(t, local_dict={}).item()
+        except Exception as e:
+            raise ValueError(f"Failed to evaluate rate expression '{t}': {e}")
         return rate
 
     def reaction(self, y, substrates={}, parameters={}):
@@ -788,7 +796,9 @@ class ODEModel:
         r = r_dict if r_dict is not None else dict()
 
         np.seterr(divide="ignore", invalid="ignore")
-        exec(self.build_ode(factors), globals())
-        ode_func = eval("ode_func")
+        # Use local namespace instead of globals() to prevent pollution and security issues
+        local_namespace = {}
+        exec(self.build_ode(factors), local_namespace)
+        ode_func = local_namespace["ode_func"]
 
         return lambda t, y: ode_func(t, y, r, p, v)
