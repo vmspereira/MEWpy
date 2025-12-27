@@ -311,7 +311,7 @@ def single_mutation_OU(random, candidate, args):
 
     mutant = copy.copy(candidate)
     index = random.randint(0, len(mutant) - 1) if len(mutant) > 1 else 0
-    # the first idx has a 50% chance of beeing mutated
+    # the first idx has a 50% chance of being mutated
     # the second always mutates
     ml = [i for (i, j) in mutant]
     mutantL = list(mutant)

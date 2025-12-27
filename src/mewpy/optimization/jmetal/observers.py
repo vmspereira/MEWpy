@@ -15,7 +15,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Obverser module for EA optimization based on jmetalpy
+Observer module for EA optimization based on jmetalpy
 
 Authors: Vitor Pereira
 ##############################################################################

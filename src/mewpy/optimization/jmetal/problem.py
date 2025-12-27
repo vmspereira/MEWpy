@@ -168,7 +168,7 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
 
 class JMetalKOProblem(Problem[KOSolution], Evaluable):
 
-    def __init__(self, problem, initial_polulation):
+    def __init__(self, problem, initial_population):
         """JMetal OU problem. Encapsulates a MEWpy problem
         so that it can be used in jMetal.
         """
@@ -197,7 +197,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
                 self.obj_directions.append(self.MAXIMIZE)
             else:
                 self.obj_directions.append(self.MINIMIZE)
-        self.initial_polulation = initial_polulation
+        self.initial_population = initial_population
         self.__next_ini_sol = 0
 
     @property
@@ -219,8 +219,8 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
     def create_solution(self) -> KOSolution:
         solution = None
         flag = False
-        while self.__next_ini_sol < len(self.initial_polulation) and not flag:
-            s = self.initial_polulation[self.__next_ini_sol]
+        while self.__next_ini_sol < len(self.initial_population) and not flag:
+            s = self.initial_population[self.__next_ini_sol]
             try:
                 solution = self.problem.encode(s)
                 flag = True
@@ -245,7 +245,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
         """
         import random
 
-        random.shuffle(self.initial_polulation)
+        random.shuffle(self.initial_population)
         self.__next_ini_sol = 0
 
     def get_constraints(self, solution):
@@ -279,7 +279,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
 
 class JMetalOUProblem(Problem[OUSolution], Evaluable):
 
-    def __init__(self, problem, initial_polulation=[]):
+    def __init__(self, problem, initial_population=[]):
         """JMetal OU problem. Encapsulates a MEWpy problem
         so that it can be used in jMetal.
         """
@@ -305,7 +305,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
                 self.obj_directions.append(self.MAXIMIZE)
             else:
                 self.obj_directions.append(self.MINIMIZE)
-        self.initial_polulation = initial_polulation
+        self.initial_population = initial_population
         self.__next_ini_sol = 0
 
     @property
@@ -327,8 +327,8 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     def create_solution(self) -> OUSolution:
         solution = None
         flag = False
-        while self.__next_ini_sol < len(self.initial_polulation) and not flag:
-            s = self.initial_polulation[self.__next_ini_sol]
+        while self.__next_ini_sol < len(self.initial_population) and not flag:
+            s = self.initial_population[self.__next_ini_sol]
             try:
                 solution = self.problem.encode(s)
                 flag = True
@@ -350,7 +350,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     def reset_initial_population_counter(self):
         import random
 
-        random.shuffle(self.initial_polulation)
+        random.shuffle(self.initial_population)
         self.__next_ini_sol = 0
 
     def get_constraints(self, solution):

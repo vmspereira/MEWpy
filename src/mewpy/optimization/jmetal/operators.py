@@ -152,7 +152,7 @@ class UniformCrossoverKO(Crossover[KOSolution, KOSolution]):
 
     def execute(self, parents: List[KOSolution]) -> List[KOSolution]:
         if len(parents) != 2:
-            raise Exception("The number of parents is not two: {}".format(len(parents)))
+            raise ValueError(f"Expected 2 parents for crossover, got {len(parents)}")
 
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
@@ -230,7 +230,7 @@ class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
 
     def execute(self, parents: List[OUSolution]) -> List[OUSolution]:
         if len(parents) != 2:
-            raise Exception("The number of parents is not two: {}".format(len(parents)))
+            raise ValueError(f"Expected 2 parents for crossover, got {len(parents)}")
 
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
@@ -405,7 +405,7 @@ class UniformCrossover(Crossover[Solution, Solution]):
 
     def execute(self, parents: List[Solution]) -> List[Solution]:
         if len(parents) != 2:
-            raise Exception("The number of parents is not two: {}".format(len(parents)))
+            raise ValueError(f"Expected 2 parents for crossover, got {len(parents)}")
 
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 

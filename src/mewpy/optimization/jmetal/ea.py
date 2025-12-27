@@ -199,7 +199,7 @@ class EA(AbstractEA):
         return p
 
     def _get_current_population(self):
-        """Dumps the population for gracefull exit."""
+        """Dumps the population for graceful exit."""
         pop = self.algorithm.solutions
         cv = self._convertPopulation(pop)
         return cv

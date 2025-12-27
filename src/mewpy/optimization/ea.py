@@ -257,7 +257,7 @@ class AbstractEA(ABC):
 
 def dominance_test(solution1, solution2, maximize=True):
     """
-    Testes Pareto dominance
+    Tests Pareto dominance
 
     :param solution1: The first solution.
     :param solution2: The second solution.

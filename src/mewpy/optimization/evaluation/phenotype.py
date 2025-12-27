@@ -74,7 +74,7 @@ class TargetFlux(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -158,7 +158,7 @@ class WYIELD(PhenotypeEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -282,7 +282,7 @@ class BPCY(PhenotypeEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -378,7 +378,7 @@ class BPCY_FVA(PhenotypeEvaluationFunction):
         """Evaluates a candidate.
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -459,7 +459,7 @@ class CNRFA(PhenotypeEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -580,7 +580,7 @@ class FluxDistance(EvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
         """
         sim = simul_results[self.method] if self.method in simul_results.keys() else None
@@ -588,10 +588,10 @@ class FluxDistance(EvaluationFunction):
         if not sim or sim.status not in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL) or not sim.fluxes:
             return self.no_solution
 
-        sum = 0
+        total = 0
         for rxn in self.fluxes:
-            sum += (sim.fluxes[rxn] - self.fluxes[rxn]) ** 2
-        return math.sqrt(sum)
+            total += (sim.fluxes[rxn] - self.fluxes[rxn]) ** 2
+        return math.sqrt(total)
 
     def required_simulations(self):
         return [self.method]
@@ -611,13 +611,13 @@ class TargetFluxWithConstraints(EvaluationFunction):
         constraints: Dict[str, Union[float, Tuple[float, float]]],
         maximize: bool = False,
     ):
-        """_summary_
+        """Target flux evaluation with additional constraints.
 
-        :param reaction: _description_
+        :param reaction: The target reaction ID to evaluate
         :type reaction: str
-        :param constraints: _description_
+        :param constraints: Additional constraints for flux analysis
         :type constraints: Dict[str,Union[float,Tuple[float,float]]]
-        :param maximize: _description_, defaults to False
+        :param maximize: Whether to maximize the objective, defaults to False
         :type maximize: bool, optional
         """
         super().__init__(maximize=maximize, worst_fitness=1000)
@@ -628,7 +628,7 @@ class TargetFluxWithConstraints(EvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """

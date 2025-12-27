@@ -43,7 +43,7 @@ class EvaluationFunction:
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -66,7 +66,7 @@ class EvaluationFunction:
     @property
     def no_solution(self):
         """
-        Value to be retuned for wost case evaluation
+        Value to be returned for worst case evaluation
         """
         if self.worst_fitness is not None:
             res = self.worst_fitness
