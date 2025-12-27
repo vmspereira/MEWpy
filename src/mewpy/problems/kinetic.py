@@ -84,7 +84,7 @@ class KineticOUProblem(AbstractOUProblem):
 
     def _build_target_list(self):
         """Generates a target list, set of Vmax variable.
-        It expect Vmax variables beeing defined as "?max".
+        It expects Vmax variables being defined as "?max".
         """
         p = list(self.model.get_parameters(exclude_compartments=True))
         target = []

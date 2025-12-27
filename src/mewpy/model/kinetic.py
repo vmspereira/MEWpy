@@ -20,11 +20,12 @@ Kinetic Modeling Module
 Authors: Vitor Pereira
 ##############################################################################
 """
+import re
 import warnings
 from collections import OrderedDict
-from math import *
 from typing import Any, Dict, List
 
+import numexpr as ne
 import numpy as np
 
 from mewpy.util.parsing import Arithmetic, Latex, build_tree
@@ -32,15 +33,16 @@ from mewpy.util.utilities import AttrDict
 
 
 class Compartment(object):
-    """class for modeling compartments."""
+    """Class for modeling compartments."""
 
     def __init__(self, comp_id: str, name: str = None, external: bool = False, size: float = 1.0):
-        """
-        Arguments:
-            comp_id (str): a valid unique identifier
-            name (str): compartment name (optional)
-            external (bool): is external (default: false)
-            size (float): compartment size (default: 1.0)
+        """Initialize a Compartment.
+
+        Args:
+            comp_id (str): A valid unique identifier
+            name (str): Compartment name (optional)
+            external (bool): Is external (default: False)
+            size (float): Compartment size (default: 1.0)
         """
         self.id = comp_id
         self.name = name if name is not None else comp_id
@@ -56,14 +58,15 @@ class Compartment(object):
 
 
 class Metabolite(object):
-    """class for modeling metabolites."""
+    """Class for modeling metabolites."""
 
     def __init__(self, met_id: str, name: str = None, compartment: str = None):
-        """
-        Arguments:
-            met_id (str): a valid unique identifier
-            name (str): common metabolite name
-            compartment (str): compartment containing the metabolite
+        """Initialize a Metabolite.
+
+        Args:
+            met_id (str): A valid unique identifier
+            name (str): Common metabolite name
+            compartment (str): Compartment containing the metabolite
         """
         self.id = met_id
         self.name = name if name is not None else met_id
@@ -77,55 +80,60 @@ class Metabolite(object):
         return str(self)
 
 
-def calculate_yprime(y, rate: np.array, substrates: List[str], products: List[str]):
-    """
-    It takes the numpy array for y_prime,
-    and adds or subtracts the amount in rate to all the substrates or products listed
-    Returns the new y_prime
+def calculate_yprime(y, rate: np.array, stoichiometry: Dict[str, float]):
+    """Calculate the rate of change for each metabolite.
+
+    Applies stoichiometric coefficients to the reaction rate for each metabolite.
+    Negative coefficients indicate substrates, positive indicate products.
+
     Args:
-        y: dict substrate values, the same order as y
-        rate: the rate calculated by the user made rate equation
-        substrates: list of substrates for which rate should be subtracted
-        products: list of products for which rate should be added
+        y: Dictionary of metabolite concentrations
+        rate: The calculated reaction rate
+        stoichiometry: Dictionary mapping metabolite IDs to stoichiometric coefficients
+                       (negative for substrates, positive for products)
+
     Returns:
-        y_prime: following the addition or subtraction of rate to the specificed substrates
+        Dictionary of metabolite rates (y_prime) after applying stoichiometric coefficients
     """
     y_prime = {name: 0 for name in y.keys()}
-    for name in substrates:
-        y_prime[name] -= rate
-
-    for name in products:
-        y_prime[name] += rate
+    for m_id, coeff in stoichiometry.items():
+        if m_id in y_prime:
+            y_prime[m_id] += coeff * rate
 
     return y_prime
 
 
-def check_positive(y_prime: List[float]):
+def check_positive(y_prime: List[float]) -> List[float]:
     """
-    Check that substrate values are not negative when they shouldnt be.
+    Check that substrate values are not negative when they shouldn't be.
+
+    Returns a new list with negative values replaced by zero.
+    Does not mutate the input list.
+
+    Args:
+        y_prime: List of substrate values
+
+    Returns:
+        New list with non-negative values
     """
-
-    for i in range(len(y_prime)):
-        if y_prime[i] < 0:
-            y_prime[i] = 0
-
-    return y_prime
+    return [max(0, val) for val in y_prime]
 
 
 class Rule(object):
     """Base class for kinetic rules."""
 
-    def __init__(self, r_id: str, law: str, parameters: Dict[str, float] = dict()):
-        """Creates a new rule
+    def __init__(self, r_id: str, law: str, parameters: Dict[str, float] = None):
+        """Initialize a Rule.
 
         Args:
             r_id (str): Reaction/rule identifier
-            law (str): The rule string representation.
+            law (str): The rule string representation
+            parameters (Dict[str, float], optional): Parameter values. Defaults to None.
         """
         self.id = r_id
         self.law = law
         self._tree = None
-        self.parameters = parameters
+        self.parameters = parameters if parameters is not None else {}
 
     @property
     def tree(self):
@@ -156,7 +164,8 @@ class Rule(object):
         try:
             self.parameters[new_parameter] = self.parameters[old_parameter]
             del self.parameters[old_parameter]
-        except:
+        except KeyError:
+            # Parameter doesn't exist in parameters dict, that's OK
             pass
 
     def get_parameters(self):
@@ -185,16 +194,21 @@ class Rule(object):
             return t
 
     def calculate_rate(self, substrates={}, parameters={}):
-        param = dict()
-        param.update(self.parameters)
-        param.update(substrates)
-        param.update(parameters)
+        param = {**self.parameters, **substrates, **parameters}
 
         if len(param.keys()) != len(self.parse_parameters()):
             s = set(self.parse_parameters()) - set(param.keys())
             raise ValueError(f"Values missing for parameters: {s}")
         t = self.replace(param)
-        rate = eval(t)
+
+        # Convert pow(x, y) to x**y for numexpr compatibility
+        t = re.sub(r"pow\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)", r"(\1)**(\2)", t)
+
+        # Use numexpr for safe evaluation (prevents code injection)
+        try:
+            rate = ne.evaluate(t, local_dict={}).item()
+        except Exception as e:
+            raise ValueError(f"Failed to evaluate rate expression '{t}': {e}")
         return rate
 
     def __str__(self):
@@ -215,32 +229,32 @@ class KineticReaction(Rule):
         r_id: str,
         law: str,
         name: str = None,
-        stoichiometry: dict = {},
-        parameters: dict = {},
-        modifiers: list = [],
+        stoichiometry: dict = None,
+        parameters: dict = None,
+        modifiers: list = None,
         reversible: bool = True,
-        functions: dict = {},
+        functions: dict = None,
     ):
-        """Kinetic reaction rule.
+        """Initialize a KineticReaction.
 
         Args:
             r_id (str): Reaction identifier
-            law (str): kinetic law
+            law (str): Kinetic law expression
             name (str, optional): The name of the reaction. Defaults to None.
-            stoichiometry (dict, optional): The stoichiometry of the reaction. Defaults to {}.
-            parameters (dict, optional): local parameters. Defaults to {}.
-            modifiers (list, optional): modifiers. Defaults to [].
-            reversible (bool, optional): reversability. Defaults to True.
-            functions (dict, optional): function defined in the model. Defaults to {}.
+            stoichiometry (dict, optional): The stoichiometry of the reaction. Defaults to None.
+            parameters (dict, optional): Local parameters. Defaults to None.
+            modifiers (list, optional): Reaction modifiers. Defaults to None.
+            reversible (bool, optional): Reversibility. Defaults to True.
+            functions (dict, optional): Functions defined in the model. Defaults to None.
         """
         super(KineticReaction, self).__init__(r_id, law, parameters)
         self.name = name if name else r_id
-        self.stoichiometry = stoichiometry
-        self.modifiers = modifiers
+        self.stoichiometry = stoichiometry if stoichiometry is not None else {}
+        self.modifiers = modifiers if modifiers is not None else []
         self.parameter_distributions = {}
         self.reversible = reversible
         self._model = None
-        self.functions = {k: v[1] for k, v in functions.items()}
+        self.functions = {k: v[1] for k, v in functions.items()} if functions else {}
 
     @property
     def tree(self):
@@ -295,47 +309,51 @@ class KineticReaction(Rule):
         r_map = map.copy()
         r_map.update(m)
 
-        self
-
         return self.replace(r_map, local=local)
 
     def calculate_rate(self, substrates={}, parameters={}):
-
-        param = dict()
-        # sets model defaults
-        param.update(self._model.get_concentrations())
-        param.update(self._model.get_parameters())
-        # set reaction defaults
-        param.update(self.parameters)
-        # user defined
-        param.update(substrates)
-        param.update(parameters)
+        # Build parameter dictionary with proper precedence (later values override earlier)
+        param = {
+            **self._model.get_concentrations(),  # Model defaults
+            **self._model.get_parameters(),
+            **self.parameters,  # Reaction defaults
+            **substrates,  # User defined
+            **parameters,
+        }
         s = set(self.parse_parameters()) - set(param.keys())
         if s:
             # check for missing parameters distributions
             r = s - set(self.parameter_distributions.keys())
             if r:
-                raise ValueError(f"Missing values or distribuitions for parameters: {r}")
+                raise ValueError(f"Missing values or distributions for parameters: {r}")
             else:
                 for p in s:
                     param[p] = self.parameter_distributions[p].rvs()
         t = self.replace(param)
-        rate = eval(t)
+
+        # Convert pow(x, y) to x**y for numexpr compatibility
+        t = re.sub(r"pow\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)", r"(\1)**(\2)", t)
+
+        # Use numexpr for safe evaluation (prevents code injection)
+        try:
+            rate = ne.evaluate(t, local_dict={}).item()
+        except Exception as e:
+            raise ValueError(f"Failed to evaluate rate expression '{t}': {e}")
         return rate
 
     def reaction(self, y, substrates={}, parameters={}):
-        """_summary_
+        """Calculate the reaction's contribution to metabolite rates of change.
 
         Args:
-            y (dict): dictionary of metabolite to concentration
-            substrates (dict, optional): _description_. Defaults to {}.
-            parameters (dict, optional): _description_. Defaults to {}.
+            y (dict): Dictionary of metabolite concentrations
+            substrates (dict, optional): Substrate concentrations. Defaults to {}.
+            parameters (dict, optional): Kinetic parameters. Defaults to {}.
 
         Returns:
-            _type_: _description_
+            np.array: Array of metabolite rates with stoichiometric coefficients applied
         """
         rate = self.calculate_rate(substrates, parameters)
-        y_prime_dic = calculate_yprime(y, rate, self.substrates, self.products)
+        y_prime_dic = calculate_yprime(y, rate, self.stoichiometry)
         # y_prime_dic = self.modify_product(y_prime_dic, substrate_names)
         y_prime = np.array(list(y_prime_dic.values()))
         # if not self.reversible:
@@ -356,18 +374,24 @@ class KineticReaction(Rule):
 
 
 class ODEModel:
+    """ODE-based kinetic model for metabolic systems."""
+
     def __init__(self, model_id):
-        """ODE Model."""
+        """Initialize an ODEModel.
+
+        Args:
+            model_id: Unique identifier for the model
+        """
         self.id = model_id
         self.metabolites = OrderedDict()
         self.compartments = OrderedDict()
-        # kinetic rule of each reaction
+        # Kinetic rule of each reaction
         self.ratelaws = OrderedDict()
-        # initial concentration of metabolites
+        # Initial concentration of metabolites
         self.concentrations = OrderedDict()
-        # parameter defined as constantes
+        # Parameter defined as constants
         self.constant_params = OrderedDict()
-        # variable parameters
+        # Variable parameters
         self.variable_params = OrderedDict()
         self.assignment_rules = OrderedDict()
         self.function_definition = OrderedDict()
@@ -443,7 +467,7 @@ class ODEModel:
         return AttrDict(d)
 
     def find(self, pattern=None, sort=False):
-        """A user friendly method to find reactionsin the model.
+        """A user friendly method to find reactions in the model.
 
         :param pattern: The pattern which can be a regular expression,
             defaults to None in which case all entries are listed.
@@ -455,14 +479,12 @@ class ODEModel:
         """
         values = list(self.reactions.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -493,14 +515,12 @@ class ODEModel:
         """
         values = list(self.metabolites.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -594,7 +614,9 @@ class ODEModel:
 
         Args:
             m_id (str): The metabolite identifier
-            factors (dic, optional): Factores applied to parameters. Defaults to None.
+            factors (dict, optional): Factors applied to metabolite production (products only).
+                                     Used to model reduced enzyme expression or regulatory effects.
+                                     Defaults to None.
 
         Returns:
             str: Mass balance equation
@@ -605,10 +627,15 @@ class ODEModel:
 
         terms = []
         for r_id, coeff in table[m_id].items():
+            # Apply factor only to products (positive coefficients) to model reduced production
+            # while keeping consumption (negative coefficients) unchanged
             v = coeff * f if coeff > 0 else coeff
             terms.append(f"{v:+g} * r['{r_id}']")
 
-        if f == 0 or len(terms) == 0 or (self.metabolites[m_id].constant and self.metabolites[m_id].boundary):
+        # Check if metabolite is constant and boundary (attributes may not exist)
+        is_constant = getattr(self.metabolites[m_id], "constant", False)
+        is_boundary = getattr(self.metabolites[m_id], "boundary", False)
+        if f == 0 or len(terms) == 0 or (is_constant and is_boundary):
             expr = "0"
         else:
             expr = f"1/p['{c_id}'] * ({' '.join(terms)})"
@@ -638,14 +665,12 @@ class ODEModel:
         params = self.get_parameters()
         values = list(params.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -674,14 +699,12 @@ class ODEModel:
         params = self.function_definition
         values = list(params.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -701,9 +724,7 @@ class ODEModel:
         Deriv function called by integrate.
 
         For each step when the model is run, the rate for each reaction is calculated
-        and changes in substrates and products calculated.
-        These are returned by this function as y_prime, which are added to y which is
-        returned by run_model
+        and changes in substrates and products calculated, normalized by compartment volume.
 
         Args:
             t : time, not used in this function but required
@@ -712,13 +733,21 @@ class ODEModel:
                Has the same order as self.run_model_species_names
 
         Returns:
-            y_prime - ordered list the same as y, y_prime is the new set of y's for this timepoint.
+            y_prime - ordered list the same as y, y_prime is the new set of y's for this timepoint,
+                     normalized by compartment volumes.
         """
         p = self.merge_constants()
         m_y = OrderedDict(zip(self.metabolites, y))
         yprime = np.zeros(len(y))
         for _, reaction in self.ratelaws.items():
             yprime += reaction.reaction(m_y, self.get_parameters(), p)
+
+        # Normalize by compartment volume (dC/dt = rate / volume)
+        for i, m_id in enumerate(self.metabolites):
+            c_id = self.metabolites[m_id].compartment
+            volume = p[c_id]
+            yprime[i] /= volume
+
         return yprime.tolist()
 
     def build_ode(self, factors: dict = None, local: bool = False) -> str:
@@ -749,7 +778,7 @@ class ODEModel:
 
         rate_exprs = [" " * 4 + "r['{}'] = {}".format(r_id, parsed_rates[r_id]) for r_id in self.ratelaws.keys()]
 
-        # TODO: review factores....
+        # Build mass balance equations for each metabolite
         balances = [" " * 8 + self.print_balance(m_id, factors=factors) for m_id in self.metabolites]
 
         func = "def ode_func(t, x, r, p, v)"
@@ -788,7 +817,9 @@ class ODEModel:
         r = r_dict if r_dict is not None else dict()
 
         np.seterr(divide="ignore", invalid="ignore")
-        exec(self.build_ode(factors), globals())
-        ode_func = eval("ode_func")
+        # Use local namespace instead of globals() to prevent pollution and security issues
+        local_namespace = {}
+        exec(self.build_ode(factors), local_namespace)
+        ode_func = local_namespace["ode_func"]
 
         return lambda t, y: ode_func(t, y, r, p, v)

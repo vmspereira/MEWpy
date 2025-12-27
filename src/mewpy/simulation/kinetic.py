@@ -71,18 +71,15 @@ def kinetic_solve(
     try:
         C, t, y = solver.solve(y0, time_steps)
 
+        # Check for negative concentrations beyond tolerance
+        neg_tolerance = -SolverConfigurations.RELATIVE_TOL
         for c in C:
-            if c < -1 * SolverConfigurations.RELATIVE_TOL:
+            if c < neg_tolerance:
                 return ODEStatus.ERROR, {}, {}
 
-        # values bellow solver precision will be set to 0
-        rates.update(
-            {
-                k: 0
-                for k, v in rates.items()
-                if (v < SolverConfigurations.ABSOLUTE_TOL and v > -SolverConfigurations.ABSOLUTE_TOL)
-            }
-        )
+        # Values below solver precision will be set to 0
+        abs_tol = SolverConfigurations.ABSOLUTE_TOL
+        rates.update({k: 0 for k, v in rates.items() if abs(v) < abs_tol})
         conc = OrderedDict(zip(model.metabolites.keys(), C))
 
         return ODEStatus.OPTIMAL, rates, conc, t, y
@@ -106,7 +103,7 @@ class KineticThread(Process):
         factors: Dict[str, float] = None,
     ) -> None:
         """
-        TSolves the ODE inside a thread enabling to impose a timeout limit
+        Solves the ODE inside a thread enabling to impose a timeout limit
         with thread.join(timeout)
 
         :param model: The kinetic model
@@ -145,8 +142,8 @@ class KineticThread(Process):
             self.result["concentrations"] = concentrations
             self.result["t"] = t
             self.result["y"] = y
-        except Exception:
-            warnings.warn("Timeout")
+        except Exception as e:
+            warnings.warn(f"Kinetic simulation failed: {str(e)}")
         return
 
 
@@ -277,7 +274,8 @@ class KineticSimulation(SimulationInterface):
         for i, m in enumerate(self.model.metabolites):
             try:
                 values.append(_initcon.get(m, self.model.concentrations[m]))
-            except:
+            except KeyError:
+                # Metabolite has no initial concentration defined
                 values.append(None)
         return values
 
