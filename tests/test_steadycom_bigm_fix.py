@@ -11,7 +11,7 @@ import warnings
 from cobra.io.sbml import read_sbml_model
 
 from mewpy.com import CommunityModel
-from mewpy.com.steadycom import SteadyCom, calculate_bigM, build_problem
+from mewpy.com.steadycom import SteadyCom, build_problem, calculate_bigM
 
 MODELS_PATH = "tests/data/"
 EC_CORE_MODEL = MODELS_PATH + "e_coli_core.xml.gz"

@@ -55,7 +55,7 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
 
     # update with simulation constraints if any
     constraints.update(sim.environmental_conditions)
-    # constraints.update(sim._constraints)
+    # Note: sim._constraints is not updated to avoid overriding user-provided constraints
 
     # make irreversible
     for r_id in sim.reactions:
@@ -93,7 +93,8 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
             proteins = sim.proteins
             if proteins:
                 reactions = [f"{sim.protein_prefix}{protein}" for protein in proteins]
-        except Exception:
+        except AttributeError:
+            # Simulator doesn't have protein constraints (not a GECKO-style model)
             reactions = sim.reactions
 
     sobjective = dict()
@@ -112,5 +113,20 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
                 sobjective[r_id] = 1
 
     solution = solver.solve(sobjective, minimize=True, constraints=constraints)
+
+    # Reconstruct net flux for reversible reactions before returning
+    # Reversible reactions were split into _p (forward) and _n (reverse) variables
+    for r_id in sim.reactions:
+        lb, _ = sim.get_reaction_bounds(r_id)
+        if lb < 0:
+            pos, neg = r_id + "_p", r_id + "_n"
+            # Calculate net flux: forward - reverse
+            net_flux = solution.values.get(pos, 0) - solution.values.get(neg, 0)
+            solution.values[r_id] = net_flux
+            # Remove split variables from solution
+            if pos in solution.values:
+                del solution.values[pos]
+            if neg in solution.values:
+                del solution.values[neg]
 
     return solution

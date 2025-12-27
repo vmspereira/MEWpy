@@ -20,6 +20,7 @@ COBRA utility module
 Authors: Vitor Pereira
 ##############################################################################
 """
+import logging
 from copy import copy, deepcopy
 from math import inf
 from typing import TYPE_CHECKING, Union
@@ -30,6 +31,8 @@ from mewpy.simulation import Simulator, get_simulator
 from mewpy.util.constants import ModelConstants
 from mewpy.util.parsing import Boolean, build_tree, isozymes
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from cobra import Model
     from reframed.core.cbmodel import CBModel
@@ -37,21 +40,31 @@ if TYPE_CHECKING:
 
 def convert_gpr_to_dnf(model) -> None:
     """
-    Convert all existing GPR associations to DNF.
+    Convert all existing GPR (Gene-Protein-Reaction) associations to DNF (Disjunctive Normal Form).
+
+    DNF is a standardized form where the GPR rule is expressed as an OR of ANDs,
+    e.g., (geneA and geneB) or (geneC and geneD)
+
+    :param model: A COBRApy or REFRAMED Model or an instance of Simulator
     """
     sim = get_simulator(model)
-    for rxn_id in tqdm(sim.reactions):
+    for rxn_id in tqdm(sim.reactions, desc="Converting GPRs to DNF"):
         rxn = sim.get_reaction(rxn_id)
         if not rxn.gpr:
             continue
-        tree = build_tree(rxn.gpr, Boolean)
-        gpr = tree.to_infix()
-        # TODO: update the gpr
+        try:
+            tree = build_tree(rxn.gpr, Boolean)
+            gpr_dnf = tree.to_dnf().to_infix()
+            # Update the reaction's GPR
+            rxn.gpr = gpr_dnf
+        except Exception as e:
+            # If conversion fails, keep original GPR
+            import warnings
 
-        return gpr
+            warnings.warn(f"Failed to convert GPR for reaction {rxn_id}: {e}")
 
 
-def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"], inline: bool = False):
+def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
     """Split reversible reactions into two irreversible reactions
     These two reactions will proceed in opposite directions. This
     guarentees that all reactions in the model will only allow
@@ -59,8 +72,11 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"], inline:
 
     :param model: A COBRApy or REFRAMED Model or an instance of
         mewpy.simulation.simulation.Simulator
-    :return: a irreversible model simulator, a reverse mapping.
-    :rtype:(Simulator,dict)
+    :return: A new irreversible model simulator and a reverse mapping.
+    :rtype: (Simulator, dict)
+
+    .. note::
+        This function always returns a new model; the input model is not modified.
     """
 
     sim = get_simulator(deepcopy(model))
@@ -95,14 +111,16 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"], inline:
     return sim, irrev_map
 
 
-def split_isozymes(model: Union[Simulator, "Model", "CBModel"], inline: bool = False):
+def split_isozymes(model: Union[Simulator, "Model", "CBModel"]):
     """Splits reactions with isozymes into separated reactions
 
     :param model: A COBRApy or REFRAMED Model or an instance of
         mewpy.simulation.simulation.Simulator
-    :param (boolean) inline: apply the modifications to the same of generate a new model. Default generates a new model.
-    :return: a simulator and a mapping from original to splitted reactions
+    :return: A new simulator with split isozyme reactions and a mapping from original to splitted reactions
     :rtype: (Simulator, dict)
+
+    .. note::
+        This function always returns a new model; the input model is not modified.
     """
 
     sim = get_simulator(deepcopy(model))
@@ -232,7 +250,10 @@ def __enzime_constraints(
             gpr=gene,
         )
 
-    print(len(skipped_gene), " genes species not added")
+    if skipped_gene:
+        logger.info(
+            f"{len(skipped_gene)} gene species not added (missing protein MW data). " f"First few: {skipped_gene[:5]}"
+        )
 
     # Add enzymes to reactions stoichiometry.
     # 1/Kcats in per hour. Considering kcats in per second.
@@ -243,12 +264,14 @@ def __enzime_constraints(
             genes = build_tree(rxn.gpr, Boolean).get_operands()
             for g in genes:
                 if g in gene_meta:
-                    # TODO: mapping of (gene, reaction ec) to kcat
-                    try:
-                        if isinstance(prot_mw[g]["kcat"], float):
-                            s[gene_meta[g]] = -1 / (prot_mw[g]["kcat"])
-                    except Exception:
-                        s[gene_meta[g]] = -1 / (ModelConstants.DEFAULT_KCAT)
+                    # Get kcat from enz_kcats dictionary (gene -> reaction -> kcat mapping)
+                    kcat = ModelConstants.DEFAULT_KCAT  # Default value
+                    if g in enz_kcats and rxn_id in enz_kcats[g]:
+                        kcat_data = enz_kcats[g][rxn_id]
+                        if isinstance(kcat_data.get("kcat"), (int, float)):
+                            kcat = kcat_data["kcat"]
+
+                    s[gene_meta[g]] = -1 / kcat
             sim.update_stoichiometry(rxn_id, s)
     sim.objective = objective
     return sim
@@ -259,25 +282,31 @@ def add_enzyme_constraints(
     prot_mw=None,
     enz_kcats=None,
     c_compartment: str = "c",
-    inline: bool = False,
 ):
     """Adds enzyme constraints to a model.
+
+    This function applies a series of transformations to prepare a model for enzyme constraints:
+    1. Converts reversible reactions to irreversible
+    2. Splits reactions with isozymes
+    3. Adds enzyme constraints
 
     :param model: A model or simulator
     :type model: A COBRApy or REFRAMED Model or an instance of
         mewpy.simulation.simulation.Simulator
-    :param data: Protein MW and Kcats
-    :type data: None
+    :param prot_mw: Dictionary mapping gene IDs to protein molecular weight data
+    :type prot_mw: dict, optional
+    :param enz_kcats: Dictionary mapping gene IDs to kcat values per reaction
+    :type enz_kcats: dict, optional
     :param c_compartment: The compartment where gene/proteins pseudo species are to be added.
         Defaults to 'c'
     :type c_compartment: str, optional
-    :param (boolean) inline: apply the modifications to the same of generate a new model.
-        Default generates a new model.
-    :type inline: bool, optional
-    :return: a new enzyme constrained model
+    :return: A new enzyme constrained model
     :rtype: Simulator
+
+    .. note::
+        This function always returns a new model; the input model is not modified.
     """
-    sim, _ = convert_to_irreversible(model, inline)
-    sim, _ = split_isozymes(sim, True)
+    sim, _ = convert_to_irreversible(model)
+    sim, _ = split_isozymes(sim)
     sim = __enzime_constraints(sim, prot_mw=prot_mw, enz_kcats=enz_kcats, c_compartment=c_compartment, inline=True)
     return sim

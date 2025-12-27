@@ -6,7 +6,9 @@ This script compares the performance of building community models with
 different numbers of organisms to demonstrate the optimizations.
 """
 import time
+
 from cobra.io.sbml import read_sbml_model
+
 from mewpy.com import CommunityModel
 
 MODELS_PATH = "tests/data/"

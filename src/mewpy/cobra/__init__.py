@@ -16,4 +16,18 @@
 
 from .medium import minimal_medium
 from .parsimonious import pFBA
-from .util import *
+from .util import (
+    add_enzyme_constraints,
+    convert_gpr_to_dnf,
+    convert_to_irreversible,
+    split_isozymes,
+)
+
+__all__ = [
+    "minimal_medium",
+    "pFBA",
+    "add_enzyme_constraints",
+    "convert_gpr_to_dnf",
+    "convert_to_irreversible",
+    "split_isozymes",
+]
