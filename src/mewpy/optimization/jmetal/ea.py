@@ -26,7 +26,7 @@ import numpy as np
 from jmetal.algorithm.multiobjective import NSGAII, SPEA2
 from jmetal.algorithm.multiobjective.nsgaiii import NSGAIII, UniformReferenceDirectionFactory
 from jmetal.algorithm.singleobjective import GeneticAlgorithm, SimulatedAnnealing
-from jmetal.operator import BinaryTournamentSelection
+from jmetal.operator.selection import BinaryTournamentSelection
 from jmetal.util.termination_criterion import StoppingByEvaluations
 
 from mewpy.util.constants import EAConstants
