@@ -100,7 +100,7 @@ class PrintObjectivesStatObserver:
         :returns: A statistics dictionary.
         """
 
-        def minuszero(value):
+        def minuszero(value: float) -> float:
             return round(value, 6)
 
         stats = {}

@@ -103,7 +103,11 @@ class MinCandSize(CandidateSize):
 
     def __init__(self, maximize=False):
         super(MinCandSize, self).__init__(maximize=maximize, worst_fitness=0.0)
-        warnings.warn("This class will soon be depricated. Use CandidateSize instead.")
+        warnings.warn(
+            "MinCandSize is deprecated. Use CandidateSize instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
 
 
 class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):

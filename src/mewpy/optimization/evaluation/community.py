@@ -55,7 +55,14 @@ class Interaction(PhenotypeEvaluationFunction):
         mu_scores = mu_score(community, environment=self.environment)  # noqa: F841
         mp_scores = mp_score(community, environment=self.environment)  # noqa: F841
         mro_scores = mro_score(community, environment=self.environment)  # noqa: F841
-        # TODO: combine all the scores in one single value
+
+        # TODO: Implement scoring function to combine all the score metrics into a single value.
+        # Currently returns 0 as placeholder. The combined score should aggregate:
+        # - sc_scores: Species contribution scores
+        # - mu_scores: Maximum growth scores
+        # - mp_scores: Metabolic productivity scores
+        # - mro_scores: Metabolic resource overlap scores
+        # Consider using weighted sum, min/max aggregation, or other combination strategy.
         score = 0
 
         return score

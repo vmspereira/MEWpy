@@ -130,7 +130,7 @@ class Solution(SolutionInterface):
         new_solution = Solution(values, fitness)
         return new_solution
 
-    def __hash__(self) -> str:
+    def __hash__(self) -> int:
         if isinstance(self.values, dict):
             return hash(str(set(self.values.items())))
         else:
