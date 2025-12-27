@@ -31,7 +31,7 @@ class MEWPYSolvers(Singleton):
         try:
             from .pyscipopt_solver import PySCIPOptSolver
 
-            self._mewpy_solvers["pyscipopt"] = PySCIPOptSolver
+            self._mewpy_solvers["scip"] = PySCIPOptSolver
         except ImportError:
             pass
 

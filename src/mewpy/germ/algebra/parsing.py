@@ -496,11 +496,38 @@ def apply_transformations(expression, transformations=None):
 
 
 def evaluate_expression(symbolic_expression, local_dict=None, global_dict=None):
+    """
+    Safely evaluates a symbolic expression using restricted namespaces.
+
+    This function evaluates symbolic algebra expressions with controlled global and local
+    dictionaries, preventing arbitrary code execution by restricting __builtins__.
+
+    :param symbolic_expression: The expression to evaluate
+    :param local_dict: Local variable dictionary (defaults to empty dict)
+    :param global_dict: Global variable dictionary (defaults to GLOBAL_MEWPY_OPERATORS)
+    :return: Evaluated result
+    """
     if not local_dict:
         local_dict = {}
 
     if not global_dict:
-        global_dict = GLOBAL_MEWPY_OPERATORS
+        global_dict = GLOBAL_MEWPY_OPERATORS.copy()
+    else:
+        global_dict = global_dict.copy()
+
+    # Restrict builtins to prevent arbitrary code execution
+    # Only allow safe operations needed for symbolic algebra
+    global_dict["__builtins__"] = {
+        # Allow basic built-in types that are safe
+        "True": True,
+        "False": False,
+        "None": None,
+        "int": int,
+        "float": float,
+        "str": str,
+        "bool": bool,
+        # Disallow dangerous functions like __import__, exec, eval, open, etc.
+    }
 
     return eval(symbolic_expression, global_dict, local_dict)
 

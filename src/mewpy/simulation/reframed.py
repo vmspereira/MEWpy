@@ -56,6 +56,8 @@ from .simulation import ModelContainer, SimulationResult, Simulator
 
 LOGGER = logging.getLogger(__name__)
 
+# Maps MEWpy solver names to REFRAMED solver names
+# Note: REFRAMED uses 'scip' for both SCIP and GLPK backends
 solver_map = {"gurobi": "gurobi", "cplex": "cplex", "glpk": "scip", "scip": "scip"}
 
 reaction_type_map = {

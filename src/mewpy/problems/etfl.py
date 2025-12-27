@@ -22,12 +22,110 @@ Author: Vitor Pereira
 """
 import itertools
 import logging
+import operator
 
 from ..simulation import SStatus
 from ..util.parsing import Boolean, GeneEvaluator, build_tree
 from .problem import AbstractKOProblem, AbstractOUProblem
 
 logger = logging.getLogger(__name__)
+
+
+# Safe operator lookup for string-to-function conversion
+_SAFE_OPERATORS = {
+    # Common lambda functions used in GPR evaluation
+    "lambda x, y: min(x, y)": lambda x, y: min(x, y),
+    "lambda x, y: max(x, y)": lambda x, y: max(x, y),
+    "lambda x,y: min(x,y)": lambda x, y: min(x, y),
+    "lambda x,y: max(x,y)": lambda x, y: max(x, y),
+    "lambda x, y: x + y": lambda x, y: x + y,
+    "lambda x, y: x * y": lambda x, y: x * y,
+    "lambda x,y: x+y": lambda x, y: x + y,
+    "lambda x,y: x*y": lambda x, y: x * y,
+    # Named functions
+    "min": min,
+    "max": max,
+    "sum": sum,
+    # Operator module functions
+    "operator.add": operator.add,
+    "operator.mul": operator.mul,
+    "operator.min": min,
+    "operator.max": max,
+}
+
+
+def _parse_operator_safely(op_string):
+    """
+    Safely converts a string representation of an operator to a callable function.
+
+    This function uses a lookup table for common operators instead of eval(),
+    providing better security. If the operator is not in the lookup table,
+    it uses restricted eval with minimal builtins.
+
+    :param op_string: String representation of an operator
+    :return: Callable function
+    :raises ValueError: If the string cannot be safely converted to a callable
+    """
+    # Check if it's in the safe lookup table
+    if op_string in _SAFE_OPERATORS:
+        return _SAFE_OPERATORS[op_string]
+
+    # Validate the string doesn't contain dangerous patterns
+    dangerous_patterns = [
+        "__import__",
+        "exec",
+        "eval",
+        "compile",
+        "open",
+        "file",
+        "__builtins__",
+        "__globals__",
+        "__locals__",
+        "__code__",
+        "__dict__",
+        "__class__",
+        "__bases__",
+        "__subclasses__",
+        "os.",
+        "sys.",
+        "subprocess",
+        "importlib",
+    ]
+
+    for pattern in dangerous_patterns:
+        if pattern in op_string:
+            raise ValueError(
+                f"Operator string contains forbidden pattern '{pattern}'. "
+                f"Please use a recognized operator format or pass a callable directly."
+            )
+
+    # If not in lookup, use restricted eval with minimal builtins
+    # Only allow lambda, basic math operations, and common functions
+    safe_globals = {
+        "__builtins__": {
+            "min": min,
+            "max": max,
+            "sum": sum,
+            "abs": abs,
+            "int": int,
+            "float": float,
+        },
+        "min": min,
+        "max": max,
+        "sum": sum,
+        "operator": operator,
+    }
+
+    try:
+        result = eval(op_string, safe_globals, {})
+        if not callable(result):
+            raise ValueError(f"Expression '{op_string}' does not evaluate to a callable function")
+        return result
+    except Exception as e:
+        raise ValueError(
+            f"Cannot safely parse operator string '{op_string}'. "
+            f"Please use a recognized operator format or pass a callable directly. Error: {e}"
+        )
 
 
 def gene_has_associated_enzyme(model, gene_id):
@@ -207,7 +305,8 @@ class ETFLGOUProblem(AbstractOUProblem):
             for i in [0, 1]:
                 op = None
                 if isinstance(self._temp_op[i], str):
-                    op = eval(self._temp_op[i])
+                    # Use safe operator parsing instead of eval()
+                    op = _parse_operator_safely(self._temp_op[i])
                 else:
                     op = self._temp_op[i]
                 if callable(op):

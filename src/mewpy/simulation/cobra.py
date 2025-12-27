@@ -677,14 +677,14 @@ class Simulation(CobraModelContainer, Simulator):
             result = SimulationResult(
                 self,
                 solution.objective_value,
-                fluxes=solution.fluxes.to_dict(OrderedDict),
+                fluxes=solution.fluxes.to_dict(into=OrderedDict),
                 status=status,
                 envcond=self.environmental_conditions,
                 model_constraints=self._constraints.copy(),
                 simul_constraints=constraints,
                 maximize=maximize,
                 method=method,
-                shadow_prices=solution.shadow_prices.to_dict(OrderedDict),
+                shadow_prices=solution.shadow_prices.to_dict(into=OrderedDict),
             )
             return result
 
@@ -745,7 +745,7 @@ class Simulation(CobraModelContainer, Simulator):
 
         variability = {}
         for r_id in _reactions:
-            variability[r_id] = [float(df.loc[r_id][0]), float(df.loc[r_id][1])]
+            variability[r_id] = [float(df.loc[r_id].iloc[0]), float(df.loc[r_id].iloc[1])]
 
         if format == "df":
             import pandas as pd

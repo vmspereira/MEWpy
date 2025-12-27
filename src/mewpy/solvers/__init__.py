@@ -24,7 +24,7 @@ def get_default_solver():
     if default_solver:
         return default_solver
 
-    solver_order = ["cplex", "gurobi", "pyscipopt", "optlang"]
+    solver_order = ["cplex", "gurobi", "scip", "optlang"]
 
     for solver in solver_order:
         if solver in list(__MEWPY_solvers__.keys()):
@@ -41,7 +41,7 @@ def set_default_solver(solvername):
     """Sets default solver.
 
     Arguments:
-        solvername : (str) solver name (currently available: 'gurobi', 'cplex')
+        solvername : (str) solver name (currently available: 'gurobi', 'cplex', 'scip', 'optlang')
     """
 
     global default_solver
