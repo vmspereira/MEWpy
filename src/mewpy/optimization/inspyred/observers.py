@@ -63,8 +63,8 @@ def fitness_statistics(population, directions):
                 "std": std_fit,
             }
     else:
-        worst_fit = -1 * population[0].fitness if directions[i] == -1 else population[-1].fitness
-        best_fit = -1 * population[-1].fitness if directions[i] == -1 else population[0].fitness
+        worst_fit = -1 * population[0].fitness if directions[0] == -1 else population[-1].fitness
+        best_fit = -1 * population[-1].fitness if directions[0] == -1 else population[0].fitness
         f = [p.fitness * directions[0] for p in population]
         med_fit = numpy.median(f)
         avg_fit = numpy.mean(f)

@@ -228,15 +228,12 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
     def name(self) -> str:
         return self.problem.get_name()
 
-    @property
     def number_of_objectives(self) -> int:
         return self._number_of_objectives
 
-    @property
     def number_of_variables(self) -> int:
         return self._number_of_variables
 
-    @property
     def number_of_constraints(self) -> int:
         return self._number_of_constraints
 
@@ -336,15 +333,12 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     def name(self) -> str:
         return self.problem.get_name()
 
-    @property
     def number_of_objectives(self) -> int:
         return self._number_of_objectives
 
-    @property
     def number_of_variables(self) -> int:
         return self._number_of_variables
 
-    @property
     def number_of_constraints(self) -> int:
         return self._number_of_constraints
 
