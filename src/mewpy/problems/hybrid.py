@@ -167,7 +167,7 @@ class HybridGeckoOUProblem(GeckoOUProblem):
             try:
                 decoded_candidate[self.target_list[idx]] = self.levels[lv_idx]
             except IndexError:
-                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list)}")
         return decoded_candidate
 
     def _build_target_list(self):

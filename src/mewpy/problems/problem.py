@@ -195,7 +195,7 @@ class AbstractProblem(ABC):
 
     def pre_process(self):
         """Defines pre processing tasks"""
-        self.target_list
+        _ = self.target_list  # Ensure target_list is initialized
         self.reset_simulator()
 
     @property
@@ -409,7 +409,7 @@ class AbstractKOProblem(AbstractProblem):
             try:
                 decoded[self.target_list[idx]] = 0
             except IndexError:
-                raise IndexError("Index out of range: {} from {}".format(idx, len(self.target_list[idx])))
+                raise IndexError("Index out of range: {} from {}".format(idx, len(self.target_list)))
         return decoded
 
     def encode(self, candidate):
@@ -598,7 +598,7 @@ class AbstractOUProblem(AbstractProblem):
             if abs(fluxe_wt) >= abs(rev_fluxe_wt):
                 ko_rxn, ou_rxn, fwt = rev_rxn, rxn, fluxe_wt
             else:
-                rxn, rev_rxn, rev_fluxe_wt
+                ko_rxn, ou_rxn, fwt = rxn, rev_rxn, rev_fluxe_wt
             constraints[ko_rxn] = (0, 0)
             constraints[ou_rxn] = self.ou_constraint(lv, fwt)
         return constraints

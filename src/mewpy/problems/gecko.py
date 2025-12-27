@@ -93,7 +93,7 @@ class GeckoKOProblem(AbstractKOProblem):
             try:
                 decoded_candidate["{}{}".format(self.prot_prefix, self.target_list[idx])] = 0
             except IndexError:
-                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list)}")
         return decoded_candidate
 
     def encode(self, candidate):
@@ -182,7 +182,7 @@ class GeckoOUProblem(AbstractOUProblem):
                 decoded_candidate["{}{}".format(self.prot_prefix, self.target_list[idx])] = self.levels[lv_idx]
 
             except IndexError:
-                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list)}")
         return decoded_candidate
 
     def encode(self, candidate):
@@ -401,7 +401,8 @@ class KcatOptProblem(AbstractOUProblem):
             values = [idx] * solution_size
             p = random.randint(0, solution_size - 1)
             values[p] = random.randint(0, len(self.levels) - 1)
-        except:
+        except ValueError:
+            # Level 1 not found in levels list, use random choices instead
             values = random.choices(range(len(self.levels)), k=solution_size)
 
         solution = set(zip(keys, values))
