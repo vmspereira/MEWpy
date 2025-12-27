@@ -21,12 +21,15 @@ Generates a networkx graph based on metabolic networks
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import math
 
 import networkx as nx
 import numpy as np
 
 from mewpy.simulation import get_simulator
+
+logger = logging.getLogger(__name__)
 
 from .constants import COFACTORS
 
@@ -37,7 +40,7 @@ IRREV = "IRREV"
 
 
 def create_metabolic_graph(
-    model, directed=True, carbon=True, reactions=None, remove=[], edges_labels=False, biomass=False, metabolites=False
+    model, directed=True, carbon=True, reactions=None, remove=None, edges_labels=False, metabolites=False
 ):
     """ Creates a metabolic graph
 
@@ -61,6 +64,7 @@ def create_metabolic_graph(
     if not reactions:
         reactions = container.reactions
 
+    remove = remove if remove is not None else []
     reactions = list(set(reactions) - set(remove))
 
     for r in reactions:
@@ -113,7 +117,7 @@ def filter_by_degree(G, max_degree, inplace=True):
     stop = False
     while not stop:
         # find the metabolite with highest degree
-        print(s[:5])
+        logger.debug(f"Top 5 nodes by degree: {s[:5]}")
         position = 0
         found = False
         k = None
@@ -126,14 +130,14 @@ def filter_by_degree(G, max_degree, inplace=True):
                 position += 1
         if k and v > max_degree:
             G.remove_node(k)
-            print("removed ", k)
+            logger.debug(f"Removed node: {k}")
             s = list(sorted(G.degree, key=lambda item: item[1], reverse=True))
         else:
             stop = True
     return G
 
 
-def shortest_distance(model, reaction, reactions=None, remove=[]):
+def shortest_distance(model, reaction, reactions=None, remove=None):
     """ Returns the unweighted shortest path distance from a list of reactions to a reaction.
     Distances are the number of required reactions. If there is no pathway between the reactions the distance is inf·
 
@@ -150,6 +154,7 @@ def shortest_distance(model, reaction, reactions=None, remove=[]):
     if reaction not in rxns:
         rxns.append(reaction)
 
+    remove = remove if remove is not None else []
     G = create_metabolic_graph(container, reactions=rxns, remove=remove)
     sp = dict(nx.single_target_shortest_path_length(G, reaction))
 

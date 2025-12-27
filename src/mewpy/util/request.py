@@ -19,8 +19,11 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import json
+import logging
 import urllib.request
 from hashlib import sha256
+
+logger = logging.getLogger(__name__)
 
 
 def process_entry(entry):
@@ -29,10 +32,10 @@ def process_entry(entry):
     org = entry["organism"]["scientificName"]
     try:
         name = entry["genes"][0]["geneName"]["value"]
-    except:
+    except (KeyError, IndexError, TypeError):
         tokens = entry["uniProtkbId"].split("_")
         name = tokens[0]
-        print(f"No gene name for {protein} using uniProtkbId")
+        logger.warning(f"No gene name for {protein} using uniProtkbId")
     props = {}
     props["Catalytic Activity"] = []
     # synonyms
@@ -57,7 +60,8 @@ def process_entry(entry):
                 ecnumber = ""
                 try:
                     ecnumber = comment["reaction"]["ecNumber"]
-                except Exception:
+                except KeyError:
+                    # ecNumber not available
                     pass
                 props["Catalytic Activity"].append((activity, ecnumber))
 
@@ -72,20 +76,20 @@ def process_entry(entry):
             elif comment["commentType"] == "FUNCTION":
                 function = comment["texts"][0]["value"]
                 props["Function"] = function
-    except:
-        print("No comments")
+    except KeyError:
+        logger.debug("No comments")
 
     # sequence
     seq = None
     mw = None
     try:
         seq = entry["sequence"]["value"]
-    except:
-        pass
+    except (KeyError, AttributeError, TypeError):
+        logger.debug("Sequence value not available")
     try:
         mw = float(entry["sequence"]["molWeight"])
-    except:
-        pass
+    except (KeyError, AttributeError, TypeError, ValueError):
+        logger.debug("Molecular weight not available")
     return {
         "organism": org,
         "protein": protein,
@@ -98,7 +102,7 @@ def process_entry(entry):
     }
 
 
-def retreive(data, organism=None):
+def retrieve(data, organism=None):
     """Retreives a protein function, pathways, ...
 
     Args:
@@ -120,7 +124,7 @@ def retreive(data, organism=None):
     return process_entry(entry)
 
 
-def retreive_gene(gene, organism=None):
+def retrieve_gene(gene, organism=None):
     """retrieves uniprot data using a gene name
 
     :param gene: gene name
@@ -135,12 +139,12 @@ def retreive_gene(gene, organism=None):
     url = f"https://rest.uniprot.org/uniprotkb/search?query=(gene:{gn})%20AND%20(reviewed:true)&format=json"
     with urllib.request.urlopen(url) as response:
         data = response.read().decode("ascii")
-    data = retreive(data, organism)
+    data = retrieve(data, organism)
     data["gene"] = gene
     return data
 
 
-def retreive_protein(proteinid):
+def retrieve_protein(proteinid):
     """retrieves uniprot data using a protein assertion
 
     :param proteinid: protein assertion
@@ -163,7 +167,7 @@ def brenda_query(user, password, ecNumber, organism=None, field="KCAT"):
 
         client = Client(wsdl)
     except ImportError:
-        raise Exception("zeep library is required.")
+        raise ImportError("zeep library is required.")
 
     passwd = sha256(password.encode("utf-8")).hexdigest()
     parameters = (user, passwd, "ecNumber*" + ecNumber, "organism*" + org)
@@ -190,7 +194,7 @@ def get_smiles(name):
             smiles = None
         else:
             smiles = req.content.splitlines()[0].decode()
-    except:
+    except (ImportError, KeyError, AttributeError, IndexError, TypeError):
         smiles = None
 
     return smiles

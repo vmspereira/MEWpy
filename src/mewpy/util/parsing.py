@@ -21,13 +21,38 @@ Expressions are decomposed into binary parsed trees.
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import re
 import sys
 import typing as T
 from abc import abstractmethod
 from copy import copy
-from math import *
+from math import (
+    acos,
+    asin,
+    atan,
+    atan2,
+    ceil,
+    cos,
+    cosh,
+    degrees,
+    e,
+    exp,
+    floor,
+    log,
+    log2,
+    log10,
+    pi,
+    radians,
+    sin,
+    sinh,
+    sqrt,
+    tan,
+    tanh,
+)
 from operator import add, mul, pow, sub, truediv
+
+logger = logging.getLogger(__name__)
 
 # Boolean operator symbols
 S_AND = "&"
@@ -39,7 +64,7 @@ S_GREATER = ">"
 S_LESS = "<"
 S_EQUAL = "="
 S_GREATER_THAN_EQUAL = ">="
-S_LESS_THAN_EQUAL = "=>"
+S_LESS_THAN_EQUAL = "<="
 
 # Empty leaf symbol
 EMPTY_LEAF = "@"
@@ -86,6 +111,8 @@ def convert_constant(value: T.Any) -> str:
         return r"\mathrm{" + str(value) + "}"
     if isinstance(value, (int, float, complex)):
         # TODO(odashi): Support other symbols for the imaginary unit than j.
+        # Current implementation only supports 'j' for complex numbers
+        # Consider using a configurable symbol or supporting both 'j' and 'i'
         return str(value)
     if isinstance(value, str):
         return r"\textrm{" + value + "}"
@@ -93,7 +120,7 @@ def convert_constant(value: T.Any) -> str:
         return r"\textrm{" + str(value) + "}"
     if value is ...:
         return r"\cdots"
-    raise Exception(f"Unrecognized constant: {type(value).__name__}")
+    raise ValueError(f"Unrecognized constant: {type(value).__name__}")
 
 
 def paren(src: str) -> str:
@@ -112,7 +139,7 @@ latex = {
     "sqrt": lambda x, y: r"\sqrt {" + y + r"}",
 }
 
-# Operators precedence used to add parentesis when
+# Operators precedence used to add parentheses when
 # needed as they are removed in the parsing tree
 MAX_PRECEDENCE = 10
 latex_precedence = {
@@ -301,11 +328,11 @@ class Node(object):
             tabs += "\t"
         if self.is_leaf():
             if self.value != EMPTY_LEAF:
-                print(tabs, f"|____{self.value}")
+                logger.debug(f"{tabs}|____{self.value}")
             else:
                 pass
         else:
-            print(tabs, f"|____{self.value}")
+            logger.debug(f"{tabs}|____{self.value}")
         if self.left is not None:
             self.left.print_node(level + 1)
         if self.right is not None:
@@ -380,9 +407,9 @@ class Node(object):
     ) -> str:
         """Infix string representation
 
-        :param opar: open parentesis string, defaults to '( '
+        :param opar: open parentheses string, defaults to '( '
         :type opar: str, optional
-        :param cpar: close parentesis string, defaults to ' )'
+        :param cpar: close parentheses string, defaults to ' )'
         :type cpar: str, optional
         :param sep: symbols separator, defaults to ' '
         :type sep: str, optional
@@ -456,11 +483,11 @@ class Node(object):
         else:
             op = self.value.strip()
             if op in latex:
-                l, pl = self.left.to_latex()
-                r, pr = self.right.to_latex()
+                left_latex, left_prec = self.left.to_latex()
+                right_latex, right_prec = self.right.to_latex()
                 p = latex_precedence.get(op, MAX_PRECEDENCE)
-                s_l = paren(l) if p > pl else l
-                s_r = paren(r) if p > pr else r
+                s_l = paren(left_latex) if p > left_prec else left_latex
+                s_r = paren(right_latex) if p > right_prec else right_latex
                 return latex[op](s_l, s_r), p
 
             elif self.tp == 1:
@@ -522,7 +549,7 @@ class Syntax:
 
 
 class Arithmetic(Syntax):
-    """Defines a basic arithmetic sintax."""
+    """Defines a basic arithmetic syntax."""
 
     operators = ["+", "-", "**", "*", "/", "^"]
 
@@ -625,9 +652,9 @@ class BooleanEvaluator:
 
     """
 
-    def __init__(self, true_list=[], variables={}):
-        self.true_list = true_list
-        self.vars = variables
+    def __init__(self, true_list=None, variables=None):
+        self.true_list = true_list if true_list is not None else []
+        self.vars = variables if variables is not None else {}
 
     def f_operator(self, op):
         operators = {
@@ -738,7 +765,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
     Builds a parsing syntax tree for basic mathematical expressions
 
     :param exp: the expression to be parsed
-    :param rules: Sintax definition rules
+    :param rules: Syntax definition rules
     """
     assert exp.count("(") == exp.count(")"), "The expression is parentheses unbalanced."
     replace_dic = rules.replace()

@@ -64,7 +64,7 @@ class HistoryManager:
 
     def __call__(self, *args, **kwargs) -> None:
 
-        return self.queue_command(*args, **kwargs)
+        self.queue_command(*args, **kwargs)
 
     def queue_command(
         self,
@@ -109,6 +109,6 @@ def recorder(func: Callable):
 
             history.queue_command(undo_func=func, undo_args=(self, old_value), func=func, args=(self, value))
 
-        func(self, value)
+        return func(self, value)
 
     return wrapper

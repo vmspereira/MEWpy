@@ -21,9 +21,12 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import copy
+import logging
 from abc import ABC, abstractmethod
 
 from .constants import EAConstants, ModelConstants
+
+logger = logging.getLogger(__name__)
 
 MP_Evaluators = []
 
@@ -118,7 +121,7 @@ class MultiProcessorEvaluator(Evaluator):
             evaluator(function): Evaluation function.
             mp_num_cpus(int): Number of CPUs
 
-        When using COBRApy, mewmory resources are not released after each
+        When using COBRApy, memory resources are not released after each
         pool map. As such, the pool needs to be instantiated and closed at
         each iteration.
         """
@@ -151,7 +154,7 @@ class NoDaemonMultiProcessorEvaluator(Evaluator):
         self.mp_num_cpus = mp_num_cpus
         self.evaluator = evaluator
         self.__name__ = self.__class__.__name__
-        print("nodaemon")
+        logger.debug("nodaemon")
 
     def evaluate(self, candidates, args):
         """
@@ -272,7 +275,7 @@ else:
                 self.actors = [RayActor.remote(problem) for _ in range(number_of_actors)]
             self.number_of_actors = len(self.actors)
             self.__name__ = self.__class__.__name__
-            print(f"Using {self.number_of_actors} workers.")
+            logger.info(f"Using {self.number_of_actors} workers.")
 
         def evaluate(self, candidates, args):
             """
@@ -307,16 +310,16 @@ def get_mp_evaluators():
 
 
 def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR):
-    """Retuns a multiprocessing evaluator
+    """Returns a multiprocessing evaluator
 
     Args:
         problem: a class implementing an evaluate(candidate) function
         n_mp (int, optional): The number of cpus. Defaults to cpu_count().
-        evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.\
+        evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.
             Defaults to ModelConstants.MP_EVALUATOR.
 
     Returns:
-        [type]: [description]
+        Evaluator: A multiprocessing evaluator instance based on the specified evaluator type
     """
     if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(problem, n_mp)
@@ -331,16 +334,16 @@ def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUAT
 
 
 def get_fevaluator(func, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR):
-    """Retuns a multiprocessing evaluator
+    """Returns a multiprocessing evaluator
 
     Args:
-        problem: a class implementing an evaluate(candidate) function
+        func: an evaluation function
         n_mp (int, optional): The number of cpus. Defaults to cpu_count().
-        evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.\
+        evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.
             Defaults to ModelConstants.MP_EVALUATOR.
 
     Returns:
-        [type]: [description]
+        Evaluator: A multiprocessing evaluator instance based on the specified evaluator type
     """
     if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(func, n_mp, isfunc=True)
