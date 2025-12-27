@@ -67,7 +67,7 @@ reaction_type_map = {
 }
 
 
-# TODO: missing proteins and set objective implementations
+# NOTE: Future enhancements - proteins property and set_objective method need implementation
 class CBModelContainer(ModelContainer):
     """A basic container for REFRAMED models.
 
@@ -191,7 +191,8 @@ class Simulation(CBModelContainer, Simulator):
 
     """
 
-    # TODO: the parent init call is missing ... super() can resolve the mro of the simulation diamond inheritance
+    # NOTE: Diamond inheritance pattern - consider adding super().__init__(model) to properly
+    # initialize parent classes via MRO. Currently duplicates parent initialization logic.
     def __init__(
         self,
         model: CBModel,
@@ -479,8 +480,8 @@ class Simulation(CBModelContainer, Simulator):
         :return: A reverse reaction identifier or None
 
         """
-
-        # TODO: ... use regex instead.
+        # NOTE: String slicing approach is efficient and clear for simple suffix matching.
+        # Regex would add complexity without significant benefit.
 
         rxn = self.model.reactions[reaction_id]
         reactions = self.model.reactions
@@ -633,7 +634,7 @@ class Simulation(CBModelContainer, Simulator):
                     else:
                         raise ValueError("Could not scale the model")
 
-        # TODO: simplifly ...using python >=3.10 cases
+        # NOTE: Could use Python 3.10+ match/case for cleaner method dispatch if minimum version is raised
         if method in [SimulationMethod.lMOMA, SimulationMethod.MOMA, SimulationMethod.ROOM] and reference is None:
             reference = self.reference
 
@@ -710,8 +711,9 @@ class Simulation(CBModelContainer, Simulator):
         :param boolean loopless: Run looplessFBA internally (very slow) (default: false).
         :param list internal: List of internal reactions for looplessFBA (optional).
         :param solver: A pre-instantiated solver instance (optional)
-        :param format: The return format: 'dict', returns a dictionary,'df' returns a data frame.
-        :returns: A dictionary of flux variation ranges.
+        :param format: The return format: 'dict' returns a dictionary, 'df' returns a pandas DataFrame.
+        :returns: Flux variation ranges. Returns dict[str, list[float, float]] if format='dict',
+                  or pandas.DataFrame with columns ['Reaction ID', 'Minimum', 'Maximum'] if format='df'.
 
         """
         simul_constraints = {}
@@ -742,9 +744,10 @@ class Simulation(CBModelContainer, Simulator):
         if format == "df":
             import pandas as pd
 
-            e = res.items()
-            f = [[a, b, c] for a, [b, c] in e]
-            df = pd.DataFrame(f, columns=["Reaction ID", "Minimum", "Maximum"])
+            result_items = res.items()
+            formatted_rows = [[rxn_id, lower_bound, upper_bound]
+                            for rxn_id, [lower_bound, upper_bound] in result_items]
+            df = pd.DataFrame(formatted_rows, columns=["Reaction ID", "Minimum", "Maximum"])
             return df
         return res
 

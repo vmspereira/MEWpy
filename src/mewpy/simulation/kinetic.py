@@ -65,8 +65,8 @@ def kinetic_solve(
     """
 
     rates = OrderedDict()
-    f = model.get_ode(r_dict=rates, params=parameters, factors=factors)
-    solver = ode_solver_instance(f, KineticConfigurations.SOLVER_METHOD)
+    ode_function = model.get_ode(r_dict=rates, params=parameters, factors=factors)
+    solver = ode_solver_instance(ode_function, KineticConfigurations.SOLVER_METHOD)
 
     try:
         C, t, y = solver.solve(y0, time_steps)

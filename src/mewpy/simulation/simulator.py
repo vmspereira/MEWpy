@@ -24,7 +24,7 @@ from .simulation import Simulator
 
 # Model specific simulators mapping:
 # Entries take the form:  full_model_class_path -> (simulator_path, simulator_class_name)
-# TODO: use qualified names
+# Uses fully qualified class names to avoid import conflicts
 map_model_simulator = {
     "geckopy.gecko.GeckoModel": ("mewpy.simulation.cobra", "GeckoSimulation"),
     "mewpy.model.gecko.GeckoModel": ("mewpy.simulation.reframed", "GeckoSimulation"),

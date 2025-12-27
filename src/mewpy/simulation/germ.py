@@ -792,9 +792,10 @@ class Simulation(GERMModel, Simulator):
         :param loopless: Run looplessFBA internally (very slow) (default: false).
         :param internal: List of internal reactions for looplessFBA (optional).
         :param solver: A pre-instantiated solver instance (optional)
-        :param format: The return format: 'dict' to return a dictionary; 'df' to return a data frame.
+        :param format: The return format: 'dict' to return a dictionary; 'df' to return a pandas DataFrame.
 
-        :return: A dictionary or data frame of flux variation ranges.
+        :return: Flux variation ranges. Returns dict[str, list[float, float]] if format='dict',
+                 or pandas.DataFrame with columns ['Reaction ID', 'Minimum', 'Maximum'] if format='df'.
         """
 
         # Check if this is a SimulatorBasedMetabolicModel and delegate to external simulator

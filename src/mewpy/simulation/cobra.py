@@ -468,15 +468,16 @@ class Simulation(CobraModelContainer, Simulator):
         """
         transport_reactions = []
         for rx in self.reactions:
-            s_set = set()
-            p_set = set()
-            s = self.model.reactions.get_by_id(rx).reactants
-            for x in s:
-                s_set.add(x.compartment)
-            p = self.model.reactions.get_by_id(rx).products
-            for x in p:
-                p_set.add(x.compartment)
-            if len(p_set.intersection(s_set)) == 0:
+            substrate_compartments = set()
+            product_compartments = set()
+            reactants = self.model.reactions.get_by_id(rx).reactants
+            for metabolite in reactants:
+                substrate_compartments.add(metabolite.compartment)
+            products = self.model.reactions.get_by_id(rx).products
+            for metabolite in products:
+                product_compartments.add(metabolite.compartment)
+            # Transport reactions have substrates and products in different compartments
+            if len(product_compartments.intersection(substrate_compartments)) == 0:
                 transport_reactions.append(rx)
         return transport_reactions
 
@@ -706,8 +707,9 @@ class Simulation(CobraModelContainer, Simulator):
         :param dic constraints: Additional constraints (optional).
         :param boolean loopless: Run looplessFBA internally (very slow) (default: false).
         :param solver: A pre-instantiated solver instance (optional).
-        :param format: The return format: 'dict', returns a dictionary,'df' returns a data frame.
-        :returns: A dictionary of flux variation ranges.
+        :param format: The return format: 'dict' returns a dictionary, 'df' returns a pandas DataFrame.
+        :returns: Flux variation ranges. Returns dict[str, list[float, float]] if format='dict',
+                  or pandas.DataFrame with columns ['Reaction ID', 'Minimum', 'Maximum'] if format='df'.
 
         """
         from cobra.flux_analysis.variability import flux_variability_analysis
