@@ -237,9 +237,59 @@ def number_of_objectives(self) -> int:
    - Changed NSGAIII to NSGAII (numpy 2.x compatibility)
    - Reduced ITERATIONS from 600 to 100
 
+## SOLUTION IMPLEMENTED ✓
+
+### Root Cause: Python 3.8+ Multiprocessing Start Method Change
+
+- **Python 3.8 (old MEWpy 0.1.36)**: Used `fork` by default on macOS → multiprocessing worked
+- **Python 3.10+ (current)**: Uses `spawn` by default on macOS → requires pickling → fails
+
+The `spawn` method requires pickling all objects to send to workers, while `fork` copies the entire process memory without pickling.
+
+### Fix Applied
+
+**File**: `src/mewpy/util/process.py`
+
+Added automatic detection and configuration of multiprocessing start method to use `fork` when available:
+
+```python
+# Set multiprocessing start method to 'fork' if available
+# This is needed for Python 3.8+ on macOS where 'spawn' became the default
+# 'spawn' requires pickling all objects which fails with CPLEX/REFRAMED
+# 'fork' copies process memory and works with unpicklable objects
+try:
+    if 'fork' in multiprocessing.get_all_start_methods():
+        current_method = multiprocessing.get_start_method(allow_none=True)
+        if current_method is None:
+            multiprocessing.set_start_method('fork', force=False)
+            logger.debug("Set multiprocessing start method to 'fork'")
+        elif current_method != 'fork':
+            logger.warning(
+                f"Multiprocessing start method is '{current_method}'. "
+                "For best compatibility with CPLEX/REFRAMED, use 'fork'. "
+                "Call multiprocessing.set_start_method('fork', force=True) before importing mewpy."
+            )
+except RuntimeError:
+    pass
+```
+
+### Test Results
+
+✓ **REFRAMED + CPLEX**: Works with fork
+✓ **REFRAMED + SCIP**: Works with fork
+✓ **COBRA + CPLEX**: Works with fork
+✓ **COBRA + SCIP**: Works with fork
+
+### Note on 'fork' vs 'spawn'
+
+- **fork**: Copies entire process memory, no pickling needed. Works on Unix/Linux/macOS.
+- **spawn**: Starts fresh process, requires pickling. Works on all platforms including Windows.
+- **Windows users**: Will automatically fall back to 'spawn' (fork not available)
+
+For Windows compatibility, users can still use Ray evaluator which works with spawn.
+
 ## Conclusion
 
-The multiprocessing issue with CPLEX is **NOT a bug** - it's a fundamental limitation of SWIG-based bindings. MEWpy already provides proper solutions (Ray evaluator, SCIP solver). The notebooks should either:
-- Use Ray: `pip install ray` before running
-- Use SCIP: Add `set_default_solver('scip')` at the start
-- Disable MP: Change `mp=True` to `mp=False`
+Multiprocessing now works automatically with both CPLEX and SCIP solvers on macOS/Linux by using the 'fork' start method. This restores the behavior from MEWpy 0.1.36 on Python 3.8.
+
+**No user action required** - multiprocessing will work out of the box after this fix.
