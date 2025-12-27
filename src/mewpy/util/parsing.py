@@ -483,11 +483,11 @@ class Node(object):
         else:
             op = self.value.strip()
             if op in latex:
-                l, pl = self.left.to_latex()
-                r, pr = self.right.to_latex()
+                left_latex, left_prec = self.left.to_latex()
+                right_latex, right_prec = self.right.to_latex()
                 p = latex_precedence.get(op, MAX_PRECEDENCE)
-                s_l = paren(l) if p > pl else l
-                s_r = paren(r) if p > pr else r
+                s_l = paren(left_latex) if p > left_prec else left_latex
+                s_r = paren(right_latex) if p > right_prec else right_latex
                 return latex[op](s_l, s_r), p
 
             elif self.tp == 1:
