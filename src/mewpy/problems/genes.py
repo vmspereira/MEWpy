@@ -64,7 +64,7 @@ class GKOProblem(AbstractKOProblem):
         super(GKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
     def _build_target_list(self):
-        print("Building modification target list.")
+        logger.info("Building modification target list.")
         genes = set(self.simulator.genes)
         essential = set(self.simulator.essential_genes())
         transport = set(self.simulator.get_transport_genes())
@@ -169,7 +169,7 @@ class GOUProblem(AbstractOUProblem):
                 if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                     reference = sr.fluxes
             except Exception as e:
-                print(e)
+                logger.error("Failed to simulate reference state: %s", e)
         # operators check
         self.__op()
         # evaluate gpr

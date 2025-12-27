@@ -21,6 +21,7 @@ Author: Vitor Pereira
 Contributors: Sergio Salgado Briegas
 ##############################################################################
 """
+import logging
 import warnings
 from copy import copy
 from typing import TYPE_CHECKING, Dict, List, Tuple, Union
@@ -36,6 +37,8 @@ if TYPE_CHECKING:
     from mewpy.model import GeckoModel as GECKOModel
     from mewpy.optimization.evaluation import EvaluationFunction
     from mewpy.simulation.simulation import Simulator
+
+logger = logging.getLogger(__name__)
 
 
 class GeckoKOProblem(AbstractKOProblem):
@@ -75,9 +78,9 @@ class GeckoKOProblem(AbstractKOProblem):
         """
         If not provided, targets are all non essential proteins.
         """
-        print("Building modification target list.")
+        logger.info("Building modification target list.")
         proteins = set(self.simulator.proteins)
-        print("Computing essential proteins.")
+        logger.info("Computing essential proteins.")
         essential = self.simulator.essential_proteins()
         target = proteins - set(essential)
         if self.non_target:
@@ -93,7 +96,7 @@ class GeckoKOProblem(AbstractKOProblem):
             try:
                 decoded_candidate["{}{}".format(self.prot_prefix, self.target_list[idx])] = 0
             except IndexError:
-                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list)}")
         return decoded_candidate
 
     def encode(self, candidate):
@@ -182,7 +185,7 @@ class GeckoOUProblem(AbstractOUProblem):
                 decoded_candidate["{}{}".format(self.prot_prefix, self.target_list[idx])] = self.levels[lv_idx]
 
             except IndexError:
-                raise IndexError(f"Index out of range: {idx} from {len(self.target_list[idx])}")
+                raise IndexError(f"Index out of range: {idx} from {len(self.target_list)}")
         return decoded_candidate
 
     def encode(self, candidate):
@@ -200,7 +203,7 @@ class GeckoOUProblem(AbstractOUProblem):
     def solution_to_constraints(self, candidate):
         """
         Converts a candidate, a dict {protein:lv}, into a dictionary of constraints
-        Reverseble reactions associated to proteins with over expression are KO
+        Reversible reactions associated to proteins with over expression are KO
         according to the flux volume in the wild type.
 
         :param candidate: The candidate to be decoded.
@@ -231,13 +234,13 @@ class GeckoOUProblem(AbstractOUProblem):
                     if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                         reference = sr.fluxes
             except Exception as e:
-                print(e)
+                logger.error("Failed to simulate reference state: %s", e)
 
         if self.prot_rev_reactions is None:
             self.prot_rev_reactions = self.simulator.protein_rev_reactions
 
         for rxn, lv in _candidate.items():
-            fluxe_wt = reference[rxn]
+            flux_wt = reference[rxn]
             prot = rxn[len(self.prot_prefix) :]
             if lv < 0:
                 raise ValueError("All UO levels should be positive")
@@ -246,14 +249,14 @@ class GeckoOUProblem(AbstractOUProblem):
                 constraints[rxn] = 0.0
             # under expression
             elif lv < 1:
-                constraints[rxn] = (0.0, lv * fluxe_wt)
-            # TODO: Define how a level 1 is tranlated into constraints...
+                constraints[rxn] = (0.0, lv * flux_wt)
+            # TODO: Define how a level 1 is translated into constraints...
             elif lv == 1:
                 continue
             else:
-                constraints[rxn] = (lv * fluxe_wt, ModelConstants.REACTION_UPPER_BOUND)
+                constraints[rxn] = (lv * flux_wt, ModelConstants.REACTION_UPPER_BOUND)
                 # Deals with reverse reactions associated with the protein.
-                # This should not be necessery if arm reaction are well defined. But,
+                # This should not be necessary if arm reactions are well defined. But,
                 # just in case it is not so...
                 # Strategy: The reaction direction with no flux in the wild type (reference) is KO.
                 if prot in self.prot_rev_reactions.keys():
@@ -371,7 +374,8 @@ class KcatOptProblem(AbstractOUProblem):
             for f in self.fevaluation:
                 v = f(simulation_results, decoded, scalefactor=self.scalefactor, simulator=simulator)
                 p.append(v)
-        except Exception:
+        except (KeyError, AttributeError, ValueError, TypeError):
+            # Handle simulation or evaluation failures
             p = []
             for f in self.fevaluation:
                 p.append(f.worst_fitness)
@@ -401,7 +405,8 @@ class KcatOptProblem(AbstractOUProblem):
             values = [idx] * solution_size
             p = random.randint(0, solution_size - 1)
             values[p] = random.randint(0, len(self.levels) - 1)
-        except:
+        except ValueError:
+            # Level 1 not found in levels list, use random choices instead
             values = random.choices(range(len(self.levels)), k=solution_size)
 
         solution = set(zip(keys, values))

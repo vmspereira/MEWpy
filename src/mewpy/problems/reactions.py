@@ -22,6 +22,7 @@ implemented changing the reaction bounds.
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 from typing import TYPE_CHECKING, List, Union
 
 import numpy as np
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
     from reframed.core.cbmodel import CBModel
 
     from mewpy.optimization.evaluation import EvaluationFunction
+
+logger = logging.getLogger(__name__)
 
 
 class RKOProblem(AbstractKOProblem):
@@ -62,7 +65,7 @@ class RKOProblem(AbstractKOProblem):
         """Default modification target builder.
         Removes drains, transport and essential reactions
         """
-        print("Building modification target list.")
+        logger.info("Building modification target list.")
         reactions = set(self.simulator.reactions)
         essential = set(self.simulator.essential_reactions())
         drains = set(self.simulator.get_exchange_reactions())
@@ -99,7 +102,7 @@ class ROUProblem(AbstractOUProblem):
         super(ROUProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
     def _build_target_list(self):
-        print("Building modification target list.")
+        logger.info("Building modification target list.")
         reactions = set(self.simulator.reactions)
         # drains = set(self.simulator.get_exchange_reactions())
         target = reactions  # - drains
@@ -111,7 +114,7 @@ class ROUProblem(AbstractOUProblem):
     def solution_to_constraints(self, candidate):
         """
         Decodes a candidate, an dict {idx:lv} into a dictionary of constraints
-        Suposes that reverseble reactions have been treated and bounded with positive flux values
+        Supposes that reversible reactions have been treated and bounded with positive flux values
         """
         constraints = dict()
         # computes reference fluxes based on deletions
@@ -123,7 +126,7 @@ class ROUProblem(AbstractOUProblem):
                 if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                     reference = sr.fluxes
             except Exception as e:
-                print(e)
+                logger.error("Failed to simulate reference state: %s", e)
 
         for rxn, lv in candidate.items():
             rev_rxn = self.simulator.reverse_reaction(rxn)
@@ -176,7 +179,7 @@ class MediumProblem(AbstractOUProblem):
     def solution_to_constraints(self, candidate):
         """
         Decodes a candidate, a dict {idx:lv} into a dictionary of constraints
-        Suposes that reversible reactions have been treated and bounded with positive flux values
+        Supposes that reversible reactions have been treated and bounded with positive flux values
         """
         constraints = dict()
         from mewpy.util.constants import ModelConstants

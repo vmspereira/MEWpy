@@ -16,7 +16,7 @@
 
 """
 ##############################################################################
-Abtract Optimization Problems
+Abstract Optimization Problems
 
 Author: Vitor Pereira
 ##############################################################################
@@ -186,7 +186,7 @@ class AbstractProblem(ABC):
 
     @abstractmethod
     def solution_to_constraints(self, solution):
-        """Converts a decoded solution to metabolict constraints."""
+        """Converts a decoded solution to metabolic constraints."""
         raise NotImplementedError
 
     def get_name(self):
@@ -195,7 +195,7 @@ class AbstractProblem(ABC):
 
     def pre_process(self):
         """Defines pre processing tasks"""
-        self.target_list
+        _ = self.target_list  # Ensure target_list is initialized
         self.reset_simulator()
 
     @property
@@ -265,7 +265,7 @@ class AbstractProblem(ABC):
 
     def get_constraints(self, solution):
         """
-        :returns: The constrainst enconded into an individual.
+        :returns: The constraints encoded into an individual.
         """
         return self.solution_to_constraints(self.decode(solution.candidate))
 
@@ -304,7 +304,8 @@ class AbstractProblem(ABC):
             for f in self.fevaluation:
                 v = f(simulation_results, decoded, scalefactor=self.scalefactor, constraints=constraints)
                 p.append(v)
-        except Exception as e:
+        except (KeyError, AttributeError, ValueError, TypeError, ZeroDivisionError, RuntimeError) as e:
+            # Handle simulation or evaluation failures
             p = []
             for f in self.fevaluation:
                 p.append(f.worst_fitness)
@@ -375,7 +376,8 @@ class AbstractProblem(ABC):
                 res = self.simplify(solution, tolerance=tolerance)
                 if len(res) > 0:
                     pop.extend(res)
-            except Exception:
+            except (KeyError, AttributeError, ValueError, TypeError):
+                # If simplification fails, keep original solution
                 pop.append(solution)
         return filter_duplicates(pop)
 
@@ -409,7 +411,7 @@ class AbstractKOProblem(AbstractProblem):
             try:
                 decoded[self.target_list[idx]] = 0
             except IndexError:
-                raise IndexError("Index out of range: {} from {}".format(idx, len(self.target_list[idx])))
+                raise IndexError("Index out of range: {} from {}".format(idx, len(self.target_list)))
         return decoded
 
     def encode(self, candidate):
@@ -471,7 +473,7 @@ class AbstractOUProblem(AbstractProblem):
         self.strategy = Strategy.OU
         self.levels = kwargs.get("levels", EAConstants.LEVELS)
         if not len(self.levels) > 1:
-            raise ValueError("You need to provide mode that one expression folds.")
+            raise ValueError("You need to provide more than one expression fold.")
         self._reference = kwargs.get("reference", None)
         self.twostep = kwargs.get("twostep", False)
         self._partial_solution = kwargs.get("partial_solution", dict())
@@ -485,7 +487,10 @@ class AbstractOUProblem(AbstractProblem):
                 lv = self.levels[lv_idx]
                 decoded[rxn] = lv
             except IndexError:
-                raise IndexError("Index out of range")
+                raise IndexError(
+                    f"Index out of range: target_list[{idx}] or levels[{lv_idx}] "
+                    f"(target_list size: {len(self.target_list)}, levels size: {len(self.levels)})"
+                )
         return decoded
 
     def encode(self, candidate):
@@ -580,25 +585,25 @@ class AbstractOUProblem(AbstractProblem):
         :returns: A dictionary of reaction constraints.
         """
         constraints = {}
-        fluxe_wt = reference[rxn]
+        flux_wt = reference[rxn]
         rev_rxn = self.simulator.reverse_reaction(rxn)
         if lv == 0:
             # KO constraint
             constraints[rxn] = (0, 0)
-        elif lv == 1 or fluxe_wt == 0:
+        elif lv == 1 or flux_wt == 0:
             # No contraint is applyed
             pass
         elif rev_rxn is None or rev_rxn == rxn:
             # if there is no reverse reaction
-            constraints[rxn] = self.ou_constraint(lv, fluxe_wt)
+            constraints[rxn] = self.ou_constraint(lv, flux_wt)
         else:
             # there's a reverse reaction...
             # one of the two reactions needs to be KO, the one with no flux in the wt.
-            rev_fluxe_wt = reference[rev_rxn]
-            if abs(fluxe_wt) >= abs(rev_fluxe_wt):
-                ko_rxn, ou_rxn, fwt = rev_rxn, rxn, fluxe_wt
+            rev_flux_wt = reference[rev_rxn]
+            if abs(flux_wt) >= abs(rev_flux_wt):
+                ko_rxn, ou_rxn, fwt = rev_rxn, rxn, flux_wt
             else:
-                rxn, rev_rxn, rev_fluxe_wt
+                ko_rxn, ou_rxn, fwt = rxn, rev_rxn, rev_flux_wt
             constraints[ko_rxn] = (0, 0)
             constraints[ou_rxn] = self.ou_constraint(lv, fwt)
         return constraints

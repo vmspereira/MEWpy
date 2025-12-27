@@ -65,8 +65,8 @@ class CofactorSwapProblem(AbstractKOProblem):
         2013): 236-46. - doi:10.1089/ind.2013.0005.
 
         Args:
-            model (Union[&quot;Model&quot;, &quot;CBModel&quot;]): _description_
-            fevaluation (List[&quot;EvaluationFunction&quot;], optional): _description_. Defaults to None.
+            model (Union["Model", "CBModel"]): The constraint-based metabolic model.
+            fevaluation (List["EvaluationFunction"], optional): A list of evaluation functions. Defaults to None.
         """
         super().__init__(deepcopy(model), fevaluation, **kwargs)
         self.swaps = None

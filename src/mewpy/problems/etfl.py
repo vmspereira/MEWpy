@@ -34,7 +34,8 @@ def gene_has_associated_enzyme(model, gene_id):
     if any([gene_id in x.composition for x in model.enzymes]):
         try:
             return model._get_translation_name(gene_id)
-        except Exception:
+        except (AttributeError, KeyError):
+            # Gene translation name not found
             return None
     return None
 
@@ -87,10 +88,10 @@ class ETFLGKOProblem(AbstractKOProblem):
         self.gene_enzyme_reaction = gene_reaction
 
     def _build_target_list(self):
-        print("Building modification target list.")
+        logger.info("Building modification target list.")
         genes = set(self.simulator.genes)
         # GPR-based
-        print("Computing essential genes.")
+        logger.info("Computing essential genes.")
         essential = set(self.simulator.essential_genes())
         transport = set(self.simulator.get_transport_genes())
         target = genes - essential - transport
@@ -112,7 +113,8 @@ class ETFLGKOProblem(AbstractKOProblem):
                 try:
                     rx = self.model._get_translation_name(g)
                     gr_constraints[rx] = 0
-                except Exception:
+                except (AttributeError, KeyError):
+                    # Gene translation not found
                     no_trans.append(g)
         # GPR based reaction KO
         active_genes = set(self.simulator.genes) - set(no_trans)
@@ -183,7 +185,7 @@ class ETFLGOUProblem(AbstractOUProblem):
         self.gene_enzyme_reaction = gene_reaction
 
     def _build_target_list(self):
-        print("Building modification target list.")
+        logger.info("Building modification target list.")
         genes = set(self.simulator.genes)
         transport = set(self.simulator.get_transport_genes())
         target = genes - transport
@@ -228,7 +230,8 @@ class ETFLGOUProblem(AbstractOUProblem):
                 try:
                     rx = self.model._get_translation_name(g)
                     gr_constraints[rx] = 0
-                except Exception:
+                except (AttributeError, KeyError):
+                    # Gene translation not found
                     no_trans.append(g)
         # GPR based reaction KO
         active_genes = set(self.simulator.genes) - set(no_trans)
@@ -254,7 +257,8 @@ class ETFLGOUProblem(AbstractOUProblem):
                 sr = self.simulator.simulate(constraints=constr, method="pFBA")
                 if sr.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
                     reference = sr.fluxes
-            except Exception as e:
+            except (KeyError, AttributeError, ValueError, TypeError) as e:
+                # Failed to simulate with deletions
                 logger.warning(f"{candidate}: {e}")
 
         no_trans = []
@@ -264,7 +268,8 @@ class ETFLGOUProblem(AbstractOUProblem):
                 try:
                     rx = self.model._get_translation_name(gene_id)
                     gr_constraints.update(self.reaction_constraints(rx, lv, reference))
-                except Exception:
+                except (AttributeError, KeyError):
+                    # Gene translation not found
                     no_trans.append(gene_id)
         catalyzed_reactions = set(itertools.chain.from_iterable([self.gene_enzyme_reaction[g] for g in candidate]))
         # GPR based reaction
