@@ -19,8 +19,11 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import json
+import logging
 import urllib.request
 from hashlib import sha256
+
+logger = logging.getLogger(__name__)
 
 
 def process_entry(entry):
@@ -29,10 +32,10 @@ def process_entry(entry):
     org = entry["organism"]["scientificName"]
     try:
         name = entry["genes"][0]["geneName"]["value"]
-    except:
+    except (KeyError, IndexError, TypeError):
         tokens = entry["uniProtkbId"].split("_")
         name = tokens[0]
-        print(f"No gene name for {protein} using uniProtkbId")
+        logger.warning(f"No gene name for {protein} using uniProtkbId")
     props = {}
     props["Catalytic Activity"] = []
     # synonyms
@@ -57,7 +60,8 @@ def process_entry(entry):
                 ecnumber = ""
                 try:
                     ecnumber = comment["reaction"]["ecNumber"]
-                except Exception:
+                except KeyError:
+                    # ecNumber not available
                     pass
                 props["Catalytic Activity"].append((activity, ecnumber))
 
@@ -72,19 +76,19 @@ def process_entry(entry):
             elif comment["commentType"] == "FUNCTION":
                 function = comment["texts"][0]["value"]
                 props["Function"] = function
-    except:
-        print("No comments")
+    except KeyError:
+        logger.debug("No comments")
 
     # sequence
     seq = None
     mw = None
     try:
         seq = entry["sequence"]["value"]
-    except:
+    except (KeyError, AttributeError, TypeError):
         pass
     try:
         mw = float(entry["sequence"]["molWeight"])
-    except:
+    except (KeyError, AttributeError, TypeError, ValueError):
         pass
     return {
         "organism": org,
@@ -163,7 +167,7 @@ def brenda_query(user, password, ecNumber, organism=None, field="KCAT"):
 
         client = Client(wsdl)
     except ImportError:
-        raise Exception("zeep library is required.")
+        raise ImportError("zeep library is required.")
 
     passwd = sha256(password.encode("utf-8")).hexdigest()
     parameters = (user, passwd, "ecNumber*" + ecNumber, "organism*" + org)
@@ -190,7 +194,7 @@ def get_smiles(name):
             smiles = None
         else:
             smiles = req.content.splitlines()[0].decode()
-    except:
+    except (ImportError, KeyError, AttributeError, IndexError, TypeError):
         smiles = None
 
     return smiles

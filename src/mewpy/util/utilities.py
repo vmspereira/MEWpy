@@ -20,6 +20,7 @@ Utilities
 """
 import contextlib
 import functools
+import logging
 import re
 import time
 import types
@@ -27,6 +28,8 @@ from collections.abc import Iterable
 from warnings import warn
 
 import joblib
+
+logger = logging.getLogger(__name__)
 
 from .constants import aa_weights, atomic_weights
 
@@ -99,7 +102,7 @@ class Timer:
 
         elapsed_time = time.perf_counter() - self._start_time
         self._start_time = None
-        print(f"Elapsed time: {elapsed_time:0.6f} seconds")
+        logger.info(f"Elapsed time: {elapsed_time:0.6f} seconds")
 
     def __enter__(self):
         """Start a new timer as a context manager"""

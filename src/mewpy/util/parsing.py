@@ -21,6 +21,7 @@ Expressions are decomposed into binary parsed trees.
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import re
 import sys
 import typing as T
@@ -28,6 +29,8 @@ from abc import abstractmethod
 from copy import copy
 from math import *
 from operator import add, mul, pow, sub, truediv
+
+logger = logging.getLogger(__name__)
 
 # Boolean operator symbols
 S_AND = "&"
@@ -93,7 +96,7 @@ def convert_constant(value: T.Any) -> str:
         return r"\textrm{" + str(value) + "}"
     if value is ...:
         return r"\cdots"
-    raise Exception(f"Unrecognized constant: {type(value).__name__}")
+    raise ValueError(f"Unrecognized constant: {type(value).__name__}")
 
 
 def paren(src: str) -> str:
@@ -301,11 +304,11 @@ class Node(object):
             tabs += "\t"
         if self.is_leaf():
             if self.value != EMPTY_LEAF:
-                print(tabs, f"|____{self.value}")
+                logger.debug(f"{tabs}|____{self.value}")
             else:
                 pass
         else:
-            print(tabs, f"|____{self.value}")
+            logger.debug(f"{tabs}|____{self.value}")
         if self.left is not None:
             self.left.print_node(level + 1)
         if self.right is not None:
@@ -625,9 +628,9 @@ class BooleanEvaluator:
 
     """
 
-    def __init__(self, true_list=[], variables={}):
-        self.true_list = true_list
-        self.vars = variables
+    def __init__(self, true_list=None, variables=None):
+        self.true_list = true_list if true_list is not None else []
+        self.vars = variables if variables is not None else {}
 
     def f_operator(self, op):
         operators = {
