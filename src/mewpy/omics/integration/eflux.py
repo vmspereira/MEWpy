@@ -48,6 +48,8 @@ def eFlux(
             is specified)
     :param constraints (dict): additional constraints (optional)
     :param parsimonious (bool): compute a parsimonious solution (default: False)
+    :param max_exp (float): maximum expression value for normalization.\
+            If None, uses max from expression data (optional)
 
     :return: Solution: solution
     """
@@ -63,6 +65,11 @@ def eFlux(
     if max_exp is None:
         max_exp = max(rxn_exp.values())
 
+    # Protection against division by zero (all expression values are zero)
+    if max_exp == 0:
+        # Treat all-zero expression as uniform expression (no scaling)
+        max_exp = 1.0
+
     bounds = {}
 
     for r_id in sim.reactions:
@@ -72,12 +79,12 @@ def eFlux(
         ub2 = val if ub > 0 else 0
         bounds[r_id] = (lb2, ub2)
 
+    # User constraints override expression-based bounds
+    # These are NOT scaled by expression (applied as absolute values)
     if constraints:
         for r_id, x in constraints.items():
             lb, ub = x if isinstance(x, tuple) else (x, x)
-            lb2 = -1 if lb < 0 else 0
-            ub2 = 1 if ub > 0 else 0
-            bounds[r_id] = (lb2, ub2)
+            bounds[r_id] = (lb, ub)
 
     if parsimonious:
         sol = sim.simulate(constraints=bounds, method="pFBA")

@@ -33,6 +33,30 @@ from .. import ExpressionSet, Preprocessing
 
 
 def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1):
+    """
+    iMAT (Integrative Metabolic Analysis Tool) algorithm.
+
+    Integrates gene expression data using MILP to maximize consistency between
+    fluxes and expression levels.
+
+    :param model: a REFRAMED or COBRApy model or a MEWpy Simulator
+    :param expr: ExpressionSet or tuple of (low_coeffs, high_coeffs) dicts
+    :param constraints: additional constraints (optional)
+    :param cutoff: tuple of (low_percentile, high_percentile) for classification.
+                   Default (25, 75) means reactions below 25th percentile are
+                   "lowly expressed" and above 75th are "highly expressed"
+    :param condition: condition index to use from ExpressionSet
+    :param epsilon: threshold for considering a reaction "active" (flux > epsilon)
+    :return: Solution
+    """
+    # Validate cutoff parameter
+    if not isinstance(cutoff, tuple) or len(cutoff) != 2:
+        raise ValueError(f"cutoff must be a tuple of (low, high) percentiles, got: {cutoff}")
+
+    low_cutoff, high_cutoff = cutoff
+
+    if not (0 <= low_cutoff < high_cutoff <= 100):
+        raise ValueError(f"cutoff must be (low, high) with 0 <= low < high <= 100, got: ({low_cutoff}, {high_cutoff})")
 
     sim = get_simulator(model)
 
@@ -66,26 +90,53 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1)
 
     objective = list()
 
+    # For highly expressed reactions, add binary variables to reward activity
+    # We want to maximize the number of highly expressed reactions that carry significant flux
     for r_id, val in high_coeffs.items():
         lb, ub = sim.get_reaction_bounds(r_id)
+
+        # Binary variable for positive direction activity (flux away from lower bound)
+        # y_pos = 1 is rewarded when flux > lb + epsilon
         pos_cons = lb - epsilon
-        neg_cons = ub + epsilon
-        pos, neg = "y_" + r_id + "_p", "y_" + r_id + "_n"
+        pos = "y_" + r_id + "_p"
         objective.append(pos)
         solver.add_variable(pos, 0, 1, vartype=VarType.BINARY, update=True)
+        # Constraint: r_id + (lb - epsilon) * y_pos > lb
+        # When y_pos = 1: r_id + lb - epsilon > lb => r_id > epsilon (for lb=0)
+        # When y_pos = 0: r_id > lb (always satisfied)
         solver.add_constraint("c" + pos, {r_id: 1, pos: pos_cons}, ">", lb, update=False)
+
+        # Binary variable for negative direction activity (flux toward upper bound)
+        # y_neg = 1 is rewarded when flux < ub - epsilon
+        neg_cons = ub + epsilon
+        neg = "y_" + r_id + "_n"
         objective.append(neg)
         solver.add_variable(neg, 0, 1, vartype=VarType.BINARY, update=True)
+        # Constraint: r_id + (ub + epsilon) * y_neg < ub
+        # When y_neg = 1: r_id + ub + epsilon < ub => r_id < -epsilon (for ub=0)
+        # When y_neg = 0: r_id < ub (always satisfied)
         solver.add_constraint("c" + neg, {r_id: 1, neg: neg_cons}, "<", ub, update=False)
 
     solver.update()
 
+    # For lowly expressed reactions, add binary variables to reward inactivity
+    # We want to maximize the number of lowly expressed reactions with near-zero flux
     for r_id, val in low_coeffs.items():
         lb, ub = sim.get_reaction_bounds(r_id)
         x_var = "x_" + r_id
         objective.append(x_var)
         solver.add_variable(x_var, 0, 1, vartype=VarType.BINARY, update=True)
+
+        # Constraints to reward x_var = 1 when flux is near zero
+        # Constraint 1: r_id + lb * x_var > lb
+        # When x_var = 1: r_id + lb > lb => r_id > 0 (if lb < 0, forces positive flux)
+        # When x_var = 0: r_id > lb (always satisfied)
         solver.add_constraint("c" + x_var + "_pos", {r_id: 1, x_var: lb}, ">", lb, update=False)
+
+        # Constraint 2: r_id + ub * x_var < ub
+        # When x_var = 1: r_id + ub < ub => r_id < 0 (if ub > 0, forces negative flux)
+        # When x_var = 0: r_id < ub (always satisfied)
+        # Together: when x_var = 1, forces lb < r_id < 0 or 0 < r_id < ub (near zero)
         solver.add_constraint("c" + x_var + "_neg", {r_id: 1, x_var: ub}, "<", ub, update=False)
 
     solver.update()

@@ -146,23 +146,39 @@ def GIMME(
         solution.pre_solution = pre_solution
 
     if build_model:
+        # Get original reaction expression for comparison
+        if isinstance(expr, ExpressionSet):
+            rxn_exp = pp.reactions_expression(condition)
+        else:
+            # If expr is already coefficients, we need the original expression
+            # This is a limitation - coeffs don't contain original expression values
+            rxn_exp = {}
+
         activity = dict()
         for rx_id in sim.reactions:
             activity[rx_id] = 0
-            if rx_id in coeffs and coeffs[rx_id] > threshold:
-                activity[rx_id] = 1
+            # Check if reaction is highly expressed (above threshold)
+            if rx_id in rxn_exp and rxn_exp[rx_id] > threshold:
+                activity[rx_id] = 1  # Highly expressed
             elif solution.values[rx_id] > 0:
-                activity[rx_id] = 2
+                activity[rx_id] = 2  # Active despite low/unknown expression
         # remove unused
         rx_to_delete = [rx_id for rx_id, v in activity.items() if v == 0]
         sim.remove_reactions(rx_to_delete)
     else:
+        # Reconstruct net flux for reversible reactions before deleting split variables
         for r_id in sim.reactions:
             lb, _ = sim.get_reaction_bounds(r_id)
             if lb < 0:
                 pos, neg = r_id + "_p", r_id + "_n"
-                del solution.values[pos]
-                del solution.values[neg]
+                # Calculate net flux: forward - reverse
+                net_flux = solution.values.get(pos, 0) - solution.values.get(neg, 0)
+                solution.values[r_id] = net_flux
+                # Remove split variables
+                if pos in solution.values:
+                    del solution.values[pos]
+                if neg in solution.values:
+                    del solution.values[neg]
 
     res = to_simulation_result(model, solution.fobj, constraints, sim, solution)
     if hasattr(solution, "pre_solution"):
