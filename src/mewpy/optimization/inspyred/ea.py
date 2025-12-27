@@ -20,6 +20,7 @@ EA Module for inspyred
 Authors: Vitor Pereira
 ##############################################################################
 """
+import logging
 from random import Random
 from time import time
 
@@ -27,6 +28,8 @@ import inspyred
 
 from mewpy.util.constants import EAConstants
 from mewpy.util.process import cpu_count, get_evaluator
+
+logger = logging.getLogger(__name__)
 
 from ..ea import AbstractEA, Solution
 from .observers import VisualizerObserver, results_observer
@@ -78,7 +81,7 @@ class EA(AbstractEA):
         elif self.problem.strategy == "KO":
             self.variators = KO["variators"]
         else:
-            raise ValueError("Unknow strategy")
+            raise ValueError("Unknown strategy")
 
         self.population_size = kwargs.get("population_size", get_population_size())
 
@@ -109,10 +112,10 @@ class EA(AbstractEA):
 
         if self.algorithm_name == "SA":
             ea = inspyred.ec.SA(prng)
-            print("Running SA")
+            logger.info("Running SA")
         else:
             ea = inspyred.ec.EvolutionaryComputation(prng)
-            print("Running GA")
+            logger.info("Running GA")
         ea.selector = inspyred.ec.selectors.tournament_selection
         ea.variator = self.variators
         ea.observer = results_observer
@@ -145,7 +148,7 @@ class EA(AbstractEA):
             self.evaluator = self.ea_problem.evaluator
 
         ea = inspyred.ec.emo.NSGA2(prng)
-        print("Running NSGAII")
+        logger.info("Running NSGAII")
         ea.variator = self.variators
         ea.terminator = generation_termination
         if self.visualizer:

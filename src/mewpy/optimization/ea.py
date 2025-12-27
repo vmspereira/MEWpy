@@ -20,6 +20,7 @@ Heuristic optimization abstract classes and interfaces
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import signal
 import sys
 from abc import ABC, abstractmethod
@@ -27,6 +28,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 from mewpy.util.constants import EAConstants
 from mewpy.util.process import cpu_count
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mewpy.problems.problem import AbstractProblem
@@ -218,7 +221,7 @@ class AbstractEA(ABC):
 
     def __signalHandler(self, signum, frame):
         if EAConstants.KILL_DUMP:
-            print("Dumping current population.")
+            logger.info("Dumping current population.")
             try:
                 pop = self._get_current_population()
                 data = [s.to_dict() for s in pop]
@@ -229,9 +232,10 @@ class AbstractEA(ABC):
                 dt_string = now.strftime("%d%m%Y-%H%M%S")
                 with open(f"mewpy-dump-{dt_string}.json", "w") as outfile:
                     json.dump(data, outfile)
-            except Exception:
-                print("Unable to dump population.")
-            print("Exiting")
+            except (IOError, OSError, TypeError, ValueError) as e:
+                # File I/O errors or JSON serialization errors
+                logger.error("Unable to dump population: %s", e)
+            logger.info("Exiting")
         sys.exit(0)
 
     @abstractmethod

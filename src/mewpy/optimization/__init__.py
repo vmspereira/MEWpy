@@ -5,10 +5,13 @@ Heuristic Optimization modules
 Author: Vítor Pereira
 ##############################################################################
 """
+import logging
 
 from ..util.constants import EAConstants
 from .evaluation.base import *
 from .evaluation.phenotype import *
+
+logger = logging.getLogger(__name__)
 
 engines = dict()
 
@@ -19,16 +22,14 @@ def check_engines():
 
         engines["inspyred"] = InspyredEA
     except ImportError as e:
-        print("inspyred not available")
-        print(e)
+        logger.warning("inspyred not available: %s", e)
 
     try:
         from .jmetal.ea import EA as JMetalEA
 
         engines["jmetal"] = JMetalEA
     except ImportError as e:
-        print("jmetal not available")
-        print(e)
+        logger.warning("jmetal not available: %s", e)
 
 
 algorithms = {"inspyred": ["SA", "GA", "NSGAII"], "jmetal": ["SA", "GA", "NSGAII", "SPEA2", "NSGAIII"]}

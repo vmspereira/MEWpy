@@ -20,11 +20,14 @@ Phenotype evaluators
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import math
 import warnings
 from typing import Dict, List, Tuple, Union
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from mewpy.simulation import get_simulator
 from mewpy.simulation.simulation import SimulationMethod, SStatus
@@ -218,13 +221,14 @@ class WYIELD(PhenotypeEvaluationFunction):
 
             res = self.no_solution
             if EAConstants.DEBUG:
-                print(f"WYIELD FVA max: {fvaMaxProd} min:{fvaMinProd}")
+                logger.debug("WYIELD FVA max: %s min: %s", fvaMaxProd, fvaMinProd)
             if biomassFluxValue > minBiomass:
                 res = self.alpha * fvaMaxProd + (1 - self.alpha) * fvaMinProd
                 if self.scale:
                     res = res / biomassFluxValue
             return res
-        except Exception:
+        except (KeyError, AttributeError, ValueError, ZeroDivisionError):
+            # Handle missing flux values, simulation failures, or arithmetic errors
             return self.no_solution
 
     def _repr_latex_(self):
@@ -302,9 +306,10 @@ class BPCY(PhenotypeEvaluationFunction):
             return self.no_solution
         if EAConstants.DEBUG:
             try:
-                print("BPCY Bionamss: {} product: {}".format(ssFluxes[self.biomassId], ssFluxes[self.productId]))
-            except Exception:
-                print("BPCY No Fluxes")
+                logger.debug("BPCY Biomass: %s product: %s", ssFluxes[self.biomassId], ssFluxes[self.productId])
+            except KeyError:
+                # Flux values not available
+                logger.debug("BPCY No Fluxes")
         return (ssFluxes[self.biomassId] * ssFluxes[self.productId]) / uptake
 
     def _repr_latex_(self):
@@ -523,7 +528,8 @@ class MolecularWeight(PhenotypeEvaluationFunction):
     def get_fitness(self, simul_results, candidate, **kwargs):
         try:
             sim = simul_results[self.method]
-        except Exception:
+        except (KeyError, TypeError):
+            # Simulation method not found or simul_results not a dict
             sim = None
 
         if sim.status not in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):

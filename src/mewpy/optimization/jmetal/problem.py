@@ -20,6 +20,7 @@ JMetal Problems
 Authors: Vitor Pereira
 ##############################################################################
 """
+import logging
 import random
 from typing import List, Tuple
 
@@ -28,6 +29,8 @@ from jmetal.core.solution import Solution
 
 from ...util.process import Evaluable
 from ..ea import SolutionInterface, dominance_test
+
+logger = logging.getLogger(__name__)
 
 # define EA representation for OU
 IntTupple = Tuple[int]
@@ -223,7 +226,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
                 flag = True
                 self.__next_ini_sol += 1
             except ValueError as e:
-                print("Skipping seed:", s, " ", e)
+                logger.warning("Skipping seed: %s - %s", s, e)
                 self.__next_ini_sol += 1
         if not solution:
             solution = self.problem.generator(random)
@@ -331,7 +334,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
                 flag = True
                 self.__next_ini_sol += 1
             except ValueError as e:
-                print("Skipping seed:", s, " ", e)
+                logger.warning("Skipping seed: %s - %s", s, e)
                 self.__next_ini_sol += 1
         if not solution:
             solution = self.problem.generator(random)

@@ -202,9 +202,9 @@ class MutationContainer(Mutation[Solution]):
 
     """
 
-    def __init__(self, probability: float = 0.5, mutators=[]):
+    def __init__(self, probability: float = 0.5, mutators=None):
         super(MutationContainer, self).__init__(probability=probability)
-        self.mutators = mutators
+        self.mutators = mutators if mutators is not None else []
 
     def execute(self, solution: Solution) -> Solution:
         # randomly select a mutator and apply it

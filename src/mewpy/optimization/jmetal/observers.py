@@ -159,4 +159,4 @@ class PrintObjectivesStatObserver:
                 fitness = solutions.objectives
                 res = abs(fitness[0])
                 message = "Evaluations: {}\tFitness: {}".format(evaluations, res)
-            print(message)
+            LOGGER.info(message)
