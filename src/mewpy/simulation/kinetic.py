@@ -84,7 +84,11 @@ def kinetic_solve(
 
         return ODEStatus.OPTIMAL, rates, conc, t, y
 
-    except Exception:
+    except (ValueError, RuntimeError, ArithmeticError) as e:
+        # Numerical errors during ODE integration
+        import warnings
+
+        warnings.warn(f"Kinetic solve failed: {e}")
         return ODEStatus.ERROR, None, None, None, None
 
 

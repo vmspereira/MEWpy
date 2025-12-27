@@ -252,14 +252,14 @@ class GERMModel(ModelContainer):
         :return:
         """
         if self.model.is_metabolic():
-            print(f"Metabolites: {len(self.metabolites)}")
-            print(f"Reactions: {len(self.reactions)}")
-            print(f"Genes: {len(self.genes)}")
+            LOGGER.info(f"Metabolites: {len(self.metabolites)}")
+            LOGGER.info(f"Reactions: {len(self.reactions)}")
+            LOGGER.info(f"Genes: {len(self.genes)}")
 
         if self.model.is_regulatory():
-            print(f"Interactions: {len(self.interactions)}")
-            print(f"Regulators: {len(self.regulators)}")
-            print(f"Targets: {len(self.targets)}")
+            LOGGER.info(f"Interactions: {len(self.interactions)}")
+            LOGGER.info(f"Regulators: {len(self.regulators)}")
+            LOGGER.info(f"Targets: {len(self.targets)}")
 
 
 class Simulation(GERMModel, Simulator):

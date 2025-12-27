@@ -81,6 +81,7 @@ class CBModelContainer(ModelContainer):
 
     def __init__(self, model: CBModel = None):
         self.model = model
+        self._gene_to_reaction = None
 
     @property
     def id(self) -> str:
@@ -139,7 +140,7 @@ class CBModelContainer(ModelContainer):
         """
         :returns: a map of genes to reactions.
         """
-        if not self._gene_to_reaction:
+        if self._gene_to_reaction is None:
             gr = OrderedDict()
             for rxn_id in self.reactions:
                 rxn = self.model.reactions[rxn_id]
@@ -214,7 +215,7 @@ class Simulation(CBModelContainer, Simulator):
             else:
                 # Use reframed's default solver if MEWpy's default is not mapped
                 pass  # reframed will use its default
-        except Exception:
+        except (AttributeError, KeyError, RuntimeError):
             # If setting the solver fails, just use reframed's default
             pass
         # keep track on reaction bounds changes
@@ -228,7 +229,6 @@ class Simulation(CBModelContainer, Simulator):
         self.solver = solver
         self._reference = reference
         self._gene_to_reaction = None
-        self.solver = solver
         self._reset_solver = reset_solver
         self.reverse_sintax = [("_b", "_f")]
         self._m_r_lookup = None
@@ -253,7 +253,8 @@ class Simulation(CBModelContainer, Simulator):
         self.biomass_reaction = None
         try:
             self.biomass_reaction = model.biomass_reaction
-        except:
+        except (AttributeError, RuntimeError):
+            # Model doesn't have biomass_reaction attribute or detection failed
             pass
 
     def _set_model_reaction_bounds(self, r_id, bounds):

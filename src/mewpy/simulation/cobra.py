@@ -52,6 +52,7 @@ class CobraModelContainer(ModelContainer):
 
     def __init__(self, model: Model = None):
         self.model = model
+        self._gene_to_reaction = None
 
     @property
     def id(self):
@@ -188,7 +189,7 @@ class CobraModelContainer(ModelContainer):
         :return: A map of genes to reactions.
         :rtype: Dict[str,List[str]]
         """
-        if not self._gene_to_reaction:
+        if self._gene_to_reaction is None:
             gr = dict()
             for rxn_id in self.reactions:
                 rxn = self.model.reactions.get_by_id(rxn_id)
@@ -255,7 +256,6 @@ class Simulation(CobraModelContainer, Simulator):
             "suboptimal": SStatus.SUBOPTIMAL,
             "unknown": SStatus.UNKNOWN,
         }
-        self.solver = solver
         self._reset_solver = reset_solver
         self.reverse_sintax = []
         self._m_r_lookup = None
@@ -275,7 +275,8 @@ class Simulation(CobraModelContainer, Simulator):
         self.biomass_reaction = None
         try:
             self.biomass_reaction = list(self.objective.keys())[0]
-        except:
+        except (IndexError, KeyError, AttributeError):
+            # Objective may be empty or not properly defined
             pass
 
     @property
@@ -692,7 +693,7 @@ class Simulation(CobraModelContainer, Simulator):
         constraints: Dict[str, Union[float, Tuple[float, float]]] = None,
         loopless: bool = False,
         solver=None,
-        format: bool = "dict",
+        format: str = "dict",
     ) -> Union[dict, "DataFrame"]:
         """ Flux Variability Analysis (FVA).
 
@@ -831,7 +832,8 @@ class GeckoSimulation(Simulation):
                             reaction_list = self._prot_react[p]
                             reaction_list.append(r_id)
 
-                        except Exception:
+                        except KeyError:
+                            # Protein not in mapping
                             pass
         return self._prot_react
 
