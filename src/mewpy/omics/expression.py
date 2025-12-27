@@ -25,7 +25,7 @@ Contributors: Paulo Carvalhais
 """
 
 from itertools import combinations
-from typing import Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -45,18 +45,50 @@ class ExpressionSet:
             conditions (list): Time, experiment,... identifiers.
             expression (np.array): expression values.
             p_values (np.array, optional): p-values. Defaults to None.
+
+        Raises:
+            ValueError: If identifiers or conditions are empty.
+            ValueError: If identifiers or conditions contain duplicates.
+            ValueError: If expression shape doesn't match identifiers/conditions.
+            ValueError: If p_values shape is invalid.
         """
+        # Validate non-empty
+        if not identifiers:
+            raise ValueError("Identifiers cannot be empty")
+        if not conditions:
+            raise ValueError("Conditions cannot be empty")
+
+        # Check for duplicates
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("Duplicate identifiers found")
+
+        # Convert conditions to strings and check for duplicates
+        str_conditions = [str(x) for x in conditions]
+        if len(str_conditions) != len(set(str_conditions)):
+            raise ValueError("Duplicate conditions found")
+
+        # Validate expression shape
         n = len(identifiers)
-        m = len(conditions)
+        m = len(str_conditions)
         if expression.shape != (n, m):
             raise ValueError(
                 f"The shape of the expression {expression.shape} does not "
-                f"match the expression and conditions sizes ({n},{m})"
+                f"match the identifiers and conditions sizes ({n},{m})"
             )
+
+        # Validate p_values shape if provided
+        if p_values is not None:
+            # p_values should have shape (n, C(m, 2)) where C(m, 2) is number of condition pairs
+            expected_p_cols = len(list(combinations(str_conditions, 2)))
+            if p_values.shape != (n, expected_p_cols):
+                raise ValueError(
+                    f"p_values shape {p_values.shape} doesn't match expected "
+                    f"({n}, {expected_p_cols}) for {m} conditions"
+                )
 
         self._identifiers = identifiers
         self._identifier_index = {iden: idx for idx, iden in enumerate(identifiers)}
-        self._conditions = [str(x) for x in conditions]
+        self._conditions = str_conditions
         self._condition_index = {cond: idx for idx, cond in enumerate(self._conditions)}
         self._expression = expression
         self._p_values = p_values
@@ -73,35 +105,41 @@ class ExpressionSet:
         """
         return self._expression.__getitem__(item)
 
-    def get_condition(self, condition: Union[int, str] = None, **kwargs):
-        """Retrieves the omics data for a specific condition
+    def get_condition(self, condition: Union[int, str] = None, format: str = None):
+        """Retrieves the omics data for a specific condition.
 
-        :param condition: the condition identifier, defaults to None in which case
-           all data is returned
-        :type condition: Union[int,str], optional
-
-        optional:
-        :param format: the output format, a dictionary ('dict' option) or a list ('list' option), default numpy.array
-
+        :param condition: Condition identifier (int index or str name).
+                         If None, returns all data.
+        :type condition: Union[int, str], optional
+        :param format: Output format: "dict", "list", or None for numpy array.
+                      Format is only applied for single conditions.
+        :type format: str, optional
+        :return: Expression values in requested format
+        :raises ValueError: If condition identifier is not found
         """
+        # Get values based on condition type
         if isinstance(condition, int):
+            if condition < 0 or condition >= len(self._conditions):
+                raise ValueError(
+                    f"Condition index {condition} out of range. " f"Valid range: 0-{len(self._conditions)-1}"
+                )
             values = self[:, condition]
         elif isinstance(condition, str):
+            if condition not in self._condition_index:
+                raise ValueError(f"Unknown condition: '{condition}'. " f"Available conditions: {self._conditions}")
             values = self[:, self._condition_index[condition]]
         else:
+            # Return all data
             values = self[:, :]
 
-        # format
-        form = kwargs.get("format", "dict")
-        if form and condition is not None:
-            if form == "list":
+        # Apply format conversion only for single conditions
+        if format and condition is not None:
+            if format == "list":
                 return values.tolist()
-            elif form == "dict":
+            elif format == "dict":
                 return dict(zip(self._identifiers, values.tolist()))
-            else:
-                return values
-        else:
-            return values
+
+        return values
 
     @classmethod
     def from_dataframe(cls, data_frame):
@@ -166,22 +204,21 @@ class ExpressionSet:
         """Returns the numpy array of p-values.
 
         Raises:
-            ValueError: [description]
+            ValueError: If p-values are not defined.
         """
-        if not self._p_values.all():
+        if self._p_values is None:
             raise ValueError("No p-values defined.")
-        else:
-            return self._p_values
+        return self._p_values
 
     @p_values.setter
     def p_values(self, p_values: np.array):
-        """Sets p-values
+        """Sets p-values array.
 
         Args:
-            p_values (np.array): [description]
+            p_values (np.array): Numpy array of p-values with shape (n_identifiers, n_condition_pairs).
 
         Raises:
-            ValueError: [description]
+            ValueError: If p_values shape doesn't match expected dimensions for all condition pairs.
         """
         if p_values is not None:
             if p_values.shape[1] != len(self.p_value_columns):
@@ -198,7 +235,7 @@ class ExpressionSet:
         """Calculate the differences based on the MADE method.
 
         Args:
-            p_value (float, optional): [description]. Defaults to 0.005.
+            p_value (float, optional): Significance threshold for p-values. Defaults to 0.005.
 
         Returns:
             dict: A dictionary of differences
@@ -236,11 +273,11 @@ class ExpressionSet:
         values = self.get_condition(condition)
         return np.amin(values), np.amax(values)
 
-    def apply(self, function: None):
+    def apply(self, function: Optional[Callable[[float], float]] = None):
         """Apply a function to all expression values.
 
-        :param function: the unary function to be applyied. Default log base 2.
-        :type function: callable
+        :param function: Unary function to apply to each element. Defaults to log base 2.
+        :type function: Optional[Callable[[float], float]]
         """
         if function is None:
             import math
@@ -330,7 +367,7 @@ class Preprocessing:
     are performed.
     For Order 1, gene expression is converted to reaction activity followed
     by thresholding of reaction activity;
-    For Order 2, thresholding ofgene expression is followed by its
+    For Order 2, thresholding of gene expression is followed by its
     conversion to reaction activity.
 
     [1]Anne Richelle,Chintan Joshi,Nathan E. Lewis, Assessing key decisions
@@ -339,13 +376,13 @@ class Preprocessing:
     """
 
     def __init__(self, model: Simulator, data: ExpressionSet, **kwargs):
-        """[summary]
+        """Initialize Preprocessing with model and expression data.
 
         Args:
-            model (Simulator): [description]
-            data (ExpressionSet): [description]
-            and_func (function): (optional)
-            or_func (function): (optional)
+            model (Simulator): Metabolic model simulator instance.
+            data (ExpressionSet): Gene expression data set.
+            and_func (function): (optional) Function for AND operation in GPR evaluation.
+            or_func (function): (optional) Function for OR operation in GPR evaluation.
         """
         self.model = model
         self.data = data
@@ -361,30 +398,33 @@ class Preprocessing:
         return res
 
     def percentile(self, condition=None, cutoff=25):
-        """Processes a percentil threshold and returns the respective
+        """Processes a percentile threshold and returns the respective
         reaction coefficients, ie, a dictionary of reaction:coeff
 
         Args:
-            condition ([type], optional): [description]. Defaults to None.
-            cutoff (int, optional): [description]. Defaults to 25.
+            condition: The condition identifier. Defaults to None.
+            cutoff: Percentile cutoff(s) - int or tuple of ints. Defaults to 25.
 
         Returns:
-            dict, float: the coefficients and threshold
+            tuple: (coefficients, threshold) where coefficients is dict or tuple of dicts,
+                   and threshold is float or tuple of floats
         """
-        if type(cutoff) is tuple:
+        # Compute reaction expression once (optimization for tuple cutoffs)
+        rxn_exp = self.reactions_expression(condition)
+        rxn_values = list(rxn_exp.values())
+
+        if isinstance(cutoff, tuple):
             coef = []
             thre = []
             for cut in cutoff:
-                rxn_exp = self.reactions_expression(condition)
-                threshold = np.percentile(list(rxn_exp.values()), cut)
+                threshold = np.percentile(rxn_values, cut)
                 coeffs = {r_id: threshold - val for r_id, val in rxn_exp.items() if val < threshold}
                 coef.append(coeffs)
                 thre.append(threshold)
             coeffs = tuple(coef)
             threshold = tuple(thre)
         else:
-            rxn_exp = self.reactions_expression(condition)
-            threshold = np.percentile(list(rxn_exp.values()), cutoff)
+            threshold = np.percentile(rxn_values, cutoff)
             coeffs = {r_id: threshold - val for r_id, val in rxn_exp.items() if val < threshold}
         return coeffs, threshold
 
@@ -394,24 +434,23 @@ class Preprocessing:
 # ----------------------------------------------------------------------------------------------------------------------
 def knn_imputation(
     expression: np.ndarray,
-    missing_values: float = None,
+    missing_values: float = np.nan,
     n_neighbors: int = 5,
     weights: str = "uniform",
     metric: str = "nan_euclidean",
 ) -> np.ndarray:
     """
-    KNN imputation of missing values in the expression matrix. It uses the scikit-learn KNNImputer (Consult sklearn
-    documentation for more information).
+    KNN imputation of missing values in the expression matrix using scikit-learn KNNImputer.
+
     The default metric is nan_euclidean, which is the euclidean distance ignoring missing values.
 
     :param expression: Expression matrix
-    :param missing_values: The placeholder for the missing values. All occurrences of missing_values will be imputed.
-    :param n_neighbors: Number of neighboring samples to use for imputation.
+    :param missing_values: Placeholder for missing values to impute. Defaults to np.nan.
+    :param n_neighbors: Number of neighboring samples to use for imputation. Defaults to 5.
     :param weights: Weight function used in prediction. Possible values:
         - 'uniform': uniform weights. All points in each neighborhood are weighted equally.
-        - 'distance': weight points by the inverse of their distance. in this case, closer neighbors of a query point
-    :param metric: Metric used to compute the distance between samples. The default metric is nan_euclidean, which is
-    the euclidean distance ignoring missing values. Consult sklearn documentation for more information.
+        - 'distance': weight points by the inverse of their distance.
+    :param metric: Metric to compute distance between samples. Defaults to 'nan_euclidean'.
     :return: Imputed expression matrix
     """
     try:
@@ -422,18 +461,6 @@ def knn_imputation(
             "The package scikit-learn is not installed. "
             "To preprocess gene expression data, please install scikit-learn (pip install scikit-learn)."
         )
-
-    if missing_values is None:
-        missing_values = np.nan
-
-    if n_neighbors is None:
-        n_neighbors = 5
-
-    if weights is None:
-        weights = "uniform"
-
-    if metric is None:
-        metric = "nan_euclidean"
 
     imputation = KNNImputer(missing_values=missing_values, n_neighbors=n_neighbors, weights=weights, metric=metric)
 
@@ -465,15 +492,20 @@ def quantile_transformation(expression: np.ndarray, n_quantiles: int = None) -> 
 
 def quantile_binarization(expression: np.ndarray, q: float = 0.33) -> np.ndarray:
     """
-    It computes the q-th quantile of the expression matrix using np.quantile (consult numpy documentation for more
-    information). Then, it binarizes the expression matrix using the threshold computed.
-    :param expression: Expression matrix
-    :param q: Quantile to compute
-    :return: Binarized expression matrix
+    Computes the q-th quantile of the expression matrix and binarizes it using the threshold.
+
+    The input array is NOT modified - a new binarized array is returned.
+
+    :param expression: Expression matrix (will not be modified)
+    :param q: Quantile to compute (default: 0.33)
+    :return: New binarized expression matrix (0s and 1s)
     """
     threshold = np.quantile(expression, q)
 
-    threshold_mask = expression >= threshold
-    expression[threshold_mask] = 1
-    expression[~threshold_mask] = 0
-    return expression
+    # Create a copy to avoid mutating input
+    binary_expression = expression.copy()
+
+    threshold_mask = binary_expression >= threshold
+    binary_expression[threshold_mask] = 1
+    binary_expression[~threshold_mask] = 0
+    return binary_expression

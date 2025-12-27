@@ -21,6 +21,8 @@ Author: Vitor Pereira
 Contributors: Paulo Carvalhais
 ##############################################################################
 """
+from copy import deepcopy
+
 from mewpy.simulation import get_simulator
 
 from .. import ExpressionSet, Preprocessing
@@ -35,9 +37,14 @@ def eFlux(
     constraints=None,
     parsimonious=False,
     max_exp=None,
+    build_model=False,
+    flux_threshold=1e-6,
     **kwargs,
 ):
     """ Run an E-Flux simulation (Colijn et al, 2009).
+
+    E-Flux scales reaction bounds based on expression levels, enabling
+    context-specific flux predictions or tissue-specific model generation.
 
     :param model: a REFRAMED or COBRApy model or a MEWpy Simulator.
     :param expr (ExpressionSet): transcriptomics data.
@@ -48,11 +55,21 @@ def eFlux(
             is specified)
     :param constraints (dict): additional constraints (optional)
     :param parsimonious (bool): compute a parsimonious solution (default: False)
+    :param max_exp (float): maximum expression value for normalization.\
+            If None, uses max from expression data (optional)
+    :param build_model (bool): if True, returns a tissue-specific model with lowly\
+            expressed reactions removed. if False, returns only flux predictions (default: False)
+    :param flux_threshold (float): threshold for removing reactions when build_model=True.\
+            Reactions with scaled bounds below this threshold are removed (default: 1e-6)
 
-    :return: Solution: solution
+    :return: Solution (or tuple of (solution, model) if build_model=True)
     """
 
-    sim = get_simulator(model)
+    # Use deepcopy if building a tissue-specific model (will modify structure)
+    if not build_model:
+        sim = get_simulator(model)
+    else:
+        sim = get_simulator(deepcopy(model))
 
     if isinstance(expr, ExpressionSet):
         pp = Preprocessing(sim, expr)
@@ -63,6 +80,11 @@ def eFlux(
     if max_exp is None:
         max_exp = max(rxn_exp.values())
 
+    # Protection against division by zero (all expression values are zero)
+    if max_exp == 0:
+        # Treat all-zero expression as uniform expression (no scaling)
+        max_exp = 1.0
+
     bounds = {}
 
     for r_id in sim.reactions:
@@ -72,12 +94,12 @@ def eFlux(
         ub2 = val if ub > 0 else 0
         bounds[r_id] = (lb2, ub2)
 
+    # User constraints override expression-based bounds
+    # These are NOT scaled by expression (applied as absolute values)
     if constraints:
         for r_id, x in constraints.items():
             lb, ub = x if isinstance(x, tuple) else (x, x)
-            lb2 = -1 if lb < 0 else 0
-            ub2 = 1 if ub > 0 else 0
-            bounds[r_id] = (lb2, ub2)
+            bounds[r_id] = (lb, ub)
 
     if parsimonious:
         sol = sim.simulate(constraints=bounds, method="pFBA")
@@ -94,4 +116,21 @@ def eFlux(
         for r_id, val in sol.fluxes.items():
             sol.fluxes[r_id] = val * k
 
-    return sol
+    # Build tissue-specific model if requested
+    if build_model:
+        # Remove reactions with very low expression-scaled bounds
+        # These are reactions with expression so low that their flux capacity is negligible
+        rx_to_delete = []
+        for r_id in sim.reactions:
+            if r_id in bounds:
+                lb, ub = bounds[r_id]
+                # Consider reaction inactive if both bounds are near zero
+                if max(abs(lb), abs(ub)) < flux_threshold:
+                    rx_to_delete.append(r_id)
+
+        sim.remove_reactions(rx_to_delete)
+
+    if build_model:
+        return sol, sim
+    else:
+        return sol

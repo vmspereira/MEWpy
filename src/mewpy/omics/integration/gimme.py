@@ -46,20 +46,31 @@ def GIMME(
 ):
     """ Run a GIMME simulation [1]_.
 
+    GIMME minimizes usage of lowly expressed reactions while maintaining growth,
+    enabling context-specific flux predictions or tissue-specific model generation.
+
     Arguments:
         model: a REFRAMED or COBRApy model or a MEWpy Simulator.
-        expr (ExpressionSet): transcriptomics data.
-        biomass: the biomass reaction identifier
+        expr (ExpressionSet): transcriptomics data or preprocessed coefficients.
+        biomass: the biomass reaction identifier (default: uses model's biomass reaction)
         condition: the condition to use in the simulation\
             (default:0, the first condition is used if more than one.)
-        cutoff (int): percentile cuttof (default: 25).
-        growth_frac (float): minimum growth requirement (default: 0.9)
-        constraints (dict): additional constraints
-        parsimonious (bool): compute a parsimonious solution (default: False)
-        build_model (bool): returns a tissue specific model
+        cutoff (int): percentile cutoff for low expression (default: 25).
+                     Reactions below this percentile are considered lowly expressed.
+        growth_frac (float): minimum growth requirement as fraction of wild-type (default: 0.9)
+        constraints (dict): additional constraints (optional)
+        parsimonious (bool): compute a parsimonious solution (default: False).
+                            If True, performs secondary minimization of total flux.
+        build_model (bool): if True, returns a tissue-specific model with inactive reactions removed.
+                           if False, returns only flux predictions (default: False)
 
     Returns:
-        Solution: solution
+        Solution: solution (or tuple of (solution, model) if build_model=True)
+
+    Notes:
+        The algorithm handles reversible reactions differently depending on build_model:
+        - build_model=False: Uses solver variables (_p, _n) preserving original model
+        - build_model=True: Physically splits reactions for structural model modification
 
     References
     ----------
@@ -79,7 +90,7 @@ def GIMME(
     else:
         coeffs = expr
         threshold = cutoff
-    print(coeffs)
+
     solver = solver_instance(sim)
 
     if biomass is None:
@@ -92,7 +103,20 @@ def GIMME(
     # add growth constraint
     constraints[biomass] = (growth_frac * wt_solution.fluxes[biomass], inf)
 
-    # make model irreversible
+    # Make model irreversible to handle expression coefficients properly
+    # Two strategies are used depending on whether we're building a tissue-specific model:
+    #
+    # Strategy 1 (build_model=False): Use solver variables for irreversibility
+    #   - Adds _p and _n variables to the solver without modifying the model
+    #   - Preserves original model structure
+    #   - Solution values need to be reconstructed (net = forward - reverse)
+    #   - Used when we only want flux predictions, not a modified model
+    #
+    # Strategy 2 (build_model=True): Modify model structure
+    #   - Physically splits reversible reactions into forward/reverse reactions
+    #   - Creates a new model structure with only irreversible reactions
+    #   - Reactions can be deleted without affecting constraint definitions
+    #   - Used when building a tissue-specific model for further analysis
     if not build_model:
         for r_id in sim.reactions:
             lb, _ = sim.get_reaction_bounds(r_id)
@@ -146,23 +170,46 @@ def GIMME(
         solution.pre_solution = pre_solution
 
     if build_model:
+        # Build tissue-specific model by removing inactive reactions
+        # Activity classification:
+        #   0 = Inactive (lowly expressed AND no flux in solution) -> REMOVE
+        #   1 = Highly expressed (above threshold) -> KEEP
+        #   2 = Active despite low expression (required for biomass) -> KEEP
+
+        # Get original reaction expression for comparison
+        if isinstance(expr, ExpressionSet):
+            rxn_exp = pp.reactions_expression(condition)
+        else:
+            # If expr is already coefficients, we need the original expression
+            # This is a limitation - coeffs don't contain original expression values
+            rxn_exp = {}
+
         activity = dict()
         for rx_id in sim.reactions:
-            activity[rx_id] = 0
-            if rx_id in coeffs and coeffs[rx_id] > threshold:
-                activity[rx_id] = 1
+            activity[rx_id] = 0  # Default: inactive
+            # Check if reaction is highly expressed (above threshold)
+            if rx_id in rxn_exp and rxn_exp[rx_id] > threshold:
+                activity[rx_id] = 1  # Highly expressed
             elif solution.values[rx_id] > 0:
-                activity[rx_id] = 2
-        # remove unused
+                activity[rx_id] = 2  # Active despite low/unknown expression (needed for growth)
+
+        # Remove reactions with activity = 0 (inactive and not required)
         rx_to_delete = [rx_id for rx_id, v in activity.items() if v == 0]
         sim.remove_reactions(rx_to_delete)
     else:
+        # Reconstruct net flux for reversible reactions before deleting split variables
         for r_id in sim.reactions:
             lb, _ = sim.get_reaction_bounds(r_id)
             if lb < 0:
                 pos, neg = r_id + "_p", r_id + "_n"
-                del solution.values[pos]
-                del solution.values[neg]
+                # Calculate net flux: forward - reverse
+                net_flux = solution.values.get(pos, 0) - solution.values.get(neg, 0)
+                solution.values[r_id] = net_flux
+                # Remove split variables
+                if pos in solution.values:
+                    del solution.values[pos]
+                if neg in solution.values:
+                    del solution.values[neg]
 
     res = to_simulation_result(model, solution.fobj, constraints, sim, solution)
     if hasattr(solution, "pre_solution"):
