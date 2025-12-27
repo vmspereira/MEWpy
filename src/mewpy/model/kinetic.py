@@ -20,6 +20,7 @@ Kinetic Modeling Module
 Authors: Vitor Pereira
 ##############################################################################
 """
+import re
 import warnings
 from collections import OrderedDict
 from typing import Any, Dict, List
@@ -100,16 +101,20 @@ def calculate_yprime(y, rate: np.array, substrates: List[str], products: List[st
     return y_prime
 
 
-def check_positive(y_prime: List[float]):
+def check_positive(y_prime: List[float]) -> List[float]:
     """
-    Check that substrate values are not negative when they shouldnt be.
+    Check that substrate values are not negative when they shouldn't be.
+
+    Returns a new list with negative values replaced by zero.
+    Does not mutate the input list.
+
+    Args:
+        y_prime: List of substrate values
+
+    Returns:
+        New list with non-negative values
     """
-
-    for i in range(len(y_prime)):
-        if y_prime[i] < 0:
-            y_prime[i] = 0
-
-    return y_prime
+    return [max(0, val) for val in y_prime]
 
 
 class Rule(object):
@@ -187,10 +192,7 @@ class Rule(object):
             return t
 
     def calculate_rate(self, substrates={}, parameters={}):
-        param = dict()
-        param.update(self.parameters)
-        param.update(substrates)
-        param.update(parameters)
+        param = {**self.parameters, **substrates, **parameters}
 
         if len(param.keys()) != len(self.parse_parameters()):
             s = set(self.parse_parameters()) - set(param.keys())
@@ -304,16 +306,14 @@ class KineticReaction(Rule):
         return self.replace(r_map, local=local)
 
     def calculate_rate(self, substrates={}, parameters={}):
-
-        param = dict()
-        # sets model defaults
-        param.update(self._model.get_concentrations())
-        param.update(self._model.get_parameters())
-        # set reaction defaults
-        param.update(self.parameters)
-        # user defined
-        param.update(substrates)
-        param.update(parameters)
+        # Build parameter dictionary with proper precedence (later values override earlier)
+        param = {
+            **self._model.get_concentrations(),  # Model defaults
+            **self._model.get_parameters(),
+            **self.parameters,  # Reaction defaults
+            **substrates,  # User defined
+            **parameters,
+        }
         s = set(self.parse_parameters()) - set(param.keys())
         if s:
             # check for missing parameters distributions
@@ -451,7 +451,7 @@ class ODEModel:
         return AttrDict(d)
 
     def find(self, pattern=None, sort=False):
-        """A user friendly method to find reactionsin the model.
+        """A user friendly method to find reactions in the model.
 
         :param pattern: The pattern which can be a regular expression,
             defaults to None in which case all entries are listed.
@@ -463,14 +463,12 @@ class ODEModel:
         """
         values = list(self.reactions.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -501,14 +499,12 @@ class ODEModel:
         """
         values = list(self.metabolites.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -602,7 +598,7 @@ class ODEModel:
 
         Args:
             m_id (str): The metabolite identifier
-            factors (dic, optional): Factores applied to parameters. Defaults to None.
+            factors (dict, optional): Factors applied to parameters. Defaults to None.
 
         Returns:
             str: Mass balance equation
@@ -649,14 +645,12 @@ class ODEModel:
         params = self.get_parameters()
         values = list(params.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
@@ -685,14 +679,12 @@ class ODEModel:
         params = self.function_definition
         values = list(params.keys())
         if pattern:
-            import re
-
             if isinstance(pattern, list):
                 patt = "|".join(pattern)
-                re_expr = re.compile(patt)
             else:
-                re_expr = re.compile(pattern)
-            values = [x for x in values if re_expr.search(x) is not None]
+                patt = pattern
+            re_expr = re.compile(patt)
+            values = [x for x in values if re_expr.search(x)]
         if sort:
             values.sort()
 
