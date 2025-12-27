@@ -166,6 +166,12 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
         return " ".join((self.variables))
 
 
+# Python 3.11+ compatibility: Clear __abstractmethods__ to prevent
+# "Can't instantiate abstract class" errors with Generic types
+KOSolution.__abstractmethods__ = frozenset()
+OUSolution.__abstractmethods__ = frozenset()
+
+
 class JMetalKOProblem(Problem[KOSolution], Evaluable):
 
     def __init__(self, problem, initial_population):
