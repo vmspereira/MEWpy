@@ -54,7 +54,7 @@ class EvaluationFunction:
         raise NotImplementedError
 
     def short_str(self):
-        return self.method_str
+        return self.method_str()
 
     def __str__(self):
         return self.method_str()

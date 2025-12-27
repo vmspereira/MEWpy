@@ -182,7 +182,8 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
                     self._number_of_variables = 100  # Default fallback
             else:
                 self._number_of_variables = 100  # Default fallback
-        except:
+        except (AttributeError, TypeError):
+            # Bounder doesn't have expected attributes or values aren't compatible
             self._number_of_variables = 100  # Default fallback
         self._number_of_constraints = 0
         self.obj_directions = []
@@ -289,7 +290,8 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
                 self._number_of_variables = len(self.problem.bounder.lower_bound)
             else:
                 self._number_of_variables = 100  # Default fallback
-        except:
+        except (AttributeError, TypeError):
+            # Bounder doesn't have expected attributes or values aren't compatible
             self._number_of_variables = 100  # Default fallback
         self._number_of_constraints = 0
         self.obj_directions = []

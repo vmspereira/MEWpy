@@ -448,7 +448,7 @@ class CNRFA(PhenotypeEvaluationFunction):
         super(CNRFA, self).__init__(maximize=maximize, worst_fitness=0)
         self.reactions = reactions
         self.method = kwargs.get("method", SimulationMethod.pFBA)
-        self.theshold = threshold
+        self.threshold = threshold
 
     def get_fitness(self, simul_results, candidate, **kwargs):
         """Evaluates a candidate
@@ -464,7 +464,7 @@ class CNRFA(PhenotypeEvaluationFunction):
 
         count = 0
         for rxn in self.reactions:
-            if sim.fluxes[rxn] > self.theshold:
+            if sim.fluxes[rxn] > self.threshold:
                 count += 1
         return count
 
@@ -512,7 +512,8 @@ class MolecularWeight(PhenotypeEvaluationFunction):
                 for e, n in elem.items():
                     try:
                         w += atomic_weights[e] * n
-                    except:
+                    except KeyError:
+                        # Element not found in atomic weights dictionary
                         pass
 
                 rmw += abs(v) * w
