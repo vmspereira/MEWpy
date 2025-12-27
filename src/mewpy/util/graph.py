@@ -40,7 +40,7 @@ IRREV = "IRREV"
 
 
 def create_metabolic_graph(
-    model, directed=True, carbon=True, reactions=None, remove=None, edges_labels=False, biomass=False, metabolites=False
+    model, directed=True, carbon=True, reactions=None, remove=None, edges_labels=False, metabolites=False
 ):
     """ Creates a metabolic graph
 

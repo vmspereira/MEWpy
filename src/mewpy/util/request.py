@@ -85,11 +85,11 @@ def process_entry(entry):
     try:
         seq = entry["sequence"]["value"]
     except (KeyError, AttributeError, TypeError):
-        pass
+        logger.debug("Sequence value not available")
     try:
         mw = float(entry["sequence"]["molWeight"])
     except (KeyError, AttributeError, TypeError, ValueError):
-        pass
+        logger.debug("Molecular weight not available")
     return {
         "organism": org,
         "protein": protein,
@@ -102,7 +102,7 @@ def process_entry(entry):
     }
 
 
-def retreive(data, organism=None):
+def retrieve(data, organism=None):
     """Retreives a protein function, pathways, ...
 
     Args:
@@ -124,7 +124,7 @@ def retreive(data, organism=None):
     return process_entry(entry)
 
 
-def retreive_gene(gene, organism=None):
+def retrieve_gene(gene, organism=None):
     """retrieves uniprot data using a gene name
 
     :param gene: gene name
@@ -139,12 +139,12 @@ def retreive_gene(gene, organism=None):
     url = f"https://rest.uniprot.org/uniprotkb/search?query=(gene:{gn})%20AND%20(reviewed:true)&format=json"
     with urllib.request.urlopen(url) as response:
         data = response.read().decode("ascii")
-    data = retreive(data, organism)
+    data = retrieve(data, organism)
     data["gene"] = gene
     return data
 
 
-def retreive_protein(proteinid):
+def retrieve_protein(proteinid):
     """retrieves uniprot data using a protein assertion
 
     :param proteinid: protein assertion

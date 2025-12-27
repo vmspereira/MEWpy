@@ -27,7 +27,29 @@ import sys
 import typing as T
 from abc import abstractmethod
 from copy import copy
-from math import *
+from math import (
+    acos,
+    asin,
+    atan,
+    atan2,
+    ceil,
+    cos,
+    cosh,
+    degrees,
+    e,
+    exp,
+    floor,
+    log,
+    log10,
+    log2,
+    pi,
+    radians,
+    sin,
+    sinh,
+    sqrt,
+    tan,
+    tanh,
+)
 from operator import add, mul, pow, sub, truediv
 
 logger = logging.getLogger(__name__)
@@ -89,6 +111,8 @@ def convert_constant(value: T.Any) -> str:
         return r"\mathrm{" + str(value) + "}"
     if isinstance(value, (int, float, complex)):
         # TODO(odashi): Support other symbols for the imaginary unit than j.
+        # Current implementation only supports 'j' for complex numbers
+        # Consider using a configurable symbol or supporting both 'j' and 'i'
         return str(value)
     if isinstance(value, str):
         return r"\textrm{" + value + "}"
@@ -115,7 +139,7 @@ latex = {
     "sqrt": lambda x, y: r"\sqrt {" + y + r"}",
 }
 
-# Operators precedence used to add parentesis when
+# Operators precedence used to add parentheses when
 # needed as they are removed in the parsing tree
 MAX_PRECEDENCE = 10
 latex_precedence = {
@@ -383,9 +407,9 @@ class Node(object):
     ) -> str:
         """Infix string representation
 
-        :param opar: open parentesis string, defaults to '( '
+        :param opar: open parentheses string, defaults to '( '
         :type opar: str, optional
-        :param cpar: close parentesis string, defaults to ' )'
+        :param cpar: close parentheses string, defaults to ' )'
         :type cpar: str, optional
         :param sep: symbols separator, defaults to ' '
         :type sep: str, optional
@@ -525,7 +549,7 @@ class Syntax:
 
 
 class Arithmetic(Syntax):
-    """Defines a basic arithmetic sintax."""
+    """Defines a basic arithmetic syntax."""
 
     operators = ["+", "-", "**", "*", "/", "^"]
 
@@ -741,7 +765,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
     Builds a parsing syntax tree for basic mathematical expressions
 
     :param exp: the expression to be parsed
-    :param rules: Sintax definition rules
+    :param rules: Syntax definition rules
     """
     assert exp.count("(") == exp.count(")"), "The expression is parentheses unbalanced."
     replace_dic = rules.replace()

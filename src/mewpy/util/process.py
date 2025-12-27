@@ -121,7 +121,7 @@ class MultiProcessorEvaluator(Evaluator):
             evaluator(function): Evaluation function.
             mp_num_cpus(int): Number of CPUs
 
-        When using COBRApy, mewmory resources are not released after each
+        When using COBRApy, memory resources are not released after each
         pool map. As such, the pool needs to be instantiated and closed at
         each iteration.
         """

@@ -64,7 +64,7 @@ class HistoryManager:
 
     def __call__(self, *args, **kwargs) -> None:
 
-        return self.queue_command(*args, **kwargs)
+        self.queue_command(*args, **kwargs)
 
     def queue_command(
         self,
