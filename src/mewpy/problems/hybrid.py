@@ -242,7 +242,8 @@ class HybridGeckoOUProblem(GeckoOUProblem):
                     #    kcat:  1/h
                     #    gDW:   gDW/L
 
-                    # TODO: include dil rate
+                    # TODO: Include dilution rate in enzyme usage calculation
+                    # The max_enzyme_usage formula may need adjustment to account for dilution rate
                     max_enzyme_usage = vmax_value * 3600 / (kcat * self.gDW)
                     if self.apply_lb:
                         min_enzyme_usage = max(0, abs(flux) * 3600 / (kcat * self.gDW) - self.lb_tolerance)
