@@ -33,15 +33,16 @@ from mewpy.util.utilities import AttrDict
 
 
 class Compartment(object):
-    """class for modeling compartments."""
+    """Class for modeling compartments."""
 
     def __init__(self, comp_id: str, name: str = None, external: bool = False, size: float = 1.0):
-        """
-        Arguments:
-            comp_id (str): a valid unique identifier
-            name (str): compartment name (optional)
-            external (bool): is external (default: false)
-            size (float): compartment size (default: 1.0)
+        """Initialize a Compartment.
+
+        Args:
+            comp_id (str): A valid unique identifier
+            name (str): Compartment name (optional)
+            external (bool): Is external (default: False)
+            size (float): Compartment size (default: 1.0)
         """
         self.id = comp_id
         self.name = name if name is not None else comp_id
@@ -57,14 +58,15 @@ class Compartment(object):
 
 
 class Metabolite(object):
-    """class for modeling metabolites."""
+    """Class for modeling metabolites."""
 
     def __init__(self, met_id: str, name: str = None, compartment: str = None):
-        """
-        Arguments:
-            met_id (str): a valid unique identifier
-            name (str): common metabolite name
-            compartment (str): compartment containing the metabolite
+        """Initialize a Metabolite.
+
+        Args:
+            met_id (str): A valid unique identifier
+            name (str): Common metabolite name
+            compartment (str): Compartment containing the metabolite
         """
         self.id = met_id
         self.name = name if name is not None else met_id
@@ -79,17 +81,18 @@ class Metabolite(object):
 
 
 def calculate_yprime(y, rate: np.array, substrates: List[str], products: List[str]):
-    """
-    It takes the numpy array for y_prime,
-    and adds or subtracts the amount in rate to all the substrates or products listed
-    Returns the new y_prime
+    """Calculate the rate of change for each metabolite.
+
+    Subtracts the rate from substrates and adds it to products.
+
     Args:
-        y: dict substrate values, the same order as y
-        rate: the rate calculated by the user made rate equation
-        substrates: list of substrates for which rate should be subtracted
-        products: list of products for which rate should be added
+        y: Dictionary of substrate values
+        rate: The calculated reaction rate
+        substrates: List of substrate IDs for which rate should be subtracted
+        products: List of product IDs for which rate should be added
+
     Returns:
-        y_prime: following the addition or subtraction of rate to the specificed substrates
+        Dictionary of metabolite rates (y_prime) after applying the reaction rate
     """
     y_prime = {name: 0 for name in y.keys()}
     for name in substrates:
@@ -121,11 +124,11 @@ class Rule(object):
     """Base class for kinetic rules."""
 
     def __init__(self, r_id: str, law: str, parameters: Dict[str, float] = None):
-        """Creates a new rule
+        """Initialize a Rule.
 
         Args:
             r_id (str): Reaction/rule identifier
-            law (str): The rule string representation.
+            law (str): The rule string representation
             parameters (Dict[str, float], optional): Parameter values. Defaults to None.
         """
         self.id = r_id
@@ -229,17 +232,17 @@ class KineticReaction(Rule):
         reversible: bool = True,
         functions: dict = None,
     ):
-        """Kinetic reaction rule.
+        """Initialize a KineticReaction.
 
         Args:
             r_id (str): Reaction identifier
-            law (str): kinetic law
+            law (str): Kinetic law expression
             name (str, optional): The name of the reaction. Defaults to None.
             stoichiometry (dict, optional): The stoichiometry of the reaction. Defaults to None.
-            parameters (dict, optional): local parameters. Defaults to None.
-            modifiers (list, optional): modifiers. Defaults to None.
-            reversible (bool, optional): reversability. Defaults to True.
-            functions (dict, optional): function defined in the model. Defaults to None.
+            parameters (dict, optional): Local parameters. Defaults to None.
+            modifiers (list, optional): Reaction modifiers. Defaults to None.
+            reversible (bool, optional): Reversibility. Defaults to True.
+            functions (dict, optional): Functions defined in the model. Defaults to None.
         """
         super(KineticReaction, self).__init__(r_id, law, parameters)
         self.name = name if name else r_id
@@ -364,18 +367,24 @@ class KineticReaction(Rule):
 
 
 class ODEModel:
+    """ODE-based kinetic model for metabolic systems."""
+
     def __init__(self, model_id):
-        """ODE Model."""
+        """Initialize an ODEModel.
+
+        Args:
+            model_id: Unique identifier for the model
+        """
         self.id = model_id
         self.metabolites = OrderedDict()
         self.compartments = OrderedDict()
-        # kinetic rule of each reaction
+        # Kinetic rule of each reaction
         self.ratelaws = OrderedDict()
-        # initial concentration of metabolites
+        # Initial concentration of metabolites
         self.concentrations = OrderedDict()
-        # parameter defined as constantes
+        # Parameter defined as constants
         self.constant_params = OrderedDict()
-        # variable parameters
+        # Variable parameters
         self.variable_params = OrderedDict()
         self.assignment_rules = OrderedDict()
         self.function_definition = OrderedDict()
@@ -752,7 +761,7 @@ class ODEModel:
 
         rate_exprs = [" " * 4 + "r['{}'] = {}".format(r_id, parsed_rates[r_id]) for r_id in self.ratelaws.keys()]
 
-        # TODO: review factores....
+        # Build mass balance equations for each metabolite
         balances = [" " * 8 + self.print_balance(m_id, factors=factors) for m_id in self.metabolites]
 
         func = "def ode_func(t, x, r, p, v)"
