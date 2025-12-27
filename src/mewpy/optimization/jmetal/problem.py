@@ -20,6 +20,7 @@ JMetal Problems
 Authors: Vitor Pereira
 ##############################################################################
 """
+import logging
 import random
 from typing import List, Tuple
 
@@ -28,6 +29,8 @@ from jmetal.core.solution import Solution
 
 from ...util.process import Evaluable
 from ..ea import SolutionInterface, dominance_test
+
+logger = logging.getLogger(__name__)
 
 # define EA representation for OU
 IntTupple = Tuple[int]
@@ -165,7 +168,7 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
 
 class JMetalKOProblem(Problem[KOSolution], Evaluable):
 
-    def __init__(self, problem, initial_polulation):
+    def __init__(self, problem, initial_population):
         """JMetal OU problem. Encapsulates a MEWpy problem
         so that it can be used in jMetal.
         """
@@ -182,7 +185,8 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
                     self._number_of_variables = 100  # Default fallback
             else:
                 self._number_of_variables = 100  # Default fallback
-        except:
+        except (AttributeError, TypeError):
+            # Bounder doesn't have expected attributes or values aren't compatible
             self._number_of_variables = 100  # Default fallback
         self._number_of_constraints = 0
         self.obj_directions = []
@@ -193,7 +197,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
                 self.obj_directions.append(self.MAXIMIZE)
             else:
                 self.obj_directions.append(self.MINIMIZE)
-        self.initial_polulation = initial_polulation
+        self.initial_population = initial_population
         self.__next_ini_sol = 0
 
     @property
@@ -215,14 +219,14 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
     def create_solution(self) -> KOSolution:
         solution = None
         flag = False
-        while self.__next_ini_sol < len(self.initial_polulation) and not flag:
-            s = self.initial_polulation[self.__next_ini_sol]
+        while self.__next_ini_sol < len(self.initial_population) and not flag:
+            s = self.initial_population[self.__next_ini_sol]
             try:
                 solution = self.problem.encode(s)
                 flag = True
                 self.__next_ini_sol += 1
             except ValueError as e:
-                print("Skipping seed:", s, " ", e)
+                logger.warning("Skipping seed: %s - %s", s, e)
                 self.__next_ini_sol += 1
         if not solution:
             solution = self.problem.generator(random)
@@ -241,7 +245,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
         """
         import random
 
-        random.shuffle(self.initial_polulation)
+        random.shuffle(self.initial_population)
         self.__next_ini_sol = 0
 
     def get_constraints(self, solution):
@@ -275,7 +279,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
 
 class JMetalOUProblem(Problem[OUSolution], Evaluable):
 
-    def __init__(self, problem, initial_polulation=[]):
+    def __init__(self, problem, initial_population=[]):
         """JMetal OU problem. Encapsulates a MEWpy problem
         so that it can be used in jMetal.
         """
@@ -289,7 +293,8 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
                 self._number_of_variables = len(self.problem.bounder.lower_bound)
             else:
                 self._number_of_variables = 100  # Default fallback
-        except:
+        except (AttributeError, TypeError):
+            # Bounder doesn't have expected attributes or values aren't compatible
             self._number_of_variables = 100  # Default fallback
         self._number_of_constraints = 0
         self.obj_directions = []
@@ -300,7 +305,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
                 self.obj_directions.append(self.MAXIMIZE)
             else:
                 self.obj_directions.append(self.MINIMIZE)
-        self.initial_polulation = initial_polulation
+        self.initial_population = initial_population
         self.__next_ini_sol = 0
 
     @property
@@ -322,14 +327,14 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     def create_solution(self) -> OUSolution:
         solution = None
         flag = False
-        while self.__next_ini_sol < len(self.initial_polulation) and not flag:
-            s = self.initial_polulation[self.__next_ini_sol]
+        while self.__next_ini_sol < len(self.initial_population) and not flag:
+            s = self.initial_population[self.__next_ini_sol]
             try:
                 solution = self.problem.encode(s)
                 flag = True
                 self.__next_ini_sol += 1
             except ValueError as e:
-                print("Skipping seed:", s, " ", e)
+                logger.warning("Skipping seed: %s - %s", s, e)
                 self.__next_ini_sol += 1
         if not solution:
             solution = self.problem.generator(random)
@@ -345,7 +350,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     def reset_initial_population_counter(self):
         import random
 
-        random.shuffle(self.initial_polulation)
+        random.shuffle(self.initial_population)
         self.__next_ini_sol = 0
 
     def get_constraints(self, solution):

@@ -20,6 +20,8 @@ EA Module for jmetalpy
 Authors: Vitor Pereira
 ##############################################################################
 """
+import logging
+
 import numpy as np
 from jmetal.algorithm.multiobjective import NSGAII, SPEA2
 from jmetal.algorithm.multiobjective.nsgaiii import NSGAIII, UniformReferenceDirectionFactory
@@ -28,6 +30,8 @@ from jmetal.operator import BinaryTournamentSelection
 from jmetal.util.termination_criterion import StoppingByEvaluations
 
 from mewpy.util.constants import EAConstants
+
+logger = logging.getLogger(__name__)
 from mewpy.util.process import cpu_count, get_evaluator
 
 from ..ea import AbstractEA, Solution
@@ -95,7 +99,7 @@ class EA(AbstractEA):
         """Runs a single objective EA optimization ()"""
         self.ea_problem.reset_initial_population_counter()
         if self.algorithm_name == "SA":
-            print("Running SA")
+            logger.info("Running SA")
             # For SA, set mutation probability to 1.0
             self.mutation.probability = 1.0
             algorithm = SimulatedAnnealing(
@@ -105,7 +109,7 @@ class EA(AbstractEA):
             )
 
         else:
-            print("Running GA")
+            logger.info("Running GA")
             args = {
                 "problem": self.ea_problem,
                 "population_size": self.population_size,
@@ -151,7 +155,7 @@ class EA(AbstractEA):
         if self.mp:
             args["population_evaluator"] = get_evaluator(self.ea_problem, n_mp=cpu_count())
 
-        print(f"Running {self.algorithm_name}")
+        logger.info("Running %s", self.algorithm_name)
         if self.algorithm_name == "NSGAIII":
             args["reference_directions"] = UniformReferenceDirectionFactory(
                 self.ea_problem.number_of_objectives, n_points=self.population_size - 1
@@ -195,7 +199,7 @@ class EA(AbstractEA):
         return p
 
     def _get_current_population(self):
-        """Dumps the population for gracefull exit."""
+        """Dumps the population for graceful exit."""
         pop = self.algorithm.solutions
         cv = self._convertPopulation(pop)
         return cv

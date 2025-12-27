@@ -15,7 +15,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Obverser module for EA optimization based on jmetalpy
+Observer module for EA optimization based on jmetalpy
 
 Authors: Vitor Pereira
 ##############################################################################
@@ -100,7 +100,7 @@ class PrintObjectivesStatObserver:
         :returns: A statistics dictionary.
         """
 
-        def minuszero(value):
+        def minuszero(value: float) -> float:
             return round(value, 6)
 
         stats = {}
@@ -159,4 +159,4 @@ class PrintObjectivesStatObserver:
                 fitness = solutions.objectives
                 res = abs(fitness[0])
                 message = "Evaluations: {}\tFitness: {}".format(evaluations, res)
-            print(message)
+            LOGGER.info(message)

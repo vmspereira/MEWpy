@@ -56,7 +56,7 @@ class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -103,7 +103,7 @@ class MinCandSize(CandidateSize):
 
     def __init__(self, maximize=False):
         super(MinCandSize, self).__init__(maximize=maximize, worst_fitness=0.0)
-        warnings.warn("This class will soon be depricated. Use CandidateSize instead.")
+        warnings.warn("MinCandSize is deprecated. Use CandidateSize instead.", DeprecationWarning, stacklevel=2)
 
 
 class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):
@@ -122,15 +122,15 @@ class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         self.penalizations = penalizations
 
     def get_fitness(self, simulResult, candidate, **kwargs):
-        sum = 0
+        total = 0
         for v in candidate.values():
             if v == 0:
-                sum += self.penalizations["KO"]
+                total += self.penalizations["KO"]
             elif v < 1:
-                sum += self.penalizations["UE"]
+                total += self.penalizations["UE"]
             else:
-                sum += self.penalizations["OE"]
-        return sum / len(candidate)
+                total += self.penalizations["OE"]
+        return total / len(candidate)
 
     def required_simulations(self):
         """

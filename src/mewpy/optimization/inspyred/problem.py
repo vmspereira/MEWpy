@@ -79,7 +79,7 @@ class InspyredProblem(Evaluable):
     def evaluator(self, candidates, *args):
         """
         Evaluator
-        Note: shoudn't be dependent on args to ease multiprocessing
+        Note: shouldn't be dependent on args to ease multiprocessing
 
         :param candidates: A list of candidate solutions.
         :returns: A list of Pareto fitness values or a list of fitness values.

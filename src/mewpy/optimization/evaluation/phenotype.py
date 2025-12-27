@@ -20,11 +20,14 @@ Phenotype evaluators
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import math
 import warnings
 from typing import Dict, List, Tuple, Union
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from mewpy.simulation import get_simulator
 from mewpy.simulation.simulation import SimulationMethod, SStatus
@@ -71,7 +74,7 @@ class TargetFlux(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -155,7 +158,7 @@ class WYIELD(PhenotypeEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -218,13 +221,14 @@ class WYIELD(PhenotypeEvaluationFunction):
 
             res = self.no_solution
             if EAConstants.DEBUG:
-                print(f"WYIELD FVA max: {fvaMaxProd} min:{fvaMinProd}")
+                logger.debug("WYIELD FVA max: %s min: %s", fvaMaxProd, fvaMinProd)
             if biomassFluxValue > minBiomass:
                 res = self.alpha * fvaMaxProd + (1 - self.alpha) * fvaMinProd
                 if self.scale:
                     res = res / biomassFluxValue
             return res
-        except Exception:
+        except (KeyError, AttributeError, ValueError, ZeroDivisionError):
+            # Handle missing flux values, simulation failures, or arithmetic errors
             return self.no_solution
 
     def _repr_latex_(self):
@@ -278,7 +282,7 @@ class BPCY(PhenotypeEvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -302,9 +306,10 @@ class BPCY(PhenotypeEvaluationFunction):
             return self.no_solution
         if EAConstants.DEBUG:
             try:
-                print("BPCY Bionamss: {} product: {}".format(ssFluxes[self.biomassId], ssFluxes[self.productId]))
-            except Exception:
-                print("BPCY No Fluxes")
+                logger.debug("BPCY Biomass: %s product: %s", ssFluxes[self.biomassId], ssFluxes[self.productId])
+            except KeyError:
+                # Flux values not available
+                logger.debug("BPCY No Fluxes")
         return (ssFluxes[self.biomassId] * ssFluxes[self.productId]) / uptake
 
     def _repr_latex_(self):
@@ -373,7 +378,7 @@ class BPCY_FVA(PhenotypeEvaluationFunction):
         """Evaluates a candidate.
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -448,13 +453,13 @@ class CNRFA(PhenotypeEvaluationFunction):
         super(CNRFA, self).__init__(maximize=maximize, worst_fitness=0)
         self.reactions = reactions
         self.method = kwargs.get("method", SimulationMethod.pFBA)
-        self.theshold = threshold
+        self.threshold = threshold
 
     def get_fitness(self, simul_results, candidate, **kwargs):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """
@@ -464,7 +469,7 @@ class CNRFA(PhenotypeEvaluationFunction):
 
         count = 0
         for rxn in self.reactions:
-            if sim.fluxes[rxn] > self.theshold:
+            if sim.fluxes[rxn] > self.threshold:
                 count += 1
         return count
 
@@ -512,7 +517,8 @@ class MolecularWeight(PhenotypeEvaluationFunction):
                 for e, n in elem.items():
                     try:
                         w += atomic_weights[e] * n
-                    except:
+                    except KeyError:
+                        # Element not found in atomic weights dictionary
                         pass
 
                 rmw += abs(v) * w
@@ -522,7 +528,8 @@ class MolecularWeight(PhenotypeEvaluationFunction):
     def get_fitness(self, simul_results, candidate, **kwargs):
         try:
             sim = simul_results[self.method]
-        except Exception:
+        except (KeyError, TypeError):
+            # Simulation method not found or simul_results not a dict
             sim = None
 
         if sim.status not in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
@@ -573,7 +580,7 @@ class FluxDistance(EvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
         """
         sim = simul_results[self.method] if self.method in simul_results.keys() else None
@@ -581,10 +588,10 @@ class FluxDistance(EvaluationFunction):
         if not sim or sim.status not in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL) or not sim.fluxes:
             return self.no_solution
 
-        sum = 0
+        total = 0
         for rxn in self.fluxes:
-            sum += (sim.fluxes[rxn] - self.fluxes[rxn]) ** 2
-        return math.sqrt(sum)
+            total += (sim.fluxes[rxn] - self.fluxes[rxn]) ** 2
+        return math.sqrt(total)
 
     def required_simulations(self):
         return [self.method]
@@ -604,13 +611,13 @@ class TargetFluxWithConstraints(EvaluationFunction):
         constraints: Dict[str, Union[float, Tuple[float, float]]],
         maximize: bool = False,
     ):
-        """_summary_
+        """Target flux evaluation with additional constraints.
 
-        :param reaction: _description_
+        :param reaction: The target reaction ID to evaluate
         :type reaction: str
-        :param constraints: _description_
+        :param constraints: Additional constraints for flux analysis
         :type constraints: Dict[str,Union[float,Tuple[float,float]]]
-        :param maximize: _description_, defaults to False
+        :param maximize: Whether to maximize the objective, defaults to False
         :type maximize: bool, optional
         """
         super().__init__(maximize=maximize, worst_fitness=1000)
@@ -621,7 +628,7 @@ class TargetFluxWithConstraints(EvaluationFunction):
         """Evaluates a candidate
 
         :param simul_results: (dic) A dictionary of phenotype SimulationResult objects
-        :param candidate:  Candidate beeing evaluated
+        :param candidate:  Candidate being evaluated
         :returns: A fitness value.
 
         """

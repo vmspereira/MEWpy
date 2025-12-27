@@ -15,17 +15,21 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 ##############################################################################
-Obverser module for EA optimization based on inspyred
+Observer module for EA optimization based on inspyred
 
 Authors: Vitor Pereira
 ##############################################################################
 """
+import logging
+
 import numpy
 from inspyred.ec.emo import Pareto
 
 from mewpy.visualization.plot import StreamingPlot
 
 from ..ea import Solution, non_dominated_population
+
+logger = logging.getLogger(__name__)
 
 
 def fitness_statistics(population, directions):
@@ -102,8 +106,8 @@ def results_observer(population, num_generations, num_evaluations, args):
             s["worst"], s["best"], s["median"], s["mean"], s["std"]
         )
     if num_generations == 0:
-        print(title)
-    print(values)
+        logger.info(title)
+    logger.info(values)
 
 
 class VisualizerObserver:
