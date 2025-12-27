@@ -24,7 +24,7 @@ from .simulation import Simulator
 
 # Model specific simulators mapping:
 # Entries take the form:  full_model_class_path -> (simulator_path, simulator_class_name)
-# TODO: use qualified names
+# Uses fully qualified class names to avoid import conflicts
 map_model_simulator = {
     "geckopy.gecko.GeckoModel": ("mewpy.simulation.cobra", "GeckoSimulation"),
     "mewpy.model.gecko.GeckoModel": ("mewpy.simulation.reframed", "GeckoSimulation"),
@@ -66,11 +66,13 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
         class_ = getattr(module, class_name)
         try:
             model.solver.configuration.timeout = ModelConstants.SOLVER_TIMEOUT
-        except:
+        except AttributeError:
+            # Solver configuration not available
             pass
         try:
             model.solver.problem.params.OutputFlag = 0
-        except Exception:
+        except AttributeError:
+            # Solver params not available
             pass
         instance = class_(
             model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
@@ -103,9 +105,10 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
                     model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
                 )
         except ImportError:
+            # COBRA not installed, try other simulators
             pass
         except Exception:
-            # Silently continue to try other simulator types
+            # COBRA simulator creation failed, try other simulators
             pass
 
         # Try REFRAMED models if COBRA failed
@@ -120,10 +123,11 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
                         model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
                     )
             except ImportError:
+                # REFRAMED not installed
                 pass
             except Exception as e:
-                # Re-raise the exception to help with debugging
-                raise RuntimeError(f"Failed to create simulator for REFRAMED model: {e}")
+                # Re-raise with context to help debugging
+                raise RuntimeError(f"Failed to create simulator for REFRAMED model: {e}") from e
 
     if not instance:
         raise ValueError(f"The model <{name}> has no defined simulator.")
@@ -155,7 +159,8 @@ def get_container(model):
             from mewpy.simulation.reframed import CBModelContainer
 
             return CBModelContainer(model)
-    except Exception:
+    except ImportError:
+        # REFRAMED not installed
         pass
 
     try:
@@ -165,7 +170,8 @@ def get_container(model):
             from mewpy.simulation.cobra import CobraModelContainer
 
             return CobraModelContainer(model)
-    except Exception:
+    except ImportError:
+        # COBRA not installed
         pass
 
     raise ValueError(f"Unrecognized model class: {model.__class__.name}")

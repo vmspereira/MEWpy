@@ -60,13 +60,13 @@ def kinetic_solve(
     :type parameters: Dict[str,float], optional
     :param factors: factors to be applied to parameters, defaults to None
     :type factors: Dict[str, float], optional
-    :return: _description_
-    :rtype: _type_
+    :return: Tuple containing (status, rates, concentrations, time_points, solution_trajectory)
+    :rtype: Tuple[ODEStatus, Dict[str, float], Dict[str, float], List[float], List[float]]
     """
 
     rates = OrderedDict()
-    f = model.get_ode(r_dict=rates, params=parameters, factors=factors)
-    solver = ode_solver_instance(f, KineticConfigurations.SOLVER_METHOD)
+    ode_function = model.get_ode(r_dict=rates, params=parameters, factors=factors)
+    solver = ode_solver_instance(ode_function, KineticConfigurations.SOLVER_METHOD)
 
     try:
         C, t, y = solver.solve(y0, time_steps)
@@ -84,7 +84,11 @@ def kinetic_solve(
 
         return ODEStatus.OPTIMAL, rates, conc, t, y
 
-    except Exception:
+    except (ValueError, RuntimeError, ArithmeticError) as e:
+        # Numerical errors during ODE integration
+        import warnings
+
+        warnings.warn(f"Kinetic solve failed: {e}")
         return ODEStatus.ERROR, None, None, None, None
 
 
@@ -167,13 +171,13 @@ class KineticSimulationResult(SimulationResult):
         :type status: ODEStatus
         :param factors: factors used in the simulation, defaults to None
         :type factors: Dict[str, float], optional
-        :param rates: _description_, defaults to None
+        :param rates: Steady-state reaction rates, defaults to None
         :type rates: Dict[str, float], optional
-        :param concentrations: _description_, defaults to None
+        :param concentrations: Steady-state metabolite concentrations, defaults to None
         :type concentrations: List[float], optional
         :param t: integration time points, defaults to None
         :type t: List[float], optional
-        :param y: _description_, defaults to None
+        :param y: Full solution trajectory over time, defaults to None
         :type y: List[float], optional
         """
         super(KineticSimulationResult, self).__init__(model, None, fluxes=rates, status=status)
@@ -193,12 +197,12 @@ class KineticSimulationResult(SimulationResult):
             raise ValueError(f"Unknown metabolite {m_id}")
 
     def get_concentrations(self, format: str = None) -> Union["pandas.DataFrame", Dict[str, float]]:
-        """_summary_
+        """Get the steady-state metabolite concentrations.
 
         :param format:The output format ("df" or None), defaults to None
         :type format: str, optional
         :return: the steady-state metabolite concentrations
-        :rtype: _type_
+        :rtype: Union[pandas.DataFrame, Dict[str, float]]
         """
         if format and format == "df":
             import pandas as pd

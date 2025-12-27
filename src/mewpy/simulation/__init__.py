@@ -33,8 +33,10 @@ default_solver = None
 
 def get_default_solver():
     """
+    Get the currently configured default solver.
+
     Returns:
-        [type]: [description]
+        str: Name of the default solver (e.g., 'cplex', 'gurobi', 'glpk')
     """
     global default_solver
 
@@ -70,7 +72,9 @@ def set_default_solver(solvername):
             import mewpy.solvers as msolvers
 
             msolvers.set_default_solver(solvername)
-        except:
-            pass
+        except (ImportError, AttributeError) as e:
+            import warnings
+
+            warnings.warn(f"Failed to set default solver '{solvername}': {e}")
     else:
         raise RuntimeError(f"Solver {solvername} not available.")

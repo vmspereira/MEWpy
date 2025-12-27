@@ -52,6 +52,7 @@ class CobraModelContainer(ModelContainer):
 
     def __init__(self, model: Model = None):
         self.model = model
+        self._gene_to_reaction = None
 
     @property
     def id(self):
@@ -188,7 +189,7 @@ class CobraModelContainer(ModelContainer):
         :return: A map of genes to reactions.
         :rtype: Dict[str,List[str]]
         """
-        if not self._gene_to_reaction:
+        if self._gene_to_reaction is None:
             gr = dict()
             for rxn_id in self.reactions:
                 rxn = self.model.reactions.get_by_id(rxn_id)
@@ -255,9 +256,8 @@ class Simulation(CobraModelContainer, Simulator):
             "suboptimal": SStatus.SUBOPTIMAL,
             "unknown": SStatus.UNKNOWN,
         }
-        self.solver = solver
         self._reset_solver = reset_solver
-        self.reverse_sintax = []
+        self.reverse_syntax = []
         self._m_r_lookup = None
 
         self._MAX_STR = "maximize"
@@ -275,7 +275,8 @@ class Simulation(CobraModelContainer, Simulator):
         self.biomass_reaction = None
         try:
             self.biomass_reaction = list(self.objective.keys())[0]
-        except:
+        except (IndexError, KeyError, AttributeError):
+            # Objective may be empty or not properly defined
             pass
 
     @property
@@ -467,15 +468,16 @@ class Simulation(CobraModelContainer, Simulator):
         """
         transport_reactions = []
         for rx in self.reactions:
-            s_set = set()
-            p_set = set()
-            s = self.model.reactions.get_by_id(rx).reactants
-            for x in s:
-                s_set.add(x.compartment)
-            p = self.model.reactions.get_by_id(rx).products
-            for x in p:
-                p_set.add(x.compartment)
-            if len(p_set.intersection(s_set)) == 0:
+            substrate_compartments = set()
+            product_compartments = set()
+            reactants = self.model.reactions.get_by_id(rx).reactants
+            for metabolite in reactants:
+                substrate_compartments.add(metabolite.compartment)
+            products = self.model.reactions.get_by_id(rx).products
+            for metabolite in products:
+                product_compartments.add(metabolite.compartment)
+            # Transport reactions have substrates and products in different compartments
+            if len(product_compartments.intersection(substrate_compartments)) == 0:
                 transport_reactions.append(rx)
         return transport_reactions
 
@@ -609,6 +611,7 @@ class Simulation(CobraModelContainer, Simulator):
         if not objective:
             objective = self.model.objective
         elif isinstance(objective, dict) and len(objective) > 0:
+            # Extract first reaction ID from objective dictionary as COBRApy expects a reaction ID string
             objective = next(iter(objective.keys()))
 
         simul_constraints = {}
@@ -692,7 +695,7 @@ class Simulation(CobraModelContainer, Simulator):
         constraints: Dict[str, Union[float, Tuple[float, float]]] = None,
         loopless: bool = False,
         solver=None,
-        format: bool = "dict",
+        format: str = "dict",
     ) -> Union[dict, "DataFrame"]:
         """ Flux Variability Analysis (FVA).
 
@@ -704,8 +707,9 @@ class Simulation(CobraModelContainer, Simulator):
         :param dic constraints: Additional constraints (optional).
         :param boolean loopless: Run looplessFBA internally (very slow) (default: false).
         :param solver: A pre-instantiated solver instance (optional).
-        :param format: The return format: 'dict', returns a dictionary,'df' returns a data frame.
-        :returns: A dictionary of flux variation ranges.
+        :param format: The return format: 'dict' returns a dictionary, 'df' returns a pandas DataFrame.
+        :returns: Flux variation ranges. Returns dict[str, list[float, float]] if format='dict',
+                  or pandas.DataFrame with columns ['Reaction ID', 'Minimum', 'Maximum'] if format='df'.
 
         """
         from cobra.flux_analysis.variability import flux_variability_analysis
@@ -831,7 +835,8 @@ class GeckoSimulation(Simulation):
                             reaction_list = self._prot_react[p]
                             reaction_list.append(r_id)
 
-                        except Exception:
+                        except KeyError:
+                            # Protein not in mapping
                             pass
         return self._prot_react
 

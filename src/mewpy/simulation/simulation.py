@@ -21,6 +21,7 @@ simulation toolboxes.
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import math
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -33,6 +34,8 @@ from tqdm import tqdm
 
 from ..util.parsing import evaluate_expression_tree
 from ..util.process import cpu_count
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationMethod(Enum):
@@ -168,7 +171,7 @@ class ModelContainer(ABC):
         return {m_id: coeff for m_id, coeff in met.items() if coeff > 0}
 
     def get_exchange_reactions(self):
-        return NotImplementedError
+        raise NotImplementedError("Subclasses must implement get_exchange_reactions()")
 
     def get_gene_reactions(self):
         raise NotImplementedError
@@ -181,9 +184,9 @@ class ModelContainer(ABC):
         return rxn["gpr"]
 
     def summary(self):
-        print(f"Metabolites: {len(self.metabolites)}")
-        print(f"Reactions: {len(self.reactions)}")
-        print(f"Genes: {len(self.genes)}")
+        logger.info(f"Metabolites: {len(self.metabolites)}")
+        logger.info(f"Reactions: {len(self.reactions)}")
+        logger.info(f"Genes: {len(self.genes)}")
 
     def set_objective(self, reaction):
         raise NotImplementedError
@@ -255,7 +258,7 @@ class Simulator(ModelContainer, SimulationInterface):
         """
         constraints_list = [None] if not constraints_list else constraints_list
         jobs = jobs if jobs else cpu_count()
-        print(f"Using {jobs} jobs")
+        logger.debug(f"Using {jobs} jobs")
         from ..util.utilities import tqdm_joblib
 
         with tqdm_joblib(tqdm(desc=desc, total=len(constraints_list))):
@@ -460,7 +463,7 @@ class Simulator(ModelContainer, SimulationInterface):
         return self._reference
 
     def create_empty_model(self, model_id: str):
-        return NotImplementedError
+        raise NotImplementedError("Subclasses must implement create_empty_model()")
 
     def get_external_metabolites(self):
         external = []
