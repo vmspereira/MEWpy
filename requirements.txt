@@ -9,4 +9,5 @@ tqdm
 joblib
 httpx
 pandas
+numexpr
 
