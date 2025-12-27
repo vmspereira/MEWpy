@@ -25,8 +25,8 @@ import warnings
 from collections import OrderedDict
 from typing import Any, Dict, List
 
-import numpy as np
 import numexpr as ne
+import numpy as np
 
 from mewpy.util.parsing import Arithmetic, Latex, build_tree
 from mewpy.util.utilities import AttrDict
@@ -80,26 +80,25 @@ class Metabolite(object):
         return str(self)
 
 
-def calculate_yprime(y, rate: np.array, substrates: List[str], products: List[str]):
+def calculate_yprime(y, rate: np.array, stoichiometry: Dict[str, float]):
     """Calculate the rate of change for each metabolite.
 
-    Subtracts the rate from substrates and adds it to products.
+    Applies stoichiometric coefficients to the reaction rate for each metabolite.
+    Negative coefficients indicate substrates, positive indicate products.
 
     Args:
-        y: Dictionary of substrate values
+        y: Dictionary of metabolite concentrations
         rate: The calculated reaction rate
-        substrates: List of substrate IDs for which rate should be subtracted
-        products: List of product IDs for which rate should be added
+        stoichiometry: Dictionary mapping metabolite IDs to stoichiometric coefficients
+                       (negative for substrates, positive for products)
 
     Returns:
-        Dictionary of metabolite rates (y_prime) after applying the reaction rate
+        Dictionary of metabolite rates (y_prime) after applying stoichiometric coefficients
     """
     y_prime = {name: 0 for name in y.keys()}
-    for name in substrates:
-        y_prime[name] -= rate
-
-    for name in products:
-        y_prime[name] += rate
+    for m_id, coeff in stoichiometry.items():
+        if m_id in y_prime:
+            y_prime[m_id] += coeff * rate
 
     return y_prime
 
@@ -201,6 +200,10 @@ class Rule(object):
             s = set(self.parse_parameters()) - set(param.keys())
             raise ValueError(f"Values missing for parameters: {s}")
         t = self.replace(param)
+
+        # Convert pow(x, y) to x**y for numexpr compatibility
+        t = re.sub(r"pow\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)", r"(\1)**(\2)", t)
+
         # Use numexpr for safe evaluation (prevents code injection)
         try:
             rate = ne.evaluate(t, local_dict={}).item()
@@ -327,6 +330,10 @@ class KineticReaction(Rule):
                 for p in s:
                     param[p] = self.parameter_distributions[p].rvs()
         t = self.replace(param)
+
+        # Convert pow(x, y) to x**y for numexpr compatibility
+        t = re.sub(r"pow\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)", r"(\1)**(\2)", t)
+
         # Use numexpr for safe evaluation (prevents code injection)
         try:
             rate = ne.evaluate(t, local_dict={}).item()
@@ -335,18 +342,18 @@ class KineticReaction(Rule):
         return rate
 
     def reaction(self, y, substrates={}, parameters={}):
-        """_summary_
+        """Calculate the reaction's contribution to metabolite rates of change.
 
         Args:
-            y (dict): dictionary of metabolite to concentration
-            substrates (dict, optional): _description_. Defaults to {}.
-            parameters (dict, optional): _description_. Defaults to {}.
+            y (dict): Dictionary of metabolite concentrations
+            substrates (dict, optional): Substrate concentrations. Defaults to {}.
+            parameters (dict, optional): Kinetic parameters. Defaults to {}.
 
         Returns:
-            _type_: _description_
+            np.array: Array of metabolite rates with stoichiometric coefficients applied
         """
         rate = self.calculate_rate(substrates, parameters)
-        y_prime_dic = calculate_yprime(y, rate, self.substrates, self.products)
+        y_prime_dic = calculate_yprime(y, rate, self.stoichiometry)
         # y_prime_dic = self.modify_product(y_prime_dic, substrate_names)
         y_prime = np.array(list(y_prime_dic.values()))
         # if not self.reversible:
@@ -607,7 +614,9 @@ class ODEModel:
 
         Args:
             m_id (str): The metabolite identifier
-            factors (dict, optional): Factors applied to parameters. Defaults to None.
+            factors (dict, optional): Factors applied to metabolite production (products only).
+                                     Used to model reduced enzyme expression or regulatory effects.
+                                     Defaults to None.
 
         Returns:
             str: Mass balance equation
@@ -618,6 +627,8 @@ class ODEModel:
 
         terms = []
         for r_id, coeff in table[m_id].items():
+            # Apply factor only to products (positive coefficients) to model reduced production
+            # while keeping consumption (negative coefficients) unchanged
             v = coeff * f if coeff > 0 else coeff
             terms.append(f"{v:+g} * r['{r_id}']")
 
@@ -713,9 +724,7 @@ class ODEModel:
         Deriv function called by integrate.
 
         For each step when the model is run, the rate for each reaction is calculated
-        and changes in substrates and products calculated.
-        These are returned by this function as y_prime, which are added to y which is
-        returned by run_model
+        and changes in substrates and products calculated, normalized by compartment volume.
 
         Args:
             t : time, not used in this function but required
@@ -724,13 +733,21 @@ class ODEModel:
                Has the same order as self.run_model_species_names
 
         Returns:
-            y_prime - ordered list the same as y, y_prime is the new set of y's for this timepoint.
+            y_prime - ordered list the same as y, y_prime is the new set of y's for this timepoint,
+                     normalized by compartment volumes.
         """
         p = self.merge_constants()
         m_y = OrderedDict(zip(self.metabolites, y))
         yprime = np.zeros(len(y))
         for _, reaction in self.ratelaws.items():
             yprime += reaction.reaction(m_y, self.get_parameters(), p)
+
+        # Normalize by compartment volume (dC/dt = rate / volume)
+        for i, m_id in enumerate(self.metabolites):
+            c_id = self.metabolites[m_id].compartment
+            volume = p[c_id]
+            yprime[i] /= volume
+
         return yprime.tolist()
 
     def build_ode(self, factors: dict = None, local: bool = False) -> str:
