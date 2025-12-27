@@ -498,10 +498,16 @@ class Simulation(CBModelContainer, Simulator):
                 forward_suffix_start = len(reaction_id) - len(forward_suffix)
                 backward_suffix_start = len(reaction_id) - len(backward_suffix)
                 # If reaction has forward suffix, check if backward counterpart exists
-                if reaction_id[forward_suffix_start:] == forward_suffix and reactions[reaction_id[:forward_suffix_start] + backward_suffix]:
+                if (
+                    reaction_id[forward_suffix_start:] == forward_suffix
+                    and reactions[reaction_id[:forward_suffix_start] + backward_suffix]
+                ):
                     return reaction_id[:forward_suffix_start] + backward_suffix
                 # If reaction has backward suffix, check if forward counterpart exists
-                elif reaction_id[backward_suffix_start:] == backward_suffix and reactions[reaction_id[:backward_suffix_start] + forward_suffix]:
+                elif (
+                    reaction_id[backward_suffix_start:] == backward_suffix
+                    and reactions[reaction_id[:backward_suffix_start] + forward_suffix]
+                ):
                     return reaction_id[:backward_suffix_start] + forward_suffix
                 else:
                     continue
@@ -745,8 +751,7 @@ class Simulation(CBModelContainer, Simulator):
             import pandas as pd
 
             result_items = res.items()
-            formatted_rows = [[rxn_id, lower_bound, upper_bound]
-                            for rxn_id, [lower_bound, upper_bound] in result_items]
+            formatted_rows = [[rxn_id, lower_bound, upper_bound] for rxn_id, [lower_bound, upper_bound] in result_items]
             df = pd.DataFrame(formatted_rows, columns=["Reaction ID", "Minimum", "Maximum"])
             return df
         return res
