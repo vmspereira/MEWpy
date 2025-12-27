@@ -36,6 +36,13 @@ logger = logging.getLogger(__name__)
 IntTupple = Tuple[int]
 
 
+def _clear_abstract_methods(cls):
+    """Decorator to clear abstract methods for Python 3.11+ compatibility"""
+    cls.__abstractmethods__ = frozenset()
+    return cls
+
+
+@_clear_abstract_methods
 class KOSolution(Solution[int], SolutionInterface):
     """Class representing a KO solution"""
 
@@ -106,6 +113,7 @@ class KOSolution(Solution[int], SolutionInterface):
         return " ".join((self.variables))
 
 
+@_clear_abstract_methods
 class OUSolution(Solution[IntTupple], SolutionInterface):
     """
     Class representing a Over/Under expression solution.
@@ -164,12 +172,6 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
 
     def __str__(self):
         return " ".join((self.variables))
-
-
-# Python 3.11+ compatibility: Clear __abstractmethods__ to prevent
-# "Can't instantiate abstract class" errors with Generic types
-KOSolution.__abstractmethods__ = frozenset()
-OUSolution.__abstractmethods__ = frozenset()
 
 
 class JMetalKOProblem(Problem[KOSolution], Evaluable):
