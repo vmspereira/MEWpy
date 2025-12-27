@@ -21,6 +21,7 @@ Author: Vitor Pereira
 Contributors: Paulo Carvalhais
 ##############################################################################
 """
+from copy import deepcopy
 from math import inf
 
 from mewpy.simulation import get_simulator
@@ -32,12 +33,13 @@ from mewpy.solvers.solver import VarType
 from .. import ExpressionSet, Preprocessing
 
 
-def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1):
+def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1, build_model=False):
     """
     iMAT (Integrative Metabolic Analysis Tool) algorithm.
 
     Integrates gene expression data using MILP to maximize consistency between
-    fluxes and expression levels.
+    fluxes and expression levels. Can generate tissue-specific models by removing
+    inactive reactions.
 
     :param model: a REFRAMED or COBRApy model or a MEWpy Simulator
     :param expr: ExpressionSet or tuple of (low_coeffs, high_coeffs) dicts
@@ -47,7 +49,9 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1)
                    "lowly expressed" and above 75th are "highly expressed"
     :param condition: condition index to use from ExpressionSet
     :param epsilon: threshold for considering a reaction "active" (flux > epsilon)
-    :return: Solution
+    :param build_model: if True, returns a tissue-specific model with inactive reactions removed.
+                        if False, returns only flux predictions (default: False)
+    :return: Solution (or tuple of (solution, model) if build_model=True)
     """
     # Validate cutoff parameter
     if not isinstance(cutoff, tuple) or len(cutoff) != 2:
@@ -58,7 +62,11 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1)
     if not (0 <= low_cutoff < high_cutoff <= 100):
         raise ValueError(f"cutoff must be (low, high) with 0 <= low < high <= 100, got: ({low_cutoff}, {high_cutoff})")
 
-    sim = get_simulator(model)
+    # Use deepcopy if building a tissue-specific model (will modify structure)
+    if not build_model:
+        sim = get_simulator(model)
+    else:
+        sim = get_simulator(deepcopy(model))
 
     if isinstance(expr, ExpressionSet):
         pp = Preprocessing(sim, expr)
@@ -145,5 +153,21 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1)
 
     solution = solver.solve(objective_dict, minimize=False, constraints=constraints)
 
+    # Build tissue-specific model if requested
+    if build_model:
+        # Remove reactions with near-zero flux (inactive reactions)
+        # A reaction is considered active if |flux| >= epsilon
+        rx_to_delete = []
+        for r_id in sim.reactions:
+            flux = solution.values.get(r_id, 0)
+            if abs(flux) < epsilon:
+                rx_to_delete.append(r_id)
+
+        sim.remove_reactions(rx_to_delete)
+
     res = to_simulation_result(model, None, constraints, sim, solution)
-    return res
+
+    if build_model:
+        return res, sim
+    else:
+        return res

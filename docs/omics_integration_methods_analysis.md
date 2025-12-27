@@ -521,12 +521,14 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1)
 |---------|--------|-------|------|
 | **Complexity** | Low (bound scaling) | Medium (LP/MILP) | High (MILP) |
 | **Optimization** | FBA | Linear/Parsimonious | Binary/Combinatorial |
-| **Model Building** | No | Optional | No |
+| **Model Building** | ✅ Optional (NEW) | ✅ Optional | ✅ Optional (NEW) |
 | **Handles Reversibility** | Implicitly | Explicitly splits | Explicitly splits |
 | **Expression Categories** | Continuous | Binary (percentile) | Binary (two cutoffs) |
 | **Computation Time** | Fast (LP) | Medium (LP/MILP) | Slow (MILP with binaries) |
 | **Code Quality** | Good | Good | Good |
-| **Critical Issues** | 1 (div by zero) | 1 (threshold logic) | 2 (constraint formulation) |
+| **Critical Issues** | ✅ Fixed | ✅ Fixed | ✅ Fixed |
+
+**Update (2025-12-27)**: All three methods now support `build_model` parameter for consistent API and tissue-specific model generation.
 
 ---
 
