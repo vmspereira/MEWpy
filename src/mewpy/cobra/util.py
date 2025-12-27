@@ -37,18 +37,28 @@ if TYPE_CHECKING:
 
 def convert_gpr_to_dnf(model) -> None:
     """
-    Convert all existing GPR associations to DNF.
+    Convert all existing GPR (Gene-Protein-Reaction) associations to DNF (Disjunctive Normal Form).
+
+    DNF is a standardized form where the GPR rule is expressed as an OR of ANDs,
+    e.g., (geneA and geneB) or (geneC and geneD)
+
+    :param model: A COBRApy or REFRAMED Model or an instance of Simulator
     """
     sim = get_simulator(model)
-    for rxn_id in tqdm(sim.reactions):
+    for rxn_id in tqdm(sim.reactions, desc="Converting GPRs to DNF"):
         rxn = sim.get_reaction(rxn_id)
         if not rxn.gpr:
             continue
-        tree = build_tree(rxn.gpr, Boolean)
-        gpr = tree.to_infix()
-        # TODO: update the gpr
+        try:
+            tree = build_tree(rxn.gpr, Boolean)
+            gpr_dnf = tree.to_dnf().to_infix()
+            # Update the reaction's GPR
+            rxn.gpr = gpr_dnf
+        except Exception as e:
+            # If conversion fails, keep original GPR
+            import warnings
 
-        return gpr
+            warnings.warn(f"Failed to convert GPR for reaction {rxn_id}: {e}")
 
 
 def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"], inline: bool = False):

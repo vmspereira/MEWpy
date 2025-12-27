@@ -165,7 +165,7 @@ def minimal_medium(
             warn_wrapper(f"Reactions ignored (multiple compounds): {multiple_compounds}")
         if no_compounds:
             warn_wrapper(f"Reactions ignored (no compounds): {no_compounds}")
-        if multiple_compounds:
+        if no_formula:
             warn_wrapper(f"Compounds ignored (no formula): {no_formula}")
         if invalid_formulas:
             warn_wrapper(f"Compounds ignored (invalid formula): {invalid_formulas}")
