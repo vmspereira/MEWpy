@@ -52,7 +52,7 @@ def minimal_medium(
 
     :param model: model
     :param exchange_reactions: list of exchange reactions (if not provided all model exchange reactions are used)
-    :param (int) direction (int): direction of uptake reactions (negative or positive, default: -1)
+    :param direction (int): direction of uptake reactions (-1 for uptake, 1 for secretion, default: -1)
     :param min_mass_weight (bool): minimize by molecular weight of compounds (default: False)
     :param min_growth (float): minimum growth rate (default: 1)
     :param max_uptake (float): maximum uptake rate (default: 100)
@@ -71,6 +71,9 @@ def minimal_medium(
     """
 
     sim = get_simulator(model)
+
+    if direction not in (-1, 1):
+        raise ValueError(f"direction must be -1 (uptake) or 1 (secretion), got: {direction}")
 
     def warn_wrapper(message):
         if warnings:
@@ -251,11 +254,25 @@ def minimal_medium(
 
 
 def get_medium(solution, exchange, direction, abstol):
-    return set(
-        r_id
-        for r_id in exchange
-        if (direction < 0 and solution.values[r_id] < -abstol or direction > 0 and solution.values[r_id] > abstol)
-    )
+    """
+    Extract active exchange reactions from solution.
+
+    :param solution: Solver solution
+    :param exchange: List of exchange reaction IDs
+    :param direction: Direction of uptake (-1 for uptake, 1 for secretion)
+    :param abstol: Absolute tolerance for detecting non-zero flux
+    :return: Set of active exchange reaction IDs
+    """
+    active_reactions = set()
+    for r_id in exchange:
+        flux = solution.values[r_id]
+        # For uptake (direction < 0), flux should be negative
+        if direction < 0 and flux < -abstol:
+            active_reactions.add(r_id)
+        # For secretion (direction > 0), flux should be positive
+        elif direction > 0 and flux > abstol:
+            active_reactions.add(r_id)
+    return active_reactions
 
 
 def validate_solution(model, medium, exchange_reactions, direction, min_growth, max_uptake):
