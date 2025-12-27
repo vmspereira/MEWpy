@@ -27,6 +27,13 @@ class MEWPYSimSolvers(Singleton):
         except ImportError:
             pass
 
+        try:
+            import pyscipopt
+
+            self._mewpy_sim_solvers.append("scip")
+        except ImportError:
+            pass
+
     def get_solvers(self):
         if not self._mewpy_sim_solvers:
             self.build()
