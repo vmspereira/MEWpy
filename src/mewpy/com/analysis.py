@@ -36,7 +36,6 @@ from mewpy.solvers.solver import VarType
 from mewpy.util import AttrDict
 from mewpy.util.constants import ModelConstants
 
-
 # Constants for SMETANA algorithms
 # Numerical tolerances
 DEFAULT_ABS_TOL = 1e-6  # Absolute tolerance for detecting non-zero fluxes
