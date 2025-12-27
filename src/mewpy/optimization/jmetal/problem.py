@@ -36,13 +36,6 @@ logger = logging.getLogger(__name__)
 IntTupple = Tuple[int]
 
 
-def _clear_abstract_methods(cls):
-    """Decorator to clear abstract methods for Python 3.11+ compatibility"""
-    cls.__abstractmethods__ = frozenset()
-    return cls
-
-
-@_clear_abstract_methods
 class KOSolution(Solution[int], SolutionInterface):
     """Class representing a KO solution"""
 
@@ -57,6 +50,18 @@ class KOSolution(Solution[int], SolutionInterface):
         super(KOSolution, self).__init__(number_of_variables, number_of_objectives, number_of_constraints)
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
+        # Initialize variables list for jmetalpy 1.9+ compatibility
+        self._variables: List[int] = [[] for _ in range(number_of_variables)]
+
+    @property
+    def variables(self) -> List[int]:
+        """Get the decision variables (jmetalpy 1.9+ compatibility)"""
+        return self._variables
+
+    @variables.setter
+    def variables(self, values: List[int]):
+        """Set the decision variables (jmetalpy 1.9+ compatibility)"""
+        self._variables = values
 
     def __eq__(self, solution) -> bool:
         if isinstance(solution, self.__class__):
@@ -113,7 +118,6 @@ class KOSolution(Solution[int], SolutionInterface):
         return " ".join((self.variables))
 
 
-@_clear_abstract_methods
 class OUSolution(Solution[IntTupple], SolutionInterface):
     """
     Class representing a Over/Under expression solution.
@@ -125,6 +129,18 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
         super(OUSolution, self).__init__(number_of_variables, number_of_objectives)
         self.upper_bound = upper_bound
         self.lower_bound = lower_bound
+        # Initialize variables list for jmetalpy 1.9+ compatibility
+        self._variables: List[IntTupple] = [[] for _ in range(number_of_variables)]
+
+    @property
+    def variables(self) -> List[IntTupple]:
+        """Get the decision variables (jmetalpy 1.9+ compatibility)"""
+        return self._variables
+
+    @variables.setter
+    def variables(self, values: List[IntTupple]):
+        """Set the decision variables (jmetalpy 1.9+ compatibility)"""
+        self._variables = values
 
     def __eq__(self, solution) -> bool:
         if isinstance(solution, self.__class__):
