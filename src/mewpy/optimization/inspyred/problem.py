@@ -76,12 +76,13 @@ class InspyredProblem(Evaluable):
             v = [a * b for a, b in zip(p, self.direction)]
             return Pareto(v)
 
-    def evaluator(self, candidates, *args):
+    def evaluator(self, candidates, args=None):
         """
         Evaluator
         Note: shouldn't be dependent on args to ease multiprocessing
 
         :param candidates: A list of candidate solutions.
+        :param args: Optional arguments (not used, for inspyred compatibility).
         :returns: A list of Pareto fitness values or a list of fitness values.
 
         """

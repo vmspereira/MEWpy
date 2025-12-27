@@ -158,7 +158,7 @@ class EA(AbstractEA):
         logger.info("Running %s", self.algorithm_name)
         if self.algorithm_name == "NSGAIII":
             args["reference_directions"] = UniformReferenceDirectionFactory(
-                self.ea_problem.number_of_objectives, n_points=self.population_size - 1
+                self.ea_problem.number_of_objectives(), n_points=self.population_size - 1
             )
             algorithm = NSGAIII(**args)
         else:
