@@ -131,27 +131,15 @@ latex_precedence = {
 def evaluate_expression(expression: str, variables: T.List[str]) -> T.Any:
     """Evaluates a logical expression (containing variables, 'and','or','(' and ')')
     against the presence (True) or absence (False) of propositions within a list.
-    The evaluation is achieved usind python native eval function.
+    The evaluation is achieved using a safe parsing tree approach.
 
     :param str expression: The expression to be evaluated.
     :param list variables: List of variables to be evaluated as True.
     :returns: A boolean evaluation of the expression.
 
     """
-    expression = expression.replace("(", "( ").replace(")", " )")
-    # Symbol conversion not mandatory
-    expression = expression.replace("and", "&").replace("or", "|")
-    tokens = expression.split()
-    sentence = []
-    for token in tokens:
-        if token in "&|()":
-            sentence.append(token)
-        elif token in variables:
-            sentence.append("True")
-        else:
-            sentence.append("False")
-    proposition = " ".join(sentence)
-    return eval(proposition)
+    # Use the tree-based evaluator which is safer than eval()
+    return evaluate_expression_tree(expression, variables)
 
 
 def evaluate_expression_tree(expression: str, variables: T.List[str]) -> T.Any:
@@ -317,7 +305,11 @@ class Node(object):
         f_operator mapping functions
         """
         if f_operand is None or f_operator is None:
-            return eval(str(self))
+            raise ValueError(
+                "Both f_operand and f_operator functions must be provided for safe evaluation. "
+                "Using eval() has been disabled for security reasons. "
+                "Please provide appropriate evaluator functions."
+            )
         elif self.is_leaf():
             return f_operand(self.value)
         else:
@@ -644,7 +636,13 @@ class BooleanEvaluator:
         if op.upper() == "TRUE" or op == "1" or op in self.true_list:
             return True
         elif is_condition(op):
-            return eval(op, None, self.vars)
+            # Use safe condition evaluator instead of eval()
+            try:
+                return evaluate_condition(op, self.vars)
+            except ValueError:
+                # If condition evaluation fails (invalid format or non-numeric values), default to False
+                # This can happen with malformed conditions like "x y z" or "x > abc"
+                return False
         else:
             return False
 
@@ -856,6 +854,73 @@ def is_condition(token: str) -> bool:
     """Returns True if the token is a condition"""
     regexp = re.compile(r">|<|=")
     return bool(regexp.search(token))
+
+
+def evaluate_condition(condition: str, variables: T.Dict[str, T.Union[int, float]]) -> bool:
+    """Safely evaluates a condition expression like 'x > 5' or 'y <= 10'.
+
+    This function parses and evaluates comparison expressions without using eval(),
+    providing a safer alternative for regulatory condition evaluation.
+
+    :param condition: The condition string (e.g., 'x > 5', 'y <= 10')
+    :param variables: Dictionary mapping variable names to numeric values
+    :returns: Boolean result of the condition evaluation
+    :raises ValueError: If the condition format is invalid
+    """
+    condition = condition.strip()
+
+    # Define comparison operators
+    operators = {
+        ">=": lambda x, y: x >= y,
+        "<=": lambda x, y: x <= y,
+        "=>": lambda x, y: x >= y,  # Alternative notation
+        "=<": lambda x, y: x <= y,  # Alternative notation
+        ">": lambda x, y: x > y,
+        "<": lambda x, y: x < y,
+        "==": lambda x, y: x == y,
+        "=": lambda x, y: x == y,
+        "!=": lambda x, y: x != y,
+    }
+
+    # Try to parse the condition with different operator patterns
+    # Sort operators by length (longest first) to match '>=' before '>'
+    for op_str in sorted(operators.keys(), key=len, reverse=True):
+        if op_str in condition:
+            parts = condition.split(op_str, 1)
+            if len(parts) == 2:
+                left_str, right_str = parts[0].strip(), parts[1].strip()
+
+                # Determine which side is the variable and which is the value
+                left_is_var = not is_number(left_str)
+                right_is_var = not is_number(right_str)
+
+                if left_is_var and not right_is_var:
+                    # Format: var op value (e.g., 'x > 5')
+                    var_name = left_str
+                    value = float(right_str)
+                    var_value = variables.get(var_name, 0)
+                    return operators[op_str](var_value, value)
+
+                elif not left_is_var and right_is_var:
+                    # Format: value op var (e.g., '5 < x')
+                    value = float(left_str)
+                    var_name = right_str
+                    var_value = variables.get(var_name, 0)
+                    return operators[op_str](value, var_value)
+
+                elif left_is_var and right_is_var:
+                    # Format: var op var (e.g., 'x > y')
+                    left_val = variables.get(left_str, 0)
+                    right_val = variables.get(right_str, 0)
+                    return operators[op_str](left_val, right_val)
+                else:
+                    # Format: value op value (e.g., '5 > 3')
+                    left_val = float(left_str)
+                    right_val = float(right_str)
+                    return operators[op_str](left_val, right_val)
+
+    # If no operator found, raise an error
+    raise ValueError(f"Invalid condition format: '{condition}'")
 
 
 def isozymes(exp: str) -> T.List[str]:
