@@ -79,7 +79,7 @@ def GIMME(
     else:
         coeffs = expr
         threshold = cutoff
-    print(coeffs)
+
     solver = solver_instance(sim)
 
     if biomass is None:

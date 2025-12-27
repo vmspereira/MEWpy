@@ -45,18 +45,50 @@ class ExpressionSet:
             conditions (list): Time, experiment,... identifiers.
             expression (np.array): expression values.
             p_values (np.array, optional): p-values. Defaults to None.
+
+        Raises:
+            ValueError: If identifiers or conditions are empty.
+            ValueError: If identifiers or conditions contain duplicates.
+            ValueError: If expression shape doesn't match identifiers/conditions.
+            ValueError: If p_values shape is invalid.
         """
+        # Validate non-empty
+        if not identifiers:
+            raise ValueError("Identifiers cannot be empty")
+        if not conditions:
+            raise ValueError("Conditions cannot be empty")
+
+        # Check for duplicates
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("Duplicate identifiers found")
+
+        # Convert conditions to strings and check for duplicates
+        str_conditions = [str(x) for x in conditions]
+        if len(str_conditions) != len(set(str_conditions)):
+            raise ValueError("Duplicate conditions found")
+
+        # Validate expression shape
         n = len(identifiers)
-        m = len(conditions)
+        m = len(str_conditions)
         if expression.shape != (n, m):
             raise ValueError(
                 f"The shape of the expression {expression.shape} does not "
-                f"match the expression and conditions sizes ({n},{m})"
+                f"match the identifiers and conditions sizes ({n},{m})"
             )
+
+        # Validate p_values shape if provided
+        if p_values is not None:
+            # p_values should have shape (n, C(m, 2)) where C(m, 2) is number of condition pairs
+            expected_p_cols = len(list(combinations(str_conditions, 2)))
+            if p_values.shape != (n, expected_p_cols):
+                raise ValueError(
+                    f"p_values shape {p_values.shape} doesn't match expected "
+                    f"({n}, {expected_p_cols}) for {m} conditions"
+                )
 
         self._identifiers = identifiers
         self._identifier_index = {iden: idx for idx, iden in enumerate(identifiers)}
-        self._conditions = [str(x) for x in conditions]
+        self._conditions = str_conditions
         self._condition_index = {cond: idx for idx, cond in enumerate(self._conditions)}
         self._expression = expression
         self._p_values = p_values
@@ -166,12 +198,11 @@ class ExpressionSet:
         """Returns the numpy array of p-values.
 
         Raises:
-            ValueError: [description]
+            ValueError: If p-values are not defined.
         """
-        if not self._p_values.all():
+        if self._p_values is None:
             raise ValueError("No p-values defined.")
-        else:
-            return self._p_values
+        return self._p_values
 
     @p_values.setter
     def p_values(self, p_values: np.array):
