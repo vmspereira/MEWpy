@@ -311,6 +311,14 @@ class AbstractProblem(ABC):
                 p.append(f.worst_fitness)
             if EAConstants.DEBUG:
                 warnings.warn(f"Solution couldn't be evaluated [{e}]\n {constraints}")
+        except Exception as e:
+            # Catch all other exceptions (including cobra.exceptions.Infeasible)
+            # This ensures EA continues even with infeasible solutions
+            p = []
+            for f in self.fevaluation:
+                p.append(f.worst_fitness)
+            if EAConstants.DEBUG:
+                warnings.warn(f"Solution evaluation failed [{type(e).__name__}: {e}]\n {constraints}")
         del simulation_results
         return p
 
