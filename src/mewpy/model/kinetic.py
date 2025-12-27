@@ -115,17 +115,18 @@ def check_positive(y_prime: List[float]):
 class Rule(object):
     """Base class for kinetic rules."""
 
-    def __init__(self, r_id: str, law: str, parameters: Dict[str, float] = dict()):
+    def __init__(self, r_id: str, law: str, parameters: Dict[str, float] = None):
         """Creates a new rule
 
         Args:
             r_id (str): Reaction/rule identifier
             law (str): The rule string representation.
+            parameters (Dict[str, float], optional): Parameter values. Defaults to None.
         """
         self.id = r_id
         self.law = law
         self._tree = None
-        self.parameters = parameters
+        self.parameters = parameters if parameters is not None else {}
 
     @property
     def tree(self):
@@ -156,7 +157,8 @@ class Rule(object):
         try:
             self.parameters[new_parameter] = self.parameters[old_parameter]
             del self.parameters[old_parameter]
-        except:
+        except KeyError:
+            # Parameter doesn't exist in parameters dict, that's OK
             pass
 
     def get_parameters(self):
@@ -219,11 +221,11 @@ class KineticReaction(Rule):
         r_id: str,
         law: str,
         name: str = None,
-        stoichiometry: dict = {},
-        parameters: dict = {},
-        modifiers: list = [],
+        stoichiometry: dict = None,
+        parameters: dict = None,
+        modifiers: list = None,
         reversible: bool = True,
-        functions: dict = {},
+        functions: dict = None,
     ):
         """Kinetic reaction rule.
 
@@ -231,20 +233,20 @@ class KineticReaction(Rule):
             r_id (str): Reaction identifier
             law (str): kinetic law
             name (str, optional): The name of the reaction. Defaults to None.
-            stoichiometry (dict, optional): The stoichiometry of the reaction. Defaults to {}.
-            parameters (dict, optional): local parameters. Defaults to {}.
-            modifiers (list, optional): modifiers. Defaults to [].
+            stoichiometry (dict, optional): The stoichiometry of the reaction. Defaults to None.
+            parameters (dict, optional): local parameters. Defaults to None.
+            modifiers (list, optional): modifiers. Defaults to None.
             reversible (bool, optional): reversability. Defaults to True.
-            functions (dict, optional): function defined in the model. Defaults to {}.
+            functions (dict, optional): function defined in the model. Defaults to None.
         """
         super(KineticReaction, self).__init__(r_id, law, parameters)
         self.name = name if name else r_id
-        self.stoichiometry = stoichiometry
-        self.modifiers = modifiers
+        self.stoichiometry = stoichiometry if stoichiometry is not None else {}
+        self.modifiers = modifiers if modifiers is not None else []
         self.parameter_distributions = {}
         self.reversible = reversible
         self._model = None
-        self.functions = {k: v[1] for k, v in functions.items()}
+        self.functions = {k: v[1] for k, v in functions.items()} if functions else {}
 
     @property
     def tree(self):
@@ -298,8 +300,6 @@ class KineticReaction(Rule):
         m = {p_id: f"p['{p_id}']" for p_id in self.parameters.keys()}
         r_map = map.copy()
         r_map.update(m)
-
-        self
 
         return self.replace(r_map, local=local)
 
@@ -616,7 +616,10 @@ class ODEModel:
             v = coeff * f if coeff > 0 else coeff
             terms.append(f"{v:+g} * r['{r_id}']")
 
-        if f == 0 or len(terms) == 0 or (self.metabolites[m_id].constant and self.metabolites[m_id].boundary):
+        # Check if metabolite is constant and boundary (attributes may not exist)
+        is_constant = getattr(self.metabolites[m_id], "constant", False)
+        is_boundary = getattr(self.metabolites[m_id], "boundary", False)
+        if f == 0 or len(terms) == 0 or (is_constant and is_boundary):
             expr = "0"
         else:
             expr = f"1/p['{c_id}'] * ({' '.join(terms)})"

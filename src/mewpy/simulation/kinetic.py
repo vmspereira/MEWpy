@@ -145,8 +145,8 @@ class KineticThread(Process):
             self.result["concentrations"] = concentrations
             self.result["t"] = t
             self.result["y"] = y
-        except Exception:
-            warnings.warn("Timeout")
+        except Exception as e:
+            warnings.warn(f"Kinetic simulation failed: {str(e)}")
         return
 
 
@@ -277,7 +277,8 @@ class KineticSimulation(SimulationInterface):
         for i, m in enumerate(self.model.metabolites):
             try:
                 values.append(_initcon.get(m, self.model.concentrations[m]))
-            except:
+            except KeyError:
+                # Metabolite has no initial concentration defined
                 values.append(None)
         return values
 
