@@ -39,7 +39,7 @@ S_GREATER = ">"
 S_LESS = "<"
 S_EQUAL = "="
 S_GREATER_THAN_EQUAL = ">="
-S_LESS_THAN_EQUAL = "=>"
+S_LESS_THAN_EQUAL = "<="
 
 # Empty leaf symbol
 EMPTY_LEAF = "@"

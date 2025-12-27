@@ -109,6 +109,6 @@ def recorder(func: Callable):
 
             history.queue_command(undo_func=func, undo_args=(self, old_value), func=func, args=(self, value))
 
-        func(self, value)
+        return func(self, value)
 
     return wrapper
