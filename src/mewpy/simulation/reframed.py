@@ -230,7 +230,7 @@ class Simulation(CBModelContainer, Simulator):
         self._reference = reference
         self._gene_to_reaction = None
         self._reset_solver = reset_solver
-        self.reverse_sintax = [("_b", "_f")]
+        self.reverse_syntax = [("_b", "_f")]
         self._m_r_lookup = None
 
         self.__status_mapping = {
@@ -491,13 +491,17 @@ class Simulation(CBModelContainer, Simulator):
         # are decoupled into forward (reaction_id+'_f') and backward (reaction_id+'_b') reactions
         # or migth be using some other identifier which must be included in self.reverse_sufix
         else:
-            for a, b in self.reverse_sintax:
-                n = len(reaction_id) - len(a)
-                m = len(reaction_id) - len(b)
-                if reaction_id[n:] == a and reactions[reaction_id[:n] + b]:
-                    return reaction_id[:n] + b
-                elif reaction_id[m:] == b and reactions[reaction_id[:m] + a]:
-                    return reaction_id[:m] + a
+            # Check if reaction ID ends with forward/backward suffixes and swap them
+            for forward_suffix, backward_suffix in self.reverse_syntax:
+                # Calculate where suffix starts in reaction ID
+                forward_suffix_start = len(reaction_id) - len(forward_suffix)
+                backward_suffix_start = len(reaction_id) - len(backward_suffix)
+                # If reaction has forward suffix, check if backward counterpart exists
+                if reaction_id[forward_suffix_start:] == forward_suffix and reactions[reaction_id[:forward_suffix_start] + backward_suffix]:
+                    return reaction_id[:forward_suffix_start] + backward_suffix
+                # If reaction has backward suffix, check if forward counterpart exists
+                elif reaction_id[backward_suffix_start:] == backward_suffix and reactions[reaction_id[:backward_suffix_start] + forward_suffix]:
+                    return reaction_id[:backward_suffix_start] + forward_suffix
                 else:
                     continue
             return None

@@ -257,7 +257,7 @@ class Simulation(CobraModelContainer, Simulator):
             "unknown": SStatus.UNKNOWN,
         }
         self._reset_solver = reset_solver
-        self.reverse_sintax = []
+        self.reverse_syntax = []
         self._m_r_lookup = None
 
         self._MAX_STR = "maximize"
@@ -610,6 +610,7 @@ class Simulation(CobraModelContainer, Simulator):
         if not objective:
             objective = self.model.objective
         elif isinstance(objective, dict) and len(objective) > 0:
+            # Extract first reaction ID from objective dictionary as COBRApy expects a reaction ID string
             objective = next(iter(objective.keys()))
 
         simul_constraints = {}

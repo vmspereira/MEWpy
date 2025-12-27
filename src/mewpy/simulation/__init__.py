@@ -33,8 +33,10 @@ default_solver = None
 
 def get_default_solver():
     """
+    Get the currently configured default solver.
+
     Returns:
-        [type]: [description]
+        str: Name of the default solver (e.g., 'cplex', 'gurobi', 'glpk')
     """
     global default_solver
 
