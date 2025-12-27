@@ -25,7 +25,7 @@ Contributors: Paulo Carvalhais
 """
 
 from itertools import combinations
-from typing import Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -212,13 +212,13 @@ class ExpressionSet:
 
     @p_values.setter
     def p_values(self, p_values: np.array):
-        """Sets p-values
+        """Sets p-values array.
 
         Args:
-            p_values (np.array): [description]
+            p_values (np.array): Numpy array of p-values with shape (n_identifiers, n_condition_pairs).
 
         Raises:
-            ValueError: [description]
+            ValueError: If p_values shape doesn't match expected dimensions for all condition pairs.
         """
         if p_values is not None:
             if p_values.shape[1] != len(self.p_value_columns):
@@ -235,7 +235,7 @@ class ExpressionSet:
         """Calculate the differences based on the MADE method.
 
         Args:
-            p_value (float, optional): [description]. Defaults to 0.005.
+            p_value (float, optional): Significance threshold for p-values. Defaults to 0.005.
 
         Returns:
             dict: A dictionary of differences
@@ -273,11 +273,11 @@ class ExpressionSet:
         values = self.get_condition(condition)
         return np.amin(values), np.amax(values)
 
-    def apply(self, function: None):
+    def apply(self, function: Optional[Callable[[float], float]] = None):
         """Apply a function to all expression values.
 
-        :param function: the unary function to be applyied. Default log base 2.
-        :type function: callable
+        :param function: Unary function to apply to each element. Defaults to log base 2.
+        :type function: Optional[Callable[[float], float]]
         """
         if function is None:
             import math
@@ -367,7 +367,7 @@ class Preprocessing:
     are performed.
     For Order 1, gene expression is converted to reaction activity followed
     by thresholding of reaction activity;
-    For Order 2, thresholding ofgene expression is followed by its
+    For Order 2, thresholding of gene expression is followed by its
     conversion to reaction activity.
 
     [1]Anne Richelle,Chintan Joshi,Nathan E. Lewis, Assessing key decisions
@@ -376,13 +376,13 @@ class Preprocessing:
     """
 
     def __init__(self, model: Simulator, data: ExpressionSet, **kwargs):
-        """[summary]
+        """Initialize Preprocessing with model and expression data.
 
         Args:
-            model (Simulator): [description]
-            data (ExpressionSet): [description]
-            and_func (function): (optional)
-            or_func (function): (optional)
+            model (Simulator): Metabolic model simulator instance.
+            data (ExpressionSet): Gene expression data set.
+            and_func (function): (optional) Function for AND operation in GPR evaluation.
+            or_func (function): (optional) Function for OR operation in GPR evaluation.
         """
         self.model = model
         self.data = data

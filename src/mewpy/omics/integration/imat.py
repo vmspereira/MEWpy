@@ -90,9 +90,9 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1)
 
     solver.update()
 
-    object = {x: 1 for x in objective}
+    objective_dict = {x: 1 for x in objective}
 
-    solution = solver.solve(object, minimize=False, constraints=constraints)
+    solution = solver.solve(objective_dict, minimize=False, constraints=constraints)
 
     res = to_simulation_result(model, None, constraints, sim, solution)
     return res
