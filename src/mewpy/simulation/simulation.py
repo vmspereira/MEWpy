@@ -168,7 +168,7 @@ class ModelContainer(ABC):
         return {m_id: coeff for m_id, coeff in met.items() if coeff > 0}
 
     def get_exchange_reactions(self):
-        return NotImplementedError
+        raise NotImplementedError("Subclasses must implement get_exchange_reactions()")
 
     def get_gene_reactions(self):
         raise NotImplementedError
@@ -460,7 +460,7 @@ class Simulator(ModelContainer, SimulationInterface):
         return self._reference
 
     def create_empty_model(self, model_id: str):
-        return NotImplementedError
+        raise NotImplementedError("Subclasses must implement create_empty_model()")
 
     def get_external_metabolites(self):
         external = []

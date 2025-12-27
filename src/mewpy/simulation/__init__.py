@@ -70,7 +70,9 @@ def set_default_solver(solvername):
             import mewpy.solvers as msolvers
 
             msolvers.set_default_solver(solvername)
-        except:
-            pass
+        except (ImportError, AttributeError) as e:
+            import warnings
+
+            warnings.warn(f"Failed to set default solver '{solvername}': {e}")
     else:
         raise RuntimeError(f"Solver {solvername} not available.")
