@@ -105,35 +105,41 @@ class ExpressionSet:
         """
         return self._expression.__getitem__(item)
 
-    def get_condition(self, condition: Union[int, str] = None, **kwargs):
-        """Retrieves the omics data for a specific condition
+    def get_condition(self, condition: Union[int, str] = None, format: str = None):
+        """Retrieves the omics data for a specific condition.
 
-        :param condition: the condition identifier, defaults to None in which case
-           all data is returned
-        :type condition: Union[int,str], optional
-
-        optional:
-        :param format: the output format, a dictionary ('dict' option) or a list ('list' option), default numpy.array
-
+        :param condition: Condition identifier (int index or str name).
+                         If None, returns all data.
+        :type condition: Union[int, str], optional
+        :param format: Output format: "dict", "list", or None for numpy array.
+                      Format is only applied for single conditions.
+        :type format: str, optional
+        :return: Expression values in requested format
+        :raises ValueError: If condition identifier is not found
         """
+        # Get values based on condition type
         if isinstance(condition, int):
+            if condition < 0 or condition >= len(self._conditions):
+                raise ValueError(
+                    f"Condition index {condition} out of range. " f"Valid range: 0-{len(self._conditions)-1}"
+                )
             values = self[:, condition]
         elif isinstance(condition, str):
+            if condition not in self._condition_index:
+                raise ValueError(f"Unknown condition: '{condition}'. " f"Available conditions: {self._conditions}")
             values = self[:, self._condition_index[condition]]
         else:
+            # Return all data
             values = self[:, :]
 
-        # format
-        form = kwargs.get("format", "dict")
-        if form and condition is not None:
-            if form == "list":
+        # Apply format conversion only for single conditions
+        if format and condition is not None:
+            if format == "list":
                 return values.tolist()
-            elif form == "dict":
+            elif format == "dict":
                 return dict(zip(self._identifiers, values.tolist()))
-            else:
-                return values
-        else:
-            return values
+
+        return values
 
     @classmethod
     def from_dataframe(cls, data_frame):
@@ -392,30 +398,33 @@ class Preprocessing:
         return res
 
     def percentile(self, condition=None, cutoff=25):
-        """Processes a percentil threshold and returns the respective
+        """Processes a percentile threshold and returns the respective
         reaction coefficients, ie, a dictionary of reaction:coeff
 
         Args:
-            condition ([type], optional): [description]. Defaults to None.
-            cutoff (int, optional): [description]. Defaults to 25.
+            condition: The condition identifier. Defaults to None.
+            cutoff: Percentile cutoff(s) - int or tuple of ints. Defaults to 25.
 
         Returns:
-            dict, float: the coefficients and threshold
+            tuple: (coefficients, threshold) where coefficients is dict or tuple of dicts,
+                   and threshold is float or tuple of floats
         """
-        if type(cutoff) is tuple:
+        # Compute reaction expression once (optimization for tuple cutoffs)
+        rxn_exp = self.reactions_expression(condition)
+        rxn_values = list(rxn_exp.values())
+
+        if isinstance(cutoff, tuple):
             coef = []
             thre = []
             for cut in cutoff:
-                rxn_exp = self.reactions_expression(condition)
-                threshold = np.percentile(list(rxn_exp.values()), cut)
+                threshold = np.percentile(rxn_values, cut)
                 coeffs = {r_id: threshold - val for r_id, val in rxn_exp.items() if val < threshold}
                 coef.append(coeffs)
                 thre.append(threshold)
             coeffs = tuple(coef)
             threshold = tuple(thre)
         else:
-            rxn_exp = self.reactions_expression(condition)
-            threshold = np.percentile(list(rxn_exp.values()), cutoff)
+            threshold = np.percentile(rxn_values, cutoff)
             coeffs = {r_id: threshold - val for r_id, val in rxn_exp.items() if val < threshold}
         return coeffs, threshold
 
@@ -425,24 +434,23 @@ class Preprocessing:
 # ----------------------------------------------------------------------------------------------------------------------
 def knn_imputation(
     expression: np.ndarray,
-    missing_values: float = None,
+    missing_values: float = np.nan,
     n_neighbors: int = 5,
     weights: str = "uniform",
     metric: str = "nan_euclidean",
 ) -> np.ndarray:
     """
-    KNN imputation of missing values in the expression matrix. It uses the scikit-learn KNNImputer (Consult sklearn
-    documentation for more information).
+    KNN imputation of missing values in the expression matrix using scikit-learn KNNImputer.
+
     The default metric is nan_euclidean, which is the euclidean distance ignoring missing values.
 
     :param expression: Expression matrix
-    :param missing_values: The placeholder for the missing values. All occurrences of missing_values will be imputed.
-    :param n_neighbors: Number of neighboring samples to use for imputation.
+    :param missing_values: Placeholder for missing values to impute. Defaults to np.nan.
+    :param n_neighbors: Number of neighboring samples to use for imputation. Defaults to 5.
     :param weights: Weight function used in prediction. Possible values:
         - 'uniform': uniform weights. All points in each neighborhood are weighted equally.
-        - 'distance': weight points by the inverse of their distance. in this case, closer neighbors of a query point
-    :param metric: Metric used to compute the distance between samples. The default metric is nan_euclidean, which is
-    the euclidean distance ignoring missing values. Consult sklearn documentation for more information.
+        - 'distance': weight points by the inverse of their distance.
+    :param metric: Metric to compute distance between samples. Defaults to 'nan_euclidean'.
     :return: Imputed expression matrix
     """
     try:
@@ -453,18 +461,6 @@ def knn_imputation(
             "The package scikit-learn is not installed. "
             "To preprocess gene expression data, please install scikit-learn (pip install scikit-learn)."
         )
-
-    if missing_values is None:
-        missing_values = np.nan
-
-    if n_neighbors is None:
-        n_neighbors = 5
-
-    if weights is None:
-        weights = "uniform"
-
-    if metric is None:
-        metric = "nan_euclidean"
 
     imputation = KNNImputer(missing_values=missing_values, n_neighbors=n_neighbors, weights=weights, metric=metric)
 
@@ -496,15 +492,20 @@ def quantile_transformation(expression: np.ndarray, n_quantiles: int = None) -> 
 
 def quantile_binarization(expression: np.ndarray, q: float = 0.33) -> np.ndarray:
     """
-    It computes the q-th quantile of the expression matrix using np.quantile (consult numpy documentation for more
-    information). Then, it binarizes the expression matrix using the threshold computed.
-    :param expression: Expression matrix
-    :param q: Quantile to compute
-    :return: Binarized expression matrix
+    Computes the q-th quantile of the expression matrix and binarizes it using the threshold.
+
+    The input array is NOT modified - a new binarized array is returned.
+
+    :param expression: Expression matrix (will not be modified)
+    :param q: Quantile to compute (default: 0.33)
+    :return: New binarized expression matrix (0s and 1s)
     """
     threshold = np.quantile(expression, q)
 
-    threshold_mask = expression >= threshold
-    expression[threshold_mask] = 1
-    expression[~threshold_mask] = 0
-    return expression
+    # Create a copy to avoid mutating input
+    binary_expression = expression.copy()
+
+    threshold_mask = binary_expression >= threshold
+    binary_expression[threshold_mask] = 1
+    binary_expression[~threshold_mask] = 0
+    return binary_expression
