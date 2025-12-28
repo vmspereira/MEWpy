@@ -136,6 +136,91 @@ class CommunityModel:
 
         self._comm_model = None
 
+    def __repr__(self):
+        """Rich representation showing community model details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("Community Model")
+        lines.append("=" * 60)
+
+        # Number of organisms
+        try:
+            org_count = len(self.organisms)
+            lines.append(f"{'Organisms:':<20} {org_count}")
+
+            # List organisms (up to 5, then truncate)
+            if org_count > 0:
+                org_ids = list(self.organisms.keys())
+                if org_count <= 5:
+                    for org_id in org_ids:
+                        lines.append(f"{'  -':<20} {org_id}")
+                else:
+                    for org_id in org_ids[:5]:
+                        lines.append(f"{'  -':<20} {org_id}")
+                    lines.append(f"{'  ...':<20} and {org_count - 5} more")
+        except:
+            pass
+
+        # Flavor
+        try:
+            if self.flavor:
+                lines.append(f"{'Flavor:':<20} {self.flavor}")
+        except:
+            pass
+
+        # Abundances
+        try:
+            if hasattr(self, "organisms_abundance") and self.organisms_abundance:
+                # Check if abundances are uniform
+                abundances = list(self.organisms_abundance.values())
+                if len(set(abundances)) == 1:
+                    lines.append(f"{'Abundances:':<20} Uniform ({abundances[0]})")
+                else:
+                    lines.append(f"{'Abundances:':<20} Variable")
+                    # Show first few
+                    items = list(self.organisms_abundance.items())[:3]
+                    for org_id, abundance in items:
+                        lines.append(f"{'  ' + org_id + ':':<20} {abundance:.4g}")
+                    if len(self.organisms_abundance) > 3:
+                        lines.append(f"{'  ...':<20}")
+        except:
+            pass
+
+        # Configuration
+        try:
+            if self._merge_biomasses:
+                lines.append(f"{'Merged biomass:':<20} Yes")
+            if self._add_compartments:
+                lines.append(f"{'Add compartments:':<20} Yes")
+        except:
+            pass
+
+        # Community model built status
+        try:
+            if self._comm_model is not None:
+                lines.append(f"{'Status:':<20} Built")
+                # Get community model stats
+                if hasattr(self._comm_model, "reactions"):
+                    rxn_count = len(self._comm_model.reactions)
+                    lines.append(f"{'Community reactions:':<20} {rxn_count}")
+                if hasattr(self._comm_model, "metabolites"):
+                    met_count = len(self._comm_model.metabolites)
+                    lines.append(f"{'Community metabolites:':<20} {met_count}")
+            else:
+                lines.append(f"{'Status:':<20} Not built (call merge() or build())")
+        except:
+            pass
+
+        # Biomass reaction
+        try:
+            if self.biomass:
+                lines.append(f"{'Community biomass:':<20} {self.biomass}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def init_model(self):
         sid = " ".join(sorted(self.model_ids))
         if self.flavor == "reframed":
