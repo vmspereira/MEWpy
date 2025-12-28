@@ -634,11 +634,90 @@ class SimulationResult(object):
         return constraints
 
     def __repr__(self):
-        if callable(self.method):
-            name = getattr(self.method, "__name__", repr(self.method))
-        else:
-            name = str(self.method)
-        return f"objective: {self.objective_value}\nStatus: " f"{self.status}\nMethod:{name}"
+        """Rich representation showing simulation result details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("Simulation Result")
+        lines.append("=" * 60)
+
+        # Status
+        try:
+            if self.status:
+                lines.append(f"{'Status:':<20} {self.status}")
+        except:
+            pass
+
+        # Objective value with direction
+        try:
+            if self.objective_value is not None:
+                direction = "maximize" if self.maximize else "minimize"
+                label = f"Objective ({direction}):"
+                lines.append(f"{label:<20} {self.objective_value:.6g}")
+        except:
+            pass
+
+        # Method
+        try:
+            if self.method:
+                if callable(self.method):
+                    method_name = getattr(self.method, "__name__", repr(self.method))
+                else:
+                    method_name = str(self.method)
+                lines.append(f"{'Method:':<20} {method_name}")
+        except:
+            pass
+
+        # Model info
+        try:
+            if self.model:
+                if hasattr(self.model, "id"):
+                    model_id = self.model.id
+                else:
+                    model_id = str(self.model)[:30]
+                lines.append(f"{'Model:':<20} {model_id}")
+        except:
+            pass
+
+        # Fluxes summary
+        try:
+            if self.fluxes:
+                total_fluxes = len(self.fluxes)
+                non_zero_fluxes = sum(1 for v in self.fluxes.values() if abs(v) > 1e-9)
+                lines.append(f"{'Fluxes:':<20} {non_zero_fluxes} non-zero / {total_fluxes} total")
+        except:
+            pass
+
+        # Constraints summary
+        try:
+            all_constraints = self.get_constraints()
+            if all_constraints:
+                constraint_count = len(all_constraints)
+                lines.append(f"{'Constraints:':<20} {constraint_count}")
+
+                # Break down by type
+                env_count = len(self.envcond) if self.envcond else 0
+                model_count = len(self.model_constraints) if self.model_constraints else 0
+                simul_count = len(self.simulation_constraints) if self.simulation_constraints else 0
+
+                if env_count > 0:
+                    lines.append(f"{'  Environment:':<20} {env_count}")
+                if model_count > 0:
+                    lines.append(f"{'  Model:':<20} {model_count}")
+                if simul_count > 0:
+                    lines.append(f"{'  Simulation:':<20} {simul_count}")
+        except:
+            pass
+
+        # Shadow prices
+        try:
+            if self.shadow_prices:
+                sp_count = len(self.shadow_prices)
+                lines.append(f"{'Shadow prices:':<20} {sp_count} available")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def __str__(self):
         return self.__repr__()
