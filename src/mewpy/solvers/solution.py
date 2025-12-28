@@ -178,32 +178,42 @@ class Solution(object):
         if self.fobj is not None:
             objective_df = pd.DataFrame(
                 [[self.fobj, self._objective_direction]],
-                columns=['value', 'direction'],
-                index=[self._method if self._method else 'objective']
+                columns=["value", "direction"],
+                index=[self._method if self._method else "objective"],
             )
 
         # If model is available, try to categorize variables
-        if self._model is not None and hasattr(self._model, 'reactions'):
+        if self._model is not None and hasattr(self._model, "reactions"):
             # Try to separate metabolic and regulatory variables
             metabolic_ids = set()
             regulatory_ids = set()
 
             # Get reaction IDs (metabolic)
-            if hasattr(self._model, 'reactions'):
+            if hasattr(self._model, "reactions"):
                 try:
-                    metabolic_ids = set(self._model.reactions.keys() if hasattr(self._model.reactions, 'keys') else self._model.reactions)
+                    metabolic_ids = set(
+                        self._model.reactions.keys()
+                        if hasattr(self._model.reactions, "keys")
+                        else self._model.reactions
+                    )
                 except:
                     pass
 
             # Get regulator/target IDs (regulatory)
-            if hasattr(self._model, 'regulators'):
+            if hasattr(self._model, "regulators"):
                 try:
-                    regulatory_ids.update(self._model.regulators.keys() if hasattr(self._model.regulators, 'keys') else self._model.regulators)
+                    regulatory_ids.update(
+                        self._model.regulators.keys()
+                        if hasattr(self._model.regulators, "keys")
+                        else self._model.regulators
+                    )
                 except:
                     pass
-            if hasattr(self._model, 'targets'):
+            if hasattr(self._model, "targets"):
                 try:
-                    regulatory_ids.update(self._model.targets.keys() if hasattr(self._model.targets, 'keys') else self._model.targets)
+                    regulatory_ids.update(
+                        self._model.targets.keys() if hasattr(self._model.targets, "keys") else self._model.targets
+                    )
                 except:
                     pass
 
@@ -212,21 +222,16 @@ class Solution(object):
             regulatory_values = {k: v for k, v in self.values.items() if k in regulatory_ids}
 
             if metabolic_values:
-                metabolic = pd.DataFrame(metabolic_values.values(), columns=['value'], index=metabolic_values.keys())
+                metabolic = pd.DataFrame(metabolic_values.values(), columns=["value"], index=metabolic_values.keys())
             if regulatory_values:
-                regulatory = pd.DataFrame(regulatory_values.values(), columns=['value'], index=regulatory_values.keys())
+                regulatory = pd.DataFrame(regulatory_values.values(), columns=["value"], index=regulatory_values.keys())
 
         # If we couldn't separate, put everything in metabolic
         if metabolic.empty and regulatory.empty and not df.empty:
             metabolic = df
 
         return Summary(
-            inputs=inputs,
-            outputs=outputs,
-            objective=objective_df,
-            df=df,
-            metabolic=metabolic,
-            regulatory=regulatory
+            inputs=inputs, outputs=outputs, objective=objective_df, df=df, metabolic=metabolic, regulatory=regulatory
         )
 
     @classmethod
