@@ -100,7 +100,44 @@ class LinearProblem:
         return f"{self.method} for {self.model.id}"
 
     def __repr__(self):
-        return self.__str__()
+        """
+        Returns a formatted table representation of the linear problem.
+        Displays method, model, variables, constraints, objective, solver, and sync status.
+        """
+        if self.solver:
+            solver_name = self.solver.__class__.__name__
+        else:
+            solver_name = "None"
+
+        # Get model name
+        model_name = str(self.model.id) if hasattr(self.model, "id") else str(self.model)
+
+        # Format objective - handle dict format
+        if isinstance(self.objective, dict):
+            if len(self.objective) == 0:
+                objective_str = "None"
+            elif len(self.objective) == 1:
+                key, val = next(iter(self.objective.items()))
+                objective_str = f"{key}: {val}"
+            else:
+                objective_str = f"{len(self.objective)} objectives"
+        else:
+            objective_str = str(self.objective) if self.objective else "None"
+
+        # Build table
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"{self.method}")
+        lines.append("=" * 60)
+        lines.append(f"{'Model:':<20} {model_name}")
+        lines.append(f"{'Variables:':<20} {len(self.variables)}")
+        lines.append(f"{'Constraints:':<20} {len(self.constraints)}")
+        lines.append(f"{'Objective:':<20} {objective_str}")
+        lines.append(f"{'Solver:':<20} {solver_name}")
+        lines.append(f"{'Synchronized:':<20} {self.synchronized}")
+        lines.append("=" * 60)
+
+        return "\n".join(lines)
 
     def _repr_html_(self):
         """
