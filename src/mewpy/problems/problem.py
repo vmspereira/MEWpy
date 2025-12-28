@@ -248,7 +248,78 @@ class AbstractProblem(ABC):
             return "{0} ".format(self.__class__.__name__)
 
     def __repr__(self):
-        return self.__class__.__name__
+        """Rich representation showing problem configuration."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Problem: {self.__class__.__name__}")
+        lines.append("=" * 60)
+
+        # Model info
+        try:
+            if hasattr(self.model, "id"):
+                model_id = self.model.id
+            elif hasattr(self, "simulator") and hasattr(self.simulator, "model"):
+                model_id = self.simulator.model.id if hasattr(self.simulator.model, "id") else str(self.simulator.model)
+            else:
+                model_id = str(self.model)
+            lines.append(f"{'Model:':<25} {model_id}")
+        except:
+            lines.append(f"{'Model:':<25} <not available>")
+
+        # Strategy (KO/OU)
+        try:
+            if hasattr(self, "strategy"):
+                lines.append(f"{'Strategy:':<25} {self.strategy.value}")
+        except:
+            pass
+
+        # Targets
+        try:
+            if self._trg_list is not None:
+                lines.append(f"{'Targets:':<25} {len(self._trg_list)}")
+            elif hasattr(self, "simulator"):
+                # Try to estimate from model
+                sim = self.simulator
+                if hasattr(sim, "genes"):
+                    lines.append(f"{'Targets (estimated):':<25} {len(sim.genes)} genes")
+        except:
+            pass
+
+        # Solution size constraints
+        try:
+            lines.append(f"{'Min modifications:':<25} {self.candidate_min_size}")
+            lines.append(f"{'Max modifications:':<25} {self.candidate_max_size}")
+        except:
+            pass
+
+        # Objectives
+        try:
+            lines.append(f"{'Objectives:':<25} {self.number_of_objectives}")
+            if self.fevaluation and len(self.fevaluation) <= 3:
+                for i, feval in enumerate(self.fevaluation, 1):
+                    feval_name = feval.__class__.__name__ if hasattr(feval, "__class__") else str(feval)
+                    lines.append(f"{'  ' + str(i) + '.':<25} {feval_name}")
+            elif self.fevaluation and len(self.fevaluation) > 3:
+                lines.append(f"{'  (Use .fevaluation)':<25} to view all objectives")
+        except:
+            pass
+
+        # Product target (if specified)
+        try:
+            if self.product:
+                lines.append(f"{'Product:':<25} {self.product}")
+        except:
+            pass
+
+        # Environmental conditions
+        try:
+            if self.environmental_conditions and len(self.environmental_conditions) > 0:
+                lines.append(f"{'Medium conditions:':<25} {len(self.environmental_conditions)} constraints")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     @property
     def target_list(self):

@@ -69,6 +69,192 @@ class _RegulatoryAnalysisBase:
         # In the new architecture with RegulatoryExtension, analysis methods do not
         # attach to models via observer pattern - they access data on-demand
 
+    def __str__(self):
+        """Simple string representation."""
+        model_id = getattr(self.model, "id", str(self.model))
+        return f"{self.method} for {model_id}"
+
+    def __repr__(self):
+        """
+        Returns a formatted table representation of the analysis method.
+        Displays method, model, objective, solver, and sync status.
+        """
+        # Get solver name
+        if self._solver:
+            solver_name = self._solver.__class__.__name__
+        else:
+            solver_name = "None"
+
+        # Get model name/ID
+        if hasattr(self.model, "id"):
+            model_name = str(self.model.id)
+        elif hasattr(self.model, "simulator") and hasattr(self.model.simulator, "model"):
+            # RegulatoryExtension - get underlying model ID
+            model_name = str(getattr(self.model.simulator.model, "id", "Unknown"))
+        else:
+            model_name = str(self.model)
+
+        # Get model type info
+        model_types = []
+        if hasattr(self.model, "types"):
+            model_types = list(self.model.types) if self.model.types else []
+        elif hasattr(self.model, "is_metabolic") and self.model.is_metabolic():
+            model_types.append("metabolic")
+        if self._has_regulatory_network():
+            if "regulatory" not in model_types:
+                model_types.append("regulatory")
+        model_type_str = ", ".join(model_types) if model_types else "metabolic"
+
+        # Format objective
+        if self._linear_objective:
+            if len(self._linear_objective) == 1:
+                key, val = next(iter(self._linear_objective.items()))
+                objective_str = f"{key}: {val}"
+            else:
+                objective_str = f"{len(self._linear_objective)} objectives"
+        else:
+            objective_str = "None"
+
+        # Get variables and constraints count if available
+        vars_count = "N/A"
+        constraints_count = "N/A"
+        if self._solver:
+            try:
+                if hasattr(self._solver, "problem"):
+                    problem = self._solver.problem
+                    # Try SCIP methods first
+                    if hasattr(problem, "getNVars"):
+                        vars_count = problem.getNVars()
+                    elif hasattr(problem, "getVars"):
+                        vars_count = len(problem.getVars())
+                    elif hasattr(problem, "variables"):
+                        vars_count = len(problem.variables)
+
+                    if hasattr(problem, "getNConss"):
+                        constraints_count = problem.getNConss()
+                    elif hasattr(problem, "getConss"):
+                        constraints_count = len(problem.getConss())
+                    elif hasattr(problem, "constraints"):
+                        constraints_count = len(problem.constraints)
+            except:
+                pass
+
+        # Build table
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"{self.method}")
+        lines.append("=" * 60)
+        lines.append(f"{'Model:':<20} {model_name}")
+        lines.append(f"{'Type:':<20} {model_type_str}")
+        lines.append(f"{'Variables:':<20} {vars_count}")
+        lines.append(f"{'Constraints:':<20} {constraints_count}")
+        lines.append(f"{'Objective:':<20} {objective_str}")
+        lines.append(f"{'Solver:':<20} {solver_name}")
+        lines.append(f"{'Synchronized:':<20} {self.synchronized}")
+        lines.append("=" * 60)
+
+        return "\n".join(lines)
+
+    def _repr_html_(self):
+        """
+        Returns an HTML table representation for Jupyter notebooks.
+        """
+        # Get solver name
+        if self._solver:
+            solver_name = self._solver.__class__.__name__
+        else:
+            solver_name = "None"
+
+        # Get model name
+        if hasattr(self.model, "id"):
+            model_name = str(self.model.id)
+        elif hasattr(self.model, "simulator") and hasattr(self.model.simulator, "model"):
+            model_name = str(getattr(self.model.simulator.model, "id", "Unknown"))
+        else:
+            model_name = str(self.model)
+
+        # Get model type
+        model_types = []
+        if hasattr(self.model, "types"):
+            model_types = list(self.model.types) if self.model.types else []
+        elif hasattr(self.model, "is_metabolic") and self.model.is_metabolic():
+            model_types.append("metabolic")
+        if self._has_regulatory_network():
+            if "regulatory" not in model_types:
+                model_types.append("regulatory")
+        model_type_str = ", ".join(model_types) if model_types else "metabolic"
+
+        # Format objective
+        if self._linear_objective:
+            if len(self._linear_objective) == 1:
+                key, val = next(iter(self._linear_objective.items()))
+                objective_str = f"{key}: {val}"
+            else:
+                objective_str = f"{len(self._linear_objective)} objectives"
+        else:
+            objective_str = "None"
+
+        # Get variables and constraints count if available
+        vars_count = "N/A"
+        constraints_count = "N/A"
+        if self._solver:
+            try:
+                if hasattr(self._solver, "problem"):
+                    problem = self._solver.problem
+                    # Try SCIP methods first
+                    if hasattr(problem, "getNVars"):
+                        vars_count = problem.getNVars()
+                    elif hasattr(problem, "getVars"):
+                        vars_count = len(problem.getVars())
+                    elif hasattr(problem, "variables"):
+                        vars_count = len(problem.variables)
+
+                    if hasattr(problem, "getNConss"):
+                        constraints_count = problem.getNConss()
+                    elif hasattr(problem, "getConss"):
+                        constraints_count = len(problem.getConss())
+                    elif hasattr(problem, "constraints"):
+                        constraints_count = len(problem.constraints)
+            except:
+                pass
+
+        return f"""
+        <table>
+            <tr>
+                <td><strong>Method</strong></td>
+                <td>{self.method}</td>
+            </tr>
+            <tr>
+                <td><strong>Model</strong></td>
+                <td>{model_name}</td>
+            </tr>
+            <tr>
+                <td><strong>Type</strong></td>
+                <td>{model_type_str}</td>
+            </tr>
+            <tr>
+                <td><strong>Variables</strong></td>
+                <td>{vars_count}</td>
+            </tr>
+            <tr>
+                <td><strong>Constraints</strong></td>
+                <td>{constraints_count}</td>
+            </tr>
+            <tr>
+                <td><strong>Objective</strong></td>
+                <td>{objective_str}</td>
+            </tr>
+            <tr>
+                <td><strong>Solver</strong></td>
+                <td>{solver_name}</td>
+            </tr>
+            <tr>
+                <td><strong>Synchronized</strong></td>
+                <td>{self.synchronized}</td>
+            </tr>
+        </table>
+        """
+
     # Backwards compatibility helpers (work with both RegulatoryExtension and legacy models)
     def _has_regulatory_network(self) -> bool:
         """Check if model has a regulatory network (works with both model types)."""

@@ -53,6 +53,45 @@ class Gene(Variable, variable_type="gene", register=True, constructor=True, chec
 
         return _types
 
+    def __repr__(self):
+        """Rich representation showing gene details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Gene: {self.id}")
+        lines.append("=" * 60)
+
+        # Name if available
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            lines.append(f"{'Name:':<20} {self.name}")
+
+        # Activity status
+        try:
+            status = "Active" if self.is_active else "Inactive"
+            lines.append(f"{'Status:':<20} {status}")
+        except:
+            pass
+
+        # Coefficients
+        try:
+            coef = self.coefficients
+            if len(coef) <= 3:
+                coef_str = ", ".join(f"{c:.4g}" for c in coef)
+            else:
+                coef_str = f"{len(coef)} values: [{coef[0]:.4g}, ..., {coef[-1]:.4g}]"
+            lines.append(f"{'Coefficients:':<20} {coef_str}")
+        except:
+            pass
+
+        # Reactions count
+        try:
+            rxn_count = len(self.reactions)
+            lines.append(f"{'Reactions:':<20} {rxn_count}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def _gene_to_html(self):
         """
         It returns a html dict representation.

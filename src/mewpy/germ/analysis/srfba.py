@@ -46,6 +46,7 @@ class SRFBA(_RegulatoryAnalysisBase):
         :param attach: Whether to attach the problem to the model upon instantiation. Default: False
         """
         super().__init__(model=model, solver=solver, build=build, attach=attach)
+        self.method = "SRFBA"
         self._model_default_lb = ModelConstants.REACTION_LOWER_BOUND
         self._model_default_ub = ModelConstants.REACTION_UPPER_BOUND
         self._boolean_variables = {}  # Track boolean variables for regulatory logic

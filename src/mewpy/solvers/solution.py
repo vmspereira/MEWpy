@@ -115,10 +115,30 @@ class Solution(object):
         return self._objective_direction
 
     def __str__(self):
+        """Simple string representation for backward compatibility."""
         return f"Objective: {self.fobj}\nStatus: {self.status.value}\n"
 
     def __repr__(self):
-        return str(self)
+        """Rich representation matching notebook output format."""
+        # Get method name
+        method_name = self._method if self._method else "Solution"
+
+        # Get status string
+        status_str = self.status.value if self.status else "unknown"
+
+        # Format objective value
+        if self.fobj is not None:
+            obj_str = f"{self.fobj:.10g}"  # Use general format to avoid scientific notation for small values
+        else:
+            obj_str = "None"
+
+        # Build output lines
+        lines = []
+        lines.append(f"{method_name} Solution")
+        lines.append(f" Objective value: {obj_str}")
+        lines.append(f" Status: {status_str}")
+
+        return "\n".join(lines)
 
     def to_dataframe(self):
         """Convert reaction fluxes to *pandas.DataFrame*

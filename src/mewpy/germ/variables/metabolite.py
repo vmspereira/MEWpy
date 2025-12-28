@@ -78,6 +78,64 @@ class Metabolite(Variable, variable_type="metabolite", register=True, constructo
 
         return f"{self.id} || {self.name} || {self.formula}"
 
+    def __repr__(self):
+        """Rich representation showing metabolite details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Metabolite: {self.id}")
+        lines.append("=" * 60)
+
+        # Name if available
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            lines.append(f"{'Name:':<20} {self.name}")
+
+        # Formula
+        try:
+            if self.formula and self.formula.strip():
+                lines.append(f"{'Formula:':<20} {self.formula}")
+        except:
+            pass
+
+        # Charge
+        try:
+            charge = self.charge
+            if charge is not None:
+                lines.append(f"{'Charge:':<20} {charge}")
+        except:
+            pass
+
+        # Compartment
+        try:
+            if self.compartment:
+                lines.append(f"{'Compartment:':<20} {self.compartment}")
+        except:
+            pass
+
+        # Molecular weight
+        try:
+            mw = self.molecular_weight
+            if mw:
+                lines.append(f"{'Molecular weight:':<20} {mw:.4g}")
+        except:
+            pass
+
+        # Reactions count
+        try:
+            rxn_count = len(self.reactions)
+            lines.append(f"{'Reactions:':<20} {rxn_count}")
+        except:
+            pass
+
+        # Exchange reaction if present
+        try:
+            if hasattr(self, "exchange_reaction") and self.exchange_reaction:
+                lines.append(f"{'Exchange reaction:':<20} {self.exchange_reaction.id}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def _metabolite_to_html(self):
         """
         It returns a html dict representation.

@@ -41,6 +41,7 @@ class pFBA(FBA):
         :param attach: Whether to attach the linear problem to the model upon instantiation. Default: False
         """
         super().__init__(model=model, solver=solver, build=build, attach=attach)
+        self.method = "pFBA"
 
     def build(self, fraction: float = None, constraints: Dict = None):
         """
