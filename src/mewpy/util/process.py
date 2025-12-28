@@ -35,6 +35,7 @@ MP_Evaluators = []
 # 'spawn' requires pickling all objects which fails with CPLEX/REFRAMED
 # 'fork' copies process memory and works with unpicklable objects
 import multiprocessing
+
 try:
     if "fork" in multiprocessing.get_all_start_methods():
         # Only set if not already configured
