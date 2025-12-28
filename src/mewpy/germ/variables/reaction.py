@@ -102,6 +102,86 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
     def __str__(self):
         return f"{self.id} || {self.equation}"
 
+    def __repr__(self):
+        """Rich representation showing reaction details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Reaction: {self.id}")
+        lines.append("=" * 60)
+
+        # Name if available
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            lines.append(f"{'Name:':<20} {self.name}")
+
+        # Equation
+        try:
+            equation = self.equation
+            # Truncate very long equations
+            if len(equation) > 80:
+                equation = equation[:77] + "..."
+            lines.append(f"{'Equation:':<20} {equation}")
+        except:
+            lines.append(f"{'Equation:':<20} <not available>")
+
+        # Bounds
+        try:
+            lb, ub = self.bounds
+            lines.append(f"{'Bounds:':<20} ({lb:.4g}, {ub:.4g})")
+        except:
+            lines.append(f"{'Bounds:':<20} <not available>")
+
+        # Reversibility
+        try:
+            reversible = "Yes" if self.reversibility else "No"
+            lines.append(f"{'Reversible:':<20} {reversible}")
+        except:
+            pass
+
+        # Boundary
+        try:
+            boundary = "Yes" if self.boundary else "No"
+            lines.append(f"{'Boundary:':<20} {boundary}")
+        except:
+            pass
+
+        # GPR
+        try:
+            gpr_str = self.gene_protein_reaction_rule
+            if gpr_str and gpr_str.strip():
+                # Truncate long GPR
+                if len(gpr_str) > 60:
+                    gpr_str = gpr_str[:57] + "..."
+                lines.append(f"{'GPR:':<20} {gpr_str}")
+        except:
+            pass
+
+        # Genes count
+        try:
+            gene_count = len(self.genes)
+            if gene_count > 0:
+                lines.append(f"{'Genes:':<20} {gene_count}")
+        except:
+            pass
+
+        # Metabolites count
+        try:
+            met_count = len(self.metabolites)
+            lines.append(f"{'Metabolites:':<20} {met_count}")
+        except:
+            pass
+
+        # Compartments
+        try:
+            comps = list(self.compartments)
+            if comps:
+                comp_str = ", ".join(comps) if len(comps) <= 3 else f"{len(comps)} compartments"
+                lines.append(f"{'Compartments:':<20} {comp_str}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def _reaction_to_html(self):
         """
         It returns a html representation.

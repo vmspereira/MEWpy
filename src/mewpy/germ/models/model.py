@@ -430,7 +430,71 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         return f"Model {self.id} - {self.name}"
 
     def __repr__(self):
-        return self.__str__()
+        """Rich representation showing model statistics."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Model: {self.id}")
+        lines.append("=" * 60)
+
+        # Basic info
+        if hasattr(self, "name") and self.name:
+            lines.append(f"{'Name:':<25} {self.name}")
+
+        # Model types
+        if hasattr(self, "types") and self.types:
+            types_str = ", ".join(sorted(self.types))
+            lines.append(f"{'Types:':<25} {types_str}")
+
+        # Metabolic info (if metabolic model)
+        if hasattr(self, "is_metabolic") and self.is_metabolic():
+            if hasattr(self, "reactions"):
+                lines.append(f"{'Reactions:':<25} {len(self.reactions)}")
+            if hasattr(self, "metabolites"):
+                lines.append(f"{'Metabolites:':<25} {len(self.metabolites)}")
+            if hasattr(self, "genes"):
+                lines.append(f"{'Genes:':<25} {len(self.genes)}")
+            if hasattr(self, "compartments"):
+                comp_str = (
+                    ", ".join(self.compartments)
+                    if len(self.compartments) <= 5
+                    else f"{len(self.compartments)} compartments"
+                )
+                lines.append(f"{'Compartments:':<25} {comp_str}")
+
+            # Boundary reactions
+            if hasattr(self, "exchanges"):
+                lines.append(f"{'Exchanges:':<25} {len(self.exchanges)}")
+            if hasattr(self, "demands") and len(self.demands) > 0:
+                lines.append(f"{'Demands:':<25} {len(self.demands)}")
+            if hasattr(self, "sinks") and len(self.sinks) > 0:
+                lines.append(f"{'Sinks:':<25} {len(self.sinks)}")
+
+        # Regulatory info (if regulatory model)
+        if hasattr(self, "is_regulatory") and self.is_regulatory():
+            if hasattr(self, "interactions"):
+                lines.append(f"{'Interactions:':<25} {len(self.interactions)}")
+            if hasattr(self, "targets"):
+                lines.append(f"{'Targets:':<25} {len(self.targets)}")
+            if hasattr(self, "regulators"):
+                lines.append(f"{'Regulators:':<25} {len(self.regulators)}")
+            if hasattr(self, "environmental_stimuli") and len(self.environmental_stimuli) > 0:
+                lines.append(f"{'Environmental stimuli:':<25} {len(self.environmental_stimuli)}")
+
+        # Objective
+        if hasattr(self, "objective") and self.objective:
+            try:
+                if isinstance(self.objective, dict):
+                    obj_keys = list(self.objective.keys())
+                    if obj_keys:
+                        obj_id = obj_keys[0].id if hasattr(obj_keys[0], "id") else str(obj_keys[0])
+                        obj_val = self.objective[obj_keys[0]]
+                        direction = "maximize" if obj_val > 0 else "minimize"
+                        lines.append(f"{'Objective:':<25} {obj_id} ({direction})")
+            except:
+                lines.append(f"{'Objective:':<25} defined")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     # noinspection PyUnresolvedReferences
     def _repr_html_(self):

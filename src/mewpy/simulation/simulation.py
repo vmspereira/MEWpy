@@ -197,6 +197,68 @@ class Simulator(ModelContainer, SimulationInterface):
     Interface for simulators
     """
 
+    def __repr__(self):
+        """Rich representation showing simulator state."""
+        lines = []
+        lines.append("=" * 60)
+
+        # Simulator type
+        sim_type = self.__class__.__name__
+        lines.append(f"Simulator: {sim_type}")
+        lines.append("=" * 60)
+
+        # Model info
+        try:
+            model_id = self.model.id if hasattr(self.model, "id") else str(self.model)
+            lines.append(f"{'Model:':<20} {model_id}")
+        except:
+            lines.append(f"{'Model:':<20} <not available>")
+
+        # Model statistics
+        try:
+            lines.append(f"{'Reactions:':<20} {len(self.reactions)}")
+        except:
+            pass
+
+        try:
+            lines.append(f"{'Metabolites:':<20} {len(self.metabolites)}")
+        except:
+            pass
+
+        try:
+            lines.append(f"{'Genes:':<20} {len(self.genes)}")
+        except:
+            pass
+
+        # Objective
+        try:
+            obj = self.get_objective()
+            if obj:
+                if isinstance(obj, dict):
+                    obj_ids = list(obj.keys())[:3]  # Show first 3
+                    obj_str = ", ".join(str(o) for o in obj_ids)
+                    if len(obj) > 3:
+                        obj_str += f", ... ({len(obj)} total)"
+                    lines.append(f"{'Objective:':<20} {obj_str}")
+                else:
+                    lines.append(f"{'Objective:':<20} {obj}")
+        except:
+            pass
+
+        # Environmental conditions
+        try:
+            env = self.environmental_conditions
+            if env and len(env) > 0:
+                lines.append(f"{'Medium conditions:':<20} {len(env)} constraints")
+        except:
+            pass
+
+        # Status
+        lines.append(f"{'Status:':<20} Ready")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def simulate(self, *args, **kwargs):
         """Abstract method to run a phenotype simulation.
 
