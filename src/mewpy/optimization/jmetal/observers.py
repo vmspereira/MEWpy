@@ -20,7 +20,6 @@ Observer module for EA optimization based on jmetalpy
 Authors: Vitor Pereira
 ##############################################################################
 """
-import copy
 import logging
 from typing import List, TypeVar
 
