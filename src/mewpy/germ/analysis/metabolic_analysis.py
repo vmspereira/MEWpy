@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 
+from mewpy.solvers import solver_prefers_fresh_instance
 from mewpy.util.constants import ModelConstants
 
 from .analysis_utils import run_method_and_decode
@@ -92,6 +93,11 @@ def fva(
     :param objective: the objective function to be used for the simulation (default: the default objective)
     :param constraints: additional constraints to be used for the simulation (default: None)
     :return: a pandas DataFrame with the minimum and maximum fluxes for each reaction
+
+    Performance Note:
+        This function is optimized for the current solver. With SCIP, it creates fresh
+        FBA instances per reaction to avoid state management overhead. With CPLEX/Gurobi,
+        it reuses a single FBA instance for better performance.
     """
     if not reactions:
         reactions = model.reactions.keys()
@@ -108,18 +114,39 @@ def fva(
     else:
         obj = next(iter(model.objective)).id
 
+    # Get optimal objective value
     _fba = FBA(model).build()
     objective_value, _ = run_method_and_decode(method=_fba, objective=objective, constraints=constraints)
     constraints[obj] = (fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND)
 
-    fba = FBA(model).build()
+    # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
+    use_fresh_instance = solver_prefers_fresh_instance()
+
+    if not use_fresh_instance:
+        # CPLEX/Gurobi: Create once and reuse
+        fba = FBA(model).build()
 
     result = defaultdict(list)
     for rxn in reactions:
-        min_val, _ = run_method_and_decode(method=fba, objective={rxn: 1.0}, constraints=constraints, minimize=True)
-        result[rxn].append(min_val)
+        if use_fresh_instance:
+            # SCIP: Create fresh FBA instances for each min/max
+            fba_min = FBA(model).build()
+            min_val, _ = run_method_and_decode(
+                method=fba_min, objective={rxn: 1.0}, constraints=constraints, minimize=True
+            )
 
-        max_val, _ = run_method_and_decode(method=fba, objective={rxn: 1.0}, constraints=constraints, minimize=False)
+            fba_max = FBA(model).build()
+            max_val, _ = run_method_and_decode(
+                method=fba_max, objective={rxn: 1.0}, constraints=constraints, minimize=False
+            )
+        else:
+            # CPLEX/Gurobi: Reuse FBA instance
+            min_val, _ = run_method_and_decode(method=fba, objective={rxn: 1.0}, constraints=constraints, minimize=True)
+            max_val, _ = run_method_and_decode(
+                method=fba, objective={rxn: 1.0}, constraints=constraints, minimize=False
+            )
+
+        result[rxn].append(min_val)
         result[rxn].append(max_val)
 
     return pd.DataFrame.from_dict(data=result, orient="index", columns=["minimum", "maximum"])
@@ -141,6 +168,11 @@ def single_gene_deletion(
     :param genes: the genes to be simulated (default: all genes in the model)
     :param constraints: additional constraints to be used for the simulation (default: None)
     :return: a pandas DataFrame with the fluxes for each gene
+
+    Performance Note:
+        This function is optimized for the current solver. With SCIP, it creates fresh
+        FBA instances per deletion to avoid state management overhead. With CPLEX/Gurobi,
+        it reuses a single FBA instance for better performance.
     """
     if not constraints:
         constraints = {}
@@ -150,8 +182,17 @@ def single_gene_deletion(
     else:
         genes = [model.genes[gene] for gene in genes if gene in model.genes]
 
-    fba = FBA(model).build()
-    wt_objective_value, wt_status = run_method_and_decode(method=fba, constraints=constraints)
+    # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
+    use_fresh_instance = solver_prefers_fresh_instance()
+
+    # Get wild-type result
+    if use_fresh_instance:
+        wt_fba = FBA(model).build()
+        wt_objective_value, wt_status = run_method_and_decode(method=wt_fba, constraints=constraints)
+    else:
+        # Reuse FBA instance for all deletions (CPLEX/Gurobi)
+        fba = FBA(model).build()
+        wt_objective_value, wt_status = run_method_and_decode(method=fba, constraints=constraints)
 
     state = {gene.id: max(gene.coefficients) for gene in model.yield_genes()}
 
@@ -175,7 +216,17 @@ def single_gene_deletion(
             gene_constraints[reaction.id] = (0.0, 0.0)
 
         if gene_constraints:
-            solution, status = run_method_and_decode(method=fba, constraints={**constraints, **gene_constraints})
+            if use_fresh_instance:
+                # SCIP: Create fresh FBA instance for each deletion
+                # This avoids freeTransform() overhead and is more stable
+                gene_fba = FBA(model).build()
+                solution, status = run_method_and_decode(
+                    method=gene_fba, constraints={**constraints, **gene_constraints}
+                )
+            else:
+                # CPLEX/Gurobi: Reuse FBA instance (they handle modifications efficiently)
+                solution, status = run_method_and_decode(method=fba, constraints={**constraints, **gene_constraints})
+
             result[gene.id] = [solution, status]
 
         else:
@@ -202,6 +253,11 @@ def single_reaction_deletion(
     :param reactions: the reactions to be simulated (default: all reactions in the model)
     :param constraints: additional constraints to be used for the simulation (default: None)
     :return: a pandas DataFrame with the fluxes for each reaction
+
+    Performance Note:
+        This function is optimized for the current solver. With SCIP, it creates fresh
+        FBA instances per deletion to avoid state management overhead. With CPLEX/Gurobi,
+        it reuses a single FBA instance for better performance.
     """
     if not reactions:
         reactions = model.reactions.keys()
@@ -209,12 +265,27 @@ def single_reaction_deletion(
     if not constraints:
         constraints = {}
 
-    fba = FBA(model).build()
+    # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
+    use_fresh_instance = solver_prefers_fresh_instance()
+
+    if not use_fresh_instance:
+        # CPLEX/Gurobi: Create once and reuse
+        fba = FBA(model).build()
 
     result = {}
     for reaction in reactions:
         reaction_constraints = {reaction: (0.0, 0.0)}
-        solution, status = run_method_and_decode(method=fba, constraints={**constraints, **reaction_constraints})
+
+        if use_fresh_instance:
+            # SCIP: Create fresh FBA instance for each deletion
+            reaction_fba = FBA(model).build()
+            solution, status = run_method_and_decode(
+                method=reaction_fba, constraints={**constraints, **reaction_constraints}
+            )
+        else:
+            # CPLEX/Gurobi: Reuse FBA instance
+            solution, status = run_method_and_decode(method=fba, constraints={**constraints, **reaction_constraints})
+
         result[reaction] = [solution, status]
 
     return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])

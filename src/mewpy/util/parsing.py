@@ -102,6 +102,47 @@ class Latex:
         return "$$ %s $$" % self.text
 
 
+def _escape_latex_text(text: str) -> str:
+    """Escape special LaTeX characters in text for use in \\text{} commands.
+
+    Args:
+        text: The text string to escape.
+
+    Returns:
+        The escaped text safe for LaTeX rendering.
+
+    Note:
+        This escapes characters that have special meaning in LaTeX:
+        - Underscore (_) is used for subscripts
+        - Caret (^) is used for superscripts
+        - Braces ({}) are used for grouping
+        - Percent (%) starts comments
+        - Ampersand (&) is used in tables
+        - Hash (#) is used for macro parameters
+        - Dollar ($) enters/exits math mode
+        - Tilde (~) is a non-breaking space
+        - Backslash (\\) starts commands
+    """
+    # Order matters: escape backslash first, then other characters
+    replacements = [
+        ("\\", r"\textbackslash{}"),
+        ("_", r"\_"),
+        ("^", r"\^{}"),
+        ("{", r"\{"),
+        ("}", r"\}"),
+        ("%", r"\%"),
+        ("&", r"\&"),
+        ("#", r"\#"),
+        ("$", r"\$"),
+        ("~", r"\textasciitilde{}"),
+    ]
+
+    for char, replacement in replacements:
+        text = text.replace(char, replacement)
+
+    return text
+
+
 def convert_constant(value: T.Any) -> str:
     """Helper to convert constant values to LaTeX string.
 
@@ -110,6 +151,10 @@ def convert_constant(value: T.Any) -> str:
 
     Returns:
         The LaTeX representation of `value`.
+
+    Note:
+        String values are escaped to handle special LaTeX characters like
+        underscores, which would otherwise cause rendering errors in notebooks.
     """
     if value is None or isinstance(value, bool):
         return r"\mathrm{" + str(value) + "}"
@@ -119,9 +164,12 @@ def convert_constant(value: T.Any) -> str:
         # Consider using a configurable symbol or supporting both 'j' and 'i'
         return str(value)
     if isinstance(value, str):
-        return r"\textrm{" + value + "}"
+        # Escape special LaTeX characters in strings (e.g., underscores in 'value_1')
+        escaped_value = _escape_latex_text(value)
+        return r"\textrm{" + escaped_value + "}"
     if isinstance(value, bytes):
-        return r"\textrm{" + str(value) + "}"
+        escaped_value = _escape_latex_text(str(value))
+        return r"\textrm{" + escaped_value + "}"
     if value is ...:
         return r"\cdots"
     raise ValueError(f"Unrecognized constant: {type(value).__name__}")

@@ -72,6 +72,34 @@ def solver_instance(model=None):
         return __MEWPY_solvers__[solver](model)
 
 
+def is_scip_solver():
+    """Check if the current default solver is SCIP.
+
+    SCIP has different performance characteristics than commercial solvers:
+    - Requires freeTransform() before modifying problems after solving
+    - May benefit from fresh solver instances in repeated optimization scenarios
+
+    Returns:
+        bool: True if SCIP is the default solver
+    """
+    return get_default_solver() == "scip"
+
+
+def solver_prefers_fresh_instance():
+    """Check if the current solver benefits from fresh instances in repeated optimizations.
+
+    Some solvers (like SCIP) have state machine constraints that make repeated
+    modifications less efficient. For these solvers, creating fresh instances
+    per optimization can be faster and more stable.
+
+    Returns:
+        bool: True if solver benefits from fresh instances (currently only SCIP)
+    """
+    # Currently only SCIP benefits from fresh instances due to freeTransform() overhead
+    # CPLEX and Gurobi handle repeated modifications efficiently
+    return is_scip_solver()
+
+
 # #################################################
 # ODE solvers
 # #################################################

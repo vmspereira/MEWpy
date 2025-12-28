@@ -32,8 +32,15 @@ def regulatory_truth_table(
     :return: A pandas DataFrame with the results of the analysis
     """
     if not interactions:
-        # Unpack tuples from yield_interactions() to get just the interaction objects
-        interactions = [interaction for _, interaction in model.yield_interactions()]
+        # Handle both RegulatoryExtension (yields tuples) and legacy models (yields objects)
+        interactions = []
+        for item in model.yield_interactions():
+            if isinstance(item, tuple) and len(item) == 2:
+                # RegulatoryExtension: (id, interaction) tuple
+                interactions.append(item[1])
+            else:
+                # Legacy model: just the interaction object
+                interactions.append(item)
     else:
         interactions = [model.interactions[interaction] for interaction in interactions]
 

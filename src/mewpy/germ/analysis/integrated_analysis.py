@@ -407,7 +407,12 @@ def _decode_interactions(
     :return: a dictionary with the state of each gene
     """
     target_state = {}
-    for _, interaction in model.yield_interactions():
+    # Handle both RegulatoryExtension (yields tuples) and legacy models (yields objects)
+    for item in model.yield_interactions():
+        if isinstance(item, tuple) and len(item) == 2:
+            _, interaction = item  # RegulatoryExtension: (id, interaction) tuple
+        else:
+            interaction = item  # Legacy model: just the interaction object
 
         for coefficient, event in interaction.regulatory_events.items():
             if event.is_none:

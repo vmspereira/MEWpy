@@ -63,6 +63,23 @@ class PySCIPOptSolver(Solver):
         self.set_parameters(default_parameters)
         self.set_logging(False)
 
+        # Additional SCIP parameters for numerical stability and better performance
+        # These help with repeated constraint modifications common in deletion analyses
+        try:
+            # Numerical stability parameters
+            self.problem.setParam("numerics/feastol", 1e-6)  # Feasibility tolerance
+            self.problem.setParam("numerics/dualfeastol", 1e-7)  # Dual feasibility tolerance
+            self.problem.setParam("numerics/epsilon", 1e-9)  # General epsilon for comparisons
+
+            # LP solver parameters for stability
+            self.problem.setParam("lp/threads", 1)  # Single-threaded LP for consistency
+
+            # For models with many constraints/variables, increase limits
+            self.problem.setParam("limits/memory", 8192)  # Memory limit in MB (8GB)
+        except:
+            # Older SCIP versions may not support all parameters
+            pass
+
         if model:
             self.build_problem(model)
 
@@ -113,9 +130,16 @@ class PySCIPOptSolver(Solver):
             var_id (str): variable identifier
             lb (float): lower bound
             ub (float): upper bound
+
+        Note:
+            SCIP has a strict state machine. After solving, the problem is in a "transformed" state
+            where modifications are not allowed. We must call freeTransform() to return to the
+            "problem building" state before making changes. This has some performance overhead
+            compared to CPLEX/Gurobi which allow modifications in any state.
         """
         if var_id in self._vars:
             # Free the transformed problem to allow modifications
+            # SCIP limitation: Can't modify bounds after solving without this
             try:
                 self.problem.freeTransform()
             except:

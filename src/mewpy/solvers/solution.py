@@ -146,6 +146,94 @@ class Solution(object):
         # For basic compatibility, just return the dataframe version
         return self.to_dataframe()
 
+    def to_summary(self, dimensions=None):
+        """
+        Convert solution to a Summary object.
+
+        This provides basic compatibility with the old ModelSolution API.
+        Returns a simplified Summary with basic solution information.
+
+        :param dimensions: Ignored for compatibility (kept for API consistency)
+        :return: Summary object with dataframes of solution values
+        """
+        try:
+            import pandas as pd
+        except ImportError:
+            raise RuntimeError("Pandas is not installed.")
+
+        # Import Summary class
+        from mewpy.germ.solution.summary import Summary
+
+        # Create basic dataframe with all values
+        df = self.to_dataframe()
+
+        # Try to separate into inputs/outputs if model is available
+        inputs = pd.DataFrame()
+        outputs = pd.DataFrame()
+        objective_df = pd.DataFrame()
+        metabolic = pd.DataFrame()
+        regulatory = pd.DataFrame()
+
+        # Basic objective information
+        if self.fobj is not None:
+            objective_df = pd.DataFrame(
+                [[self.fobj, self._objective_direction]],
+                columns=["value", "direction"],
+                index=[self._method if self._method else "objective"],
+            )
+
+        # If model is available, try to categorize variables
+        if self._model is not None and hasattr(self._model, "reactions"):
+            # Try to separate metabolic and regulatory variables
+            metabolic_ids = set()
+            regulatory_ids = set()
+
+            # Get reaction IDs (metabolic)
+            if hasattr(self._model, "reactions"):
+                try:
+                    metabolic_ids = set(
+                        self._model.reactions.keys()
+                        if hasattr(self._model.reactions, "keys")
+                        else self._model.reactions
+                    )
+                except:
+                    pass
+
+            # Get regulator/target IDs (regulatory)
+            if hasattr(self._model, "regulators"):
+                try:
+                    regulatory_ids.update(
+                        self._model.regulators.keys()
+                        if hasattr(self._model.regulators, "keys")
+                        else self._model.regulators
+                    )
+                except:
+                    pass
+            if hasattr(self._model, "targets"):
+                try:
+                    regulatory_ids.update(
+                        self._model.targets.keys() if hasattr(self._model.targets, "keys") else self._model.targets
+                    )
+                except:
+                    pass
+
+            # Separate values into metabolic and regulatory
+            metabolic_values = {k: v for k, v in self.values.items() if k in metabolic_ids}
+            regulatory_values = {k: v for k, v in self.values.items() if k in regulatory_ids}
+
+            if metabolic_values:
+                metabolic = pd.DataFrame(metabolic_values.values(), columns=["value"], index=metabolic_values.keys())
+            if regulatory_values:
+                regulatory = pd.DataFrame(regulatory_values.values(), columns=["value"], index=regulatory_values.keys())
+
+        # If we couldn't separate, put everything in metabolic
+        if metabolic.empty and regulatory.empty and not df.empty:
+            metabolic = df
+
+        return Summary(
+            inputs=inputs, outputs=outputs, objective=objective_df, df=df, metabolic=metabolic, regulatory=regulatory
+        )
+
     @classmethod
     def from_solver(cls, method, solution, **kwargs):
         """Create a Solution from another solution object (ModelSolution compatibility)."""
