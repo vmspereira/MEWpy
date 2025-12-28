@@ -21,6 +21,61 @@ class HistoryManager:
     def __str__(self):
         return f"History: {len(self._undo_able_commands)} undos and {len(self._redo_able_commands)} redos"
 
+    def __repr__(self):
+        """Rich representation showing history state."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("History Manager")
+        lines.append("=" * 60)
+
+        # Undo/redo availability
+        try:
+            undo_count = len(self._undo_able_commands)
+            redo_count = len(self._redo_able_commands)
+
+            lines.append(f"{'Undo available:':<20} {undo_count}")
+            lines.append(f"{'Redo available:':<20} {redo_count}")
+
+            # Total history size
+            history_size = len(self._history)
+            lines.append(f"{'Total history:':<20} {history_size}")
+        except:
+            pass
+
+        # Current position indicator
+        try:
+            if undo_count > 0 and redo_count == 0:
+                lines.append(f"{'Position:':<20} At end (can undo)")
+            elif undo_count == 0 and redo_count > 0:
+                lines.append(f"{'Position:':<20} At start (can redo)")
+            elif undo_count > 0 and redo_count > 0:
+                lines.append(f"{'Position:':<20} Middle (can undo/redo)")
+            else:
+                lines.append(f"{'Position:':<20} Empty")
+        except:
+            pass
+
+        # Show recent history entries
+        try:
+            if len(self._history) > 0:
+                lines.append(f"{'Recent actions:':<20}")
+                recent = self._history[-3:] if len(self._history) > 3 else self._history
+                for entry in recent:
+                    method_name = entry[0] if len(entry) > 0 else "unknown"
+                    obj_str = entry[3] if len(entry) > 3 else ""
+                    # Truncate object string if too long
+                    if len(obj_str) > 25:
+                        obj_str = obj_str[:22] + "..."
+                    if obj_str:
+                        lines.append(f"{'  -':<20} {method_name} ({obj_str})")
+                    else:
+                        lines.append(f"{'  -':<20} {method_name}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     @property
     def history(self):
 

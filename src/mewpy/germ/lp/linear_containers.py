@@ -58,6 +58,65 @@ class VariableContainer:
     def __str__(self):
         return f"Variable {self.name}"
 
+    def __repr__(self):
+        """Rich representation showing variable container details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"VariableContainer: {self.name}")
+        lines.append("=" * 60)
+
+        # Sub-variables count
+        try:
+            sub_var_count = len(self.sub_variables)
+            lines.append(f"{'Sub-variables:':<20} {sub_var_count}")
+
+            # Show first few sub-variables
+            if sub_var_count > 0 and sub_var_count <= 3:
+                for sv in self.sub_variables:
+                    lines.append(f"{'  -':<20} {sv}")
+            elif sub_var_count > 3:
+                for sv in self.sub_variables[:3]:
+                    lines.append(f"{'  -':<20} {sv}")
+                lines.append(f"{'  ...':<20} and {sub_var_count - 3} more")
+        except:
+            pass
+
+        # Bounds summary
+        try:
+            if len(self.lbs) > 0:
+                lb_min = min(self.lbs)
+                lb_max = max(self.lbs)
+                ub_min = min(self.ubs)
+                ub_max = max(self.ubs)
+
+                if lb_min == lb_max and ub_min == ub_max:
+                    lines.append(f"{'Bounds:':<20} ({lb_min:.4g}, {ub_max:.4g})")
+                else:
+                    lines.append(f"{'Lower bounds:':<20} [{lb_min:.4g}, {lb_max:.4g}]")
+                    lines.append(f"{'Upper bounds:':<20} [{ub_min:.4g}, {ub_max:.4g}]")
+        except:
+            pass
+
+        # Variable types
+        try:
+            if len(self.variables_type) > 0:
+                type_counts = {}
+                for vt in self.variables_type:
+                    type_name = vt.name if hasattr(vt, "name") else str(vt)
+                    type_counts[type_name] = type_counts.get(type_name, 0) + 1
+
+                if len(type_counts) == 1:
+                    type_name = list(type_counts.keys())[0]
+                    lines.append(f"{'Type:':<20} {type_name}")
+                else:
+                    types_str = ", ".join(f"{k}: {v}" for k, v in type_counts.items())
+                    lines.append(f"{'Types:':<20} {types_str}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def __eq__(self, other: "VariableContainer"):
         return self.name == other.name
 
@@ -146,6 +205,55 @@ class ConstraintContainer:
 
     def __str__(self):
         return f"Constraint {self.name}"
+
+    def __repr__(self):
+        """Rich representation showing constraint container details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"ConstraintContainer: {self.name}")
+        lines.append("=" * 60)
+
+        # Number of constraints/rows
+        try:
+            constraint_count = len(self.coefs)
+            lines.append(f"{'Constraints:':<20} {constraint_count}")
+        except:
+            pass
+
+        # Bounds summary
+        try:
+            if len(self.lbs) > 0:
+                lb_min = min(self.lbs)
+                lb_max = max(self.lbs)
+                ub_min = min(self.ubs)
+                ub_max = max(self.ubs)
+
+                if lb_min == lb_max and ub_min == ub_max:
+                    lines.append(f"{'Bounds:':<20} ({lb_min:.4g}, {ub_max:.4g})")
+                else:
+                    lines.append(f"{'Lower bounds:':<20} [{lb_min:.4g}, {lb_max:.4g}]")
+                    lines.append(f"{'Upper bounds:':<20} [{ub_min:.4g}, {ub_max:.4g}]")
+        except:
+            pass
+
+        # Coefficient statistics
+        try:
+            if len(self.coefs) > 0:
+                # Count total variables involved
+                all_vars = set()
+                for coef_dict in self.coefs:
+                    all_vars.update(coef_dict.keys())
+
+                lines.append(f"{'Variables:':<20} {len(all_vars)}")
+
+                # Average non-zero coefficients per constraint
+                avg_nonzero = sum(len(c) for c in self.coefs) / len(self.coefs)
+                lines.append(f"{'Avg non-zero/row:':<20} {avg_nonzero:.1f}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def __eq__(self, other: "ConstraintContainer"):
         return self.name == other.name

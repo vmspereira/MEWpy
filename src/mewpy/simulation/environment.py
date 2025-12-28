@@ -40,7 +40,70 @@ class Environment(OrderedDict):
         return "\n".join(entries)
 
     def __repr__(self):
-        return str(self)
+        """Rich representation showing environment details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("Environment")
+        lines.append("=" * 60)
+
+        # Total number of reactions
+        try:
+            total_reactions = len(self)
+            lines.append(f"{'Total reactions:':<20} {total_reactions}")
+        except:
+            pass
+
+        # Count uptake reactions (lb < 0)
+        try:
+            uptake_count = sum(1 for _, (lb, _) in self.items() if lb < 0)
+            if uptake_count > 0:
+                lines.append(f"{'Uptake reactions:':<20} {uptake_count}")
+        except:
+            pass
+
+        # Count secretion reactions (ub > 0)
+        try:
+            secretion_count = sum(1 for _, (_, ub) in self.items() if ub > 0)
+            if secretion_count > 0:
+                lines.append(f"{'Secretion reactions:':<20} {secretion_count}")
+        except:
+            pass
+
+        # Show first few compounds in the medium
+        try:
+            compounds = self.get_compounds()
+            if len(compounds) > 0:
+                lines.append(f"{'Compounds:':<20} {len(compounds)}")
+                if len(compounds) <= 5:
+                    for comp in compounds:
+                        lines.append(f"{'  -':<20} {comp}")
+                else:
+                    for comp in compounds[:5]:
+                        lines.append(f"{'  -':<20} {comp}")
+                    lines.append(f"{'  ...':<20} and {len(compounds) - 5} more")
+        except:
+            pass
+
+        # Bounds summary
+        try:
+            if len(self) > 0:
+                all_lbs = [lb for _, (lb, _) in self.items() if lb not in (-inf, inf)]
+                all_ubs = [ub for _, (_, ub) in self.items() if ub not in (-inf, inf)]
+
+                if all_lbs:
+                    lb_min = min(all_lbs)
+                    lb_max = max(all_lbs)
+                    lines.append(f"{'LB range:':<20} [{lb_min:.4g}, {lb_max:.4g}]")
+
+                if all_ubs:
+                    ub_min = min(all_ubs)
+                    ub_max = max(all_ubs)
+                    lines.append(f"{'UB range:':<20} [{ub_min:.4g}, {ub_max:.4g}]")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def _repr_html_(self):
         import pandas as pd

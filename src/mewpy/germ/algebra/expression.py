@@ -123,7 +123,78 @@ class Expression:
     # Built-in
     # -----------------------------------------------------------------------------
     def __repr__(self):
-        return repr(self.symbolic)
+        """Rich representation showing expression details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("Expression")
+        lines.append("=" * 60)
+
+        # Show formula
+        try:
+            if not self.is_none:
+                formula = self.to_string()
+                if len(formula) > 70:
+                    lines.append(f"{'Formula:':<20} {formula[:67]}...")
+                    lines.append(f"{'':<20} (Use .to_string() for full)")
+                else:
+                    lines.append(f"{'Formula:':<20} {formula}")
+            else:
+                lines.append(f"{'Formula:':<20} <empty>")
+        except:
+            lines.append(f"{'Formula:':<20} <not available>")
+
+        # Show variable count and types
+        try:
+            var_count = len(self._variables)
+            if var_count > 0:
+                lines.append(f"{'Variables:':<20} {var_count}")
+
+                # Determine variable types
+                var_types = set()
+                for var in self._variables.values():
+                    if hasattr(var, "types"):
+                        var_types.update(var.types)
+                    else:
+                        var_types.add(type(var).__name__.lower())
+
+                if var_types:
+                    types_str = ", ".join(sorted(var_types))
+                    if len(types_str) > 40:
+                        types_str = types_str[:37] + "..."
+                    lines.append(f"{'Types:':<20} {types_str}")
+        except:
+            pass
+
+        # Show operator types
+        try:
+            if not self.is_none:
+                formula = self.to_string()
+                operators = []
+                if " and " in formula.lower() or " & " in formula:
+                    operators.append("AND")
+                if " or " in formula.lower() or " | " in formula:
+                    operators.append("OR")
+                if " not " in formula.lower() or "~" in formula:
+                    operators.append("NOT")
+                if ">" in formula or "<" in formula or "==" in formula:
+                    operators.append("comparison")
+
+                if operators:
+                    op_str = ", ".join(operators)
+                    lines.append(f"{'Operators:':<20} {op_str}")
+        except:
+            pass
+
+        # Show symbolic type
+        try:
+            symbolic_type = self.symbolic.__class__.__name__
+            if symbolic_type != "NoneAtom":
+                lines.append(f"{'Type:':<20} {symbolic_type}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def __str__(self):
         return str(self.symbolic)
