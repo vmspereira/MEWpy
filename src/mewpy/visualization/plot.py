@@ -289,7 +289,17 @@ class StreamingPlot:
         pause(0.01)
 
     def create_layout(self, dimension):
-        self.fig.canvas.set_window_title(self.plot_title)
+        # Set window title (handling matplotlib 3.4+ API change)
+        try:
+            # New API (matplotlib 3.4+)
+            self.fig.canvas.manager.set_window_title(self.plot_title)
+        except AttributeError:
+            # Old API or backend without window title support
+            try:
+                self.fig.canvas.set_window_title(self.plot_title)
+            except (AttributeError, TypeError):
+                # Some backends (e.g., nbagg) don't support window titles
+                pass
         self.fig.suptitle(self.plot_title, fontsize=16)
 
         if dimension == 2:
