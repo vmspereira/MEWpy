@@ -67,6 +67,69 @@ class Regulator(Variable, variable_type="regulator", register=True, constructor=
 
         return f"{self.id} || {self.coefficients}"
 
+    def __repr__(self):
+        """Rich representation showing regulator details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Regulator: {self.id}")
+        lines.append("=" * 60)
+
+        # Name if available
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            lines.append(f"{'Name:':<20} {self.name}")
+
+        # Regulator type
+        try:
+            types = list(self.types)
+            if self.environmental_stimulus:
+                reg_type = "Environmental stimulus"
+            elif "reaction" in types:
+                reg_type = "Reaction regulator"
+            elif "metabolite" in types:
+                reg_type = "Metabolite regulator"
+            else:
+                reg_type = "Transcription factor"
+            lines.append(f"{'Type:':<20} {reg_type}")
+        except:
+            pass
+
+        # Activity status
+        try:
+            status = "Active" if self.is_active else "Inactive"
+            lines.append(f"{'Status:':<20} {status}")
+        except:
+            pass
+
+        # Coefficients
+        try:
+            coef = self.coefficients
+            if len(coef) <= 3:
+                coef_str = ", ".join(f"{c:.4g}" for c in coef)
+            else:
+                coef_str = f"{len(coef)} values: [{coef[0]:.4g}, ..., {coef[-1]:.4g}]"
+            lines.append(f"{'Coefficients:':<20} {coef_str}")
+        except:
+            pass
+
+        # Interactions count
+        try:
+            inter_count = len(self.interactions)
+            if inter_count > 0:
+                lines.append(f"{'Interactions:':<20} {inter_count}")
+        except:
+            pass
+
+        # Targets count
+        try:
+            targets_count = len(self.targets)
+            if targets_count > 0:
+                lines.append(f"{'Targets:':<20} {targets_count}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def _regulator_to_html(self):
         """
         It returns a html representation.

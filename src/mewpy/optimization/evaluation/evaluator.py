@@ -59,6 +59,66 @@ class EvaluationFunction:
     def __str__(self):
         return self.method_str()
 
+    def __repr__(self):
+        """Rich representation showing evaluation function details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"Evaluation Function: {self.__class__.__name__}")
+        lines.append("=" * 60)
+
+        # Method description
+        try:
+            method = self.method_str()
+            if method and len(method) > 0:
+                # Wrap long descriptions
+                if len(method) > 50:
+                    lines.append(f"{'Description:':<20} {method[:50]}...")
+                    lines.append(f"{'':<20} (Use .method_str() for full)")
+                else:
+                    lines.append(f"{'Description:':<20} {method}")
+        except:
+            pass
+
+        # Optimization direction
+        try:
+            direction = "Maximize" if self.maximize else "Minimize"
+            lines.append(f"{'Direction:':<20} {direction}")
+        except:
+            pass
+
+        # Worst fitness
+        try:
+            if self.worst_fitness is not None:
+                lines.append(f"{'Worst fitness:':<20} {self.worst_fitness}")
+        except:
+            pass
+
+        # Required simulations
+        try:
+            req_sims = self.required_simulations()
+            if req_sims and len(req_sims) > 0:
+                sims_str = ", ".join(str(s) for s in req_sims)
+                lines.append(f"{'Required methods:':<20} {sims_str}")
+        except:
+            pass
+
+        # Type-specific attributes
+        try:
+            # For phenotype evaluation functions with targets
+            if hasattr(self, "biomass") and self.biomass:
+                lines.append(f"{'Biomass:':<20} {self.biomass}")
+            if hasattr(self, "product") and self.product:
+                lines.append(f"{'Product:':<20} {self.product}")
+            if hasattr(self, "target") and self.target:
+                lines.append(f"{'Target:':<20} {self.target}")
+            if hasattr(self, "substrate") and self.substrate:
+                lines.append(f"{'Substrate:':<20} {self.substrate}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     @abstractmethod
     def required_simulations(self):
         return None
