@@ -292,4 +292,22 @@ For Windows compatibility, users can still use Ray evaluator which works with sp
 
 Multiprocessing now works automatically with both CPLEX and SCIP solvers on macOS/Linux by using the 'fork' start method. This restores the behavior from MEWpy 0.1.36 on Python 3.8.
 
-**No user action required** - multiprocessing will work out of the box after this fix.
+## Ray as Mandatory Dependency
+
+After thorough testing, we've determined that while the 'fork' start method works with SCIP, CPLEX still has pickling issues even with 'fork' because evaluation results contain unpicklable SWIG objects.
+
+**Solution**: Ray has been made a mandatory dependency (added to pyproject.toml). Ray:
+- Already configured as default multiprocessing evaluator (ModelConstants.MP_EVALUATOR = "ray")
+- Works with ALL solvers including CPLEX
+- No pickling required - each Ray actor maintains its own copy of the problem
+- Provides better performance and scalability
+- Handles unpicklable objects transparently
+
+**Benefits**:
+- ✓ Works with CPLEX, SCIP, and all other solvers
+- ✓ No user configuration needed
+- ✓ Better performance than standard multiprocessing
+- ✓ Robust handling of complex solver objects
+- ✓ Automatic installation with MEWpy
+
+**No user action required** - Ray will be installed automatically with MEWpy and used by default for multiprocessing.

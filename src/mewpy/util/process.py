@@ -30,6 +30,29 @@ logger = logging.getLogger(__name__)
 
 MP_Evaluators = []
 
+# Set multiprocessing start method to 'fork' BEFORE any multiprocessing imports
+# This is needed for Python 3.8+ on macOS where 'spawn' became the default
+# 'spawn' requires pickling all objects which fails with CPLEX/REFRAMED
+# 'fork' copies process memory and works with unpicklable objects
+import multiprocessing
+
+try:
+    if "fork" in multiprocessing.get_all_start_methods():
+        # Only set if not already configured
+        current_method = multiprocessing.get_start_method(allow_none=True)
+        if current_method is None:
+            multiprocessing.set_start_method("fork", force=False)
+            logger.debug("Set multiprocessing start method to 'fork'")
+        elif current_method != "fork":
+            logger.warning(
+                f"Multiprocessing start method is '{current_method}'. "
+                "For best compatibility with CPLEX/REFRAMED, use 'fork'. "
+                "Call multiprocessing.set_start_method('fork', force=True) before importing mewpy."
+            )
+except RuntimeError:
+    # start method already set, that's fine
+    pass
+
 from multiprocessing import Process
 from multiprocessing.pool import Pool as MPPool
 
@@ -47,27 +70,6 @@ except ImportError:
     from multiprocessing.pool import Pool
 
     MP_Evaluators.append("mp")
-
-# Set multiprocessing start method to 'fork' if available
-# This is needed for Python 3.8+ on macOS where 'spawn' became the default
-# 'spawn' requires pickling all objects which fails with CPLEX/REFRAMED
-# 'fork' copies process memory and works with unpicklable objects
-try:
-    if "fork" in multiprocessing.get_all_start_methods():
-        # Only set if not already configured
-        current_method = multiprocessing.get_start_method(allow_none=True)
-        if current_method is None:
-            multiprocessing.set_start_method("fork", force=False)
-            logger.debug("Set multiprocessing start method to 'fork'")
-        elif current_method != "fork":
-            logger.warning(
-                f"Multiprocessing start method is '{current_method}'. "
-                "For best compatibility with CPLEX/REFRAMED, use 'fork'. "
-                "Call multiprocessing.set_start_method('fork', force=True) before importing mewpy."
-            )
-except RuntimeError:
-    # start method already set, that's fine
-    pass
 
 # dask
 try:
