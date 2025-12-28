@@ -106,8 +106,8 @@ def results_observer(population, num_generations, num_evaluations, args):
             s["worst"], s["best"], s["median"], s["mean"], s["std"]
         )
     if num_generations == 0:
-        print(title)
-    print(values)
+        logger.info(title)
+    logger.info(values)
 
 
 class VisualizerObserver:

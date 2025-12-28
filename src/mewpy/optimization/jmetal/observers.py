@@ -20,7 +20,6 @@ Observer module for EA optimization based on jmetalpy
 Authors: Vitor Pereira
 ##############################################################################
 """
-import copy
 import logging
 from typing import List, TypeVar
 
@@ -159,4 +158,4 @@ class PrintObjectivesStatObserver:
                 fitness = solutions.objectives
                 res = abs(fitness[0])
                 message = "Evaluations: {}\tFitness: {}".format(evaluations, res)
-            print(message)
+            LOGGER.info(message)
