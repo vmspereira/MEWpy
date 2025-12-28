@@ -417,6 +417,82 @@ class ODEModel:
         self._constants = None
         self._m_r_lookup = None
 
+    def __repr__(self):
+        """Rich representation showing kinetic model details."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"ODEModel: {self.id}")
+        lines.append("=" * 60)
+
+        # Model type
+        lines.append(f"{'Type:':<20} ODE-based kinetic model")
+
+        # Metabolites count
+        try:
+            met_count = len(self.metabolites)
+            if met_count > 0:
+                lines.append(f"{'Metabolites:':<20} {met_count}")
+        except:
+            pass
+
+        # Reactions count
+        try:
+            rxn_count = len(self.ratelaws)
+            if rxn_count > 0:
+                lines.append(f"{'Reactions:':<20} {rxn_count}")
+        except:
+            pass
+
+        # Compartments count
+        try:
+            comp_count = len(self.compartments)
+            if comp_count > 0:
+                lines.append(f"{'Compartments:':<20} {comp_count}")
+        except:
+            pass
+
+        # Parameters
+        try:
+            const_param_count = len(self.constant_params)
+            var_param_count = len(self.variable_params)
+            total_params = const_param_count + var_param_count
+
+            if total_params > 0:
+                lines.append(f"{'Parameters:':<20} {total_params}")
+                if const_param_count > 0:
+                    lines.append(f"{'  Constant:':<20} {const_param_count}")
+                if var_param_count > 0:
+                    lines.append(f"{'  Variable:':<20} {var_param_count}")
+        except:
+            pass
+
+        # Initial concentrations
+        try:
+            conc_count = len(self.concentrations)
+            if conc_count > 0:
+                lines.append(f"{'Init. concentrations:':<20} {conc_count}")
+        except:
+            pass
+
+        # Assignment rules
+        try:
+            rule_count = len(self.assignment_rules)
+            if rule_count > 0:
+                lines.append(f"{'Assignment rules:':<20} {rule_count}")
+        except:
+            pass
+
+        # Function definitions
+        try:
+            func_count = len(self.function_definition)
+            if func_count > 0:
+                lines.append(f"{'Functions:':<20} {func_count}")
+        except:
+            pass
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     def _clear_temp(self):
         self._func_str = None
 
