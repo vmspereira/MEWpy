@@ -97,10 +97,9 @@ class Latex:
     def _repr_latex_(self) -> str:
         """Return LaTeX for Jupyter display.
 
-        Modern Jupyter/IPython expects latex without $$ delimiters.
-        The display system adds them automatically.
+        Jupyter needs $$ delimiters to recognize and render LaTeX as math.
         """
-        return self.text
+        return "$$ %s $$" % self.text
 
 
 def convert_constant(value: T.Any) -> str:

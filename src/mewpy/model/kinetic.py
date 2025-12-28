@@ -221,14 +221,13 @@ class Rule(object):
         """Generate LaTeX representation for Jupyter display.
 
         Returns:
-            str: LaTeX formatted string, or None if generation fails
+            str: LaTeX formatted string with $$ delimiters, or None if generation fails
         """
         try:
             s, _ = self.tree.to_latex()
             if s:
-                # Modern Jupyter/IPython expects latex without $$ delimiters
-                # The display system adds them automatically
-                return s
+                # Jupyter needs $$ delimiters to recognize and render LaTeX as math
+                return "$$ %s $$" % s
             return None
         except Exception as e:
             # If latex generation fails, return None to fall back to __repr__
