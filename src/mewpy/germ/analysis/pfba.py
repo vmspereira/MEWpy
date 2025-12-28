@@ -60,19 +60,23 @@ class pFBA(FBA):
             except:
                 simulator = self.model
 
-        # Create solver directly from simulator
-        self._solver = solver_instance(simulator)
+        # Step 1: Create a temporary solver to find optimal objective value
+        temp_solver = solver_instance(simulator)
 
         # Set up the biomass objective
         biomass_objective = {var.id: value for var, value in self.model.objective.items()}
 
-        # Step 1: Solve FBA to get optimal objective value (with constraints if provided)
-        fba_solution = self._solver.solve(linear=biomass_objective, minimize=False, constraints=constraints)
+        # Solve FBA to get optimal objective value (with constraints if provided)
+        fba_solution = temp_solver.solve(linear=biomass_objective, minimize=False, constraints=constraints)
 
         if fba_solution.status != Status.OPTIMAL:
             raise RuntimeError(f"FBA failed with status: {fba_solution.status}")
 
-        # Step 2: Add constraint to maintain objective at optimal level (or fraction thereof)
+        # Step 2: Create a fresh solver for pFBA optimization
+        # (SCIP doesn't allow adding constraints after solving)
+        self._solver = solver_instance(simulator)
+
+        # Add constraint to maintain objective at optimal level (or fraction thereof)
         if fraction is None:
             constraint_value = fba_solution.fobj
         else:
