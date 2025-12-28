@@ -73,7 +73,22 @@ class MultiSolution:
         return df
 
     def __repr__(self):
-        return "MultiSolution"
+        """Rich representation showing all methods."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("MultiSolution")
+        lines.append("=" * 60)
+        lines.append(f"Number of solutions: {len(self._solutions)}")
+
+        if self._solutions:
+            lines.append("\nMethods:")
+            for method in self._solutions:
+                lines.append(f"  - {method}")
+            lines.append("\nUse .solutions to access individual solution objects")
+            lines.append("Use .to_frame() to get results as DataFrame")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def __str__(self):
         return "MultiSolution:" ",".join([method for method in self._solutions])
@@ -156,7 +171,32 @@ class DynamicSolution:
         return df
 
     def __repr__(self):
-        return "DynamicSolution"
+        """Rich representation showing time points."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("DynamicSolution")
+        lines.append("=" * 60)
+        lines.append(f"Number of time points: {len(self._time)}")
+
+        if self._time:
+            lines.append(f"Time range: {min(self._time)} to {max(self._time)}")
+            lines.append(f"\nTime points ({len(self._time)} total):")
+            # Show first few and last few if many time points
+            if len(self._time) <= 10:
+                for t in self._time:
+                    lines.append(f"  - t_{t}")
+            else:
+                for t in self._time[:5]:
+                    lines.append(f"  - t_{t}")
+                lines.append(f"  ... ({len(self._time) - 10} more time points)")
+                for t in self._time[-5:]:
+                    lines.append(f"  - t_{t}")
+
+            lines.append("\nUse .solutions to access individual time point solutions")
+            lines.append("Use .to_frame() to get results as DataFrame")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def __str__(self):
         return "DynamicSolution:" ",".join([time for time in self._solutions])
@@ -247,7 +287,31 @@ class KOSolution:
         return df
 
     def __repr__(self):
-        return "KOSolution"
+        """Rich representation showing knocked out targets."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("KOSolution")
+        lines.append("=" * 60)
+        lines.append(f"Number of knockouts: {len(self._time)}")
+
+        if self._time:
+            lines.append(f"\nKnockouts ({len(self._time)} total):")
+            # Show first few and last few if many KOs
+            if len(self._time) <= 10:
+                for ko in self._time:
+                    lines.append(f"  - {ko}")
+            else:
+                for ko in self._time[:5]:
+                    lines.append(f"  - {ko}")
+                lines.append(f"  ... ({len(self._time) - 10} more knockouts)")
+                for ko in self._time[-5:]:
+                    lines.append(f"  - {ko}")
+
+            lines.append("\nUse .solutions to access individual KO solutions")
+            lines.append("Use .to_frame() to get results as DataFrame")
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
 
     def __str__(self):
         return "KOSolution:" ",".join([time for time in self._solutions])
