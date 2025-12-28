@@ -218,8 +218,25 @@ class Rule(object):
         return self.replace().replace(" ", "")
 
     def _repr_latex_(self):
-        s, _ = self.tree.to_latex()
-        return "$$ %s $$" % (s)
+        """Generate LaTeX representation for Jupyter display.
+
+        Returns:
+            str: LaTeX formatted string with $$ delimiters, or None if generation fails
+        """
+        try:
+            s, _ = self.tree.to_latex()
+            if s:
+                # Jupyter needs $$ delimiters to recognize and render LaTeX as math
+                return "$$ %s $$" % s
+            return None
+        except Exception as e:
+            # If latex generation fails, return None to fall back to __repr__
+            import warnings
+
+            warnings.warn(
+                f"Failed to generate LaTeX representation for {self.id}: {type(e).__name__}: {e}", RuntimeWarning
+            )
+            return None
 
 
 class KineticReaction(Rule):

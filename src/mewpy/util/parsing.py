@@ -95,6 +95,10 @@ class Latex:
         return self.text
 
     def _repr_latex_(self) -> str:
+        """Return LaTeX for Jupyter display.
+
+        Jupyter needs $$ delimiters to recognize and render LaTeX as math.
+        """
         return "$$ %s $$" % self.text
 
 
