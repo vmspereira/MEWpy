@@ -12,6 +12,11 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from .simulation import get_simulator
+from .logger import configure_logging
+
+# Configure logging on import (INFO level by default)
+# Users can reconfigure with: mewpy.configure_logging('DEBUG')
+configure_logging()
 
 __author__ = "Vitor Pereira (2019-) and CEB University of Minho (2019-2023)"
 __email__ = "vpereira@ceb.uminho.pt"
