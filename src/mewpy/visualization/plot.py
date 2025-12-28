@@ -220,7 +220,8 @@ class StreamingPlot:
 
         warnings.filterwarnings("ignore", ".*GUI is implemented.*")
 
-        self.fig, self.ax = plt.subplots()
+        self.fig = plt.figure()
+        self.ax = None  # Will be created in create_layout based on dimension
         self.sc = None
         self.scf = None
         self.axis = None
@@ -303,16 +304,21 @@ class StreamingPlot:
         self.fig.suptitle(self.plot_title, fontsize=16)
 
         if dimension == 2:
+            # Create 2D axis
+            if self.ax is None:
+                self.ax = self.fig.add_subplot(111)
             # Stylize axis
             self.ax.spines["top"].set_visible(False)
             self.ax.spines["right"].set_visible(False)
             self.ax.get_xaxis().tick_bottom()
             self.ax.get_yaxis().tick_left()
             if self.axis_labels:
-                plt.xlabel(self.axis_labels[0])
-                plt.ylabel(self.axis_labels[1])
+                self.ax.set_xlabel(self.axis_labels[0])
+                self.ax.set_ylabel(self.axis_labels[1])
         elif dimension == 3:
-            self.ax = Axes3D(self.fig)
+            # Create 3D axis using modern API
+            if self.ax is None:
+                self.ax = self.fig.add_subplot(111, projection="3d")
             self.ax.autoscale(enable=True, axis="both")
             if self.axis_labels:
                 self.ax.set_xlabel(self.axis_labels[0])
