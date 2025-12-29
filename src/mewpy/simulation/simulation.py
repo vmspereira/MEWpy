@@ -259,6 +259,66 @@ class Simulator(ModelContainer, SimulationInterface):
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Simulator type
+        sim_type = self.__class__.__name__
+
+        # Model info
+        try:
+            model_id = self.model.id if hasattr(self.model, "id") else str(self.model)
+            rows.append(("Model", model_id))
+        except:
+            rows.append(("Model", "<not available>"))
+
+        # Model statistics
+        try:
+            rows.append(("Reactions", str(len(self.reactions))))
+        except:
+            pass
+
+        try:
+            rows.append(("Metabolites", str(len(self.metabolites))))
+        except:
+            pass
+
+        try:
+            rows.append(("Genes", str(len(self.genes))))
+        except:
+            pass
+
+        # Objective
+        try:
+            obj = self.get_objective()
+            if obj:
+                if isinstance(obj, dict):
+                    obj_ids = list(obj.keys())[:3]
+                    obj_str = ", ".join(str(o) for o in obj_ids)
+                    if len(obj) > 3:
+                        obj_str += f", ... ({len(obj)} total)"
+                    rows.append(("Objective", obj_str))
+                else:
+                    rows.append(("Objective", str(obj)))
+        except:
+            pass
+
+        # Environmental conditions
+        try:
+            env = self.environmental_conditions
+            if env and len(env) > 0:
+                rows.append(("Medium conditions", f"{len(env)} constraints"))
+        except:
+            pass
+
+        # Status
+        rows.append(("Status", "Ready"))
+
+        return render_html_table(f"Simulator: {sim_type}", rows)
+
     def simulate(self, *args, **kwargs):
         """Abstract method to run a phenotype simulation.
 

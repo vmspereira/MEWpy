@@ -167,6 +167,69 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Target
+        try:
+            if self.target:
+                target_id = self.target.id if hasattr(self.target, "id") else str(self.target)
+                rows.append(("Target", target_id))
+        except:
+            pass
+
+        # Regulators
+        try:
+            regs = self.regulators
+            if regs:
+                reg_count = len(regs)
+                rows.append(("Regulators", str(reg_count)))
+                # Show first few regulators
+                if reg_count <= 3:
+                    for reg_id in regs:
+                        rows.append(("  -", reg_id))
+                elif reg_count > 3:
+                    reg_ids = list(regs.keys())[:3]
+                    for reg_id in reg_ids:
+                        rows.append(("  -", reg_id))
+                    rows.append(("  ...", f"and {reg_count - 3} more"))
+        except:
+            pass
+
+        # Regulatory events/rules
+        try:
+            events = self.regulatory_events
+            if events and len(events) > 0:
+                rows.append(("Regulatory rules", f"{len(events)} events"))
+                # Show first few events
+                events_list = list(events.items())
+                if len(events_list) <= 2:
+                    for coef, expr in events_list:
+                        if not expr.is_none:
+                            expr_str = expr.to_string()
+                            if len(expr_str) > 40:
+                                expr_str = expr_str[:37] + "..."
+                            rows.append(("  " + str(coef), expr_str))
+                elif len(events_list) > 2:
+                    for coef, expr in events_list[:2]:
+                        if not expr.is_none:
+                            expr_str = expr.to_string()
+                            if len(expr_str) > 40:
+                                expr_str = expr_str[:37] + "..."
+                            rows.append(("  " + str(coef), expr_str))
+                    rows.append(("  ...", f"and {len(events_list) - 2} more"))
+        except:
+            pass
+
+        return render_html_table(f"Interaction: {self.id}", rows)
+
     def _interaction_to_html(self):
         """
         It returns a html dict representation.

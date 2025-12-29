@@ -76,6 +76,59 @@ class HistoryManager:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Undo/redo availability
+        try:
+            undo_count = len(self._undo_able_commands)
+            redo_count = len(self._redo_able_commands)
+
+            rows.append(("Undo available", str(undo_count)))
+            rows.append(("Redo available", str(redo_count)))
+
+            # Total history size
+            history_size = len(self._history)
+            rows.append(("Total history", str(history_size)))
+        except:
+            pass
+
+        # Current position indicator
+        try:
+            if undo_count > 0 and redo_count == 0:
+                rows.append(("Position", "At end (can undo)"))
+            elif undo_count == 0 and redo_count > 0:
+                rows.append(("Position", "At start (can redo)"))
+            elif undo_count > 0 and redo_count > 0:
+                rows.append(("Position", "Middle (can undo/redo)"))
+            else:
+                rows.append(("Position", "Empty"))
+        except:
+            pass
+
+        # Show recent history entries
+        try:
+            if len(self._history) > 0:
+                rows.append(("Recent actions", ""))
+                recent = self._history[-3:] if len(self._history) > 3 else self._history
+                for entry in recent:
+                    method_name = entry[0] if len(entry) > 0 else "unknown"
+                    obj_str = entry[3] if len(entry) > 3 else ""
+                    # Truncate object string if too long
+                    if len(obj_str) > 25:
+                        obj_str = obj_str[:22] + "..."
+                    if obj_str:
+                        rows.append(("  -", f"{method_name} ({obj_str})"))
+                    else:
+                        rows.append(("  -", method_name))
+        except:
+            pass
+
+        return render_html_table("History Manager", rows)
+
     @property
     def history(self):
 

@@ -136,6 +136,62 @@ class Metabolite(Variable, variable_type="metabolite", register=True, constructo
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Formula
+        try:
+            if self.formula and self.formula.strip():
+                rows.append(("Formula", self.formula))
+        except:
+            pass
+
+        # Charge
+        try:
+            charge = self.charge
+            if charge is not None:
+                rows.append(("Charge", str(charge)))
+        except:
+            pass
+
+        # Compartment
+        try:
+            if self.compartment:
+                rows.append(("Compartment", self.compartment))
+        except:
+            pass
+
+        # Molecular weight
+        try:
+            mw = self.molecular_weight
+            if mw:
+                rows.append(("Molecular weight", f"{mw:.4g}"))
+        except:
+            pass
+
+        # Reactions count
+        try:
+            rxn_count = len(self.reactions)
+            rows.append(("Reactions", str(rxn_count)))
+        except:
+            pass
+
+        # Exchange reaction
+        try:
+            if hasattr(self, "exchange_reaction") and self.exchange_reaction:
+                rows.append(("Exchange reaction", self.exchange_reaction.id))
+        except:
+            pass
+
+        return render_html_table(f"Metabolite: {self.id}", rows)
+
     def _metabolite_to_html(self):
         """
         It returns a html dict representation.

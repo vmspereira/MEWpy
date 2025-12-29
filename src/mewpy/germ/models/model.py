@@ -498,199 +498,106 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
     # noinspection PyUnresolvedReferences
     def _repr_html_(self):
-        """
-        It returns a html representation of the gene.
-        """
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
 
-        objective = getattr(self, "objective", None)
-        if objective:
-            objective = next(iter(objective)).id
-        else:
-            objective = None
+        rows = []
 
-        if self.is_metabolic() and self.is_regulatory():
-            return f"""
-            <table>
-                <tr>
-                    <th><b>Model</b></th>
-                    <td>{self.id}</td>
-                </tr>
-                <tr>
-                    <th>Name</th>
-                    <td>{self.name}</td>
-                </tr>
-                <tr>
-                    <th>Types</th>
-                    <td>{', '.join(self.types)}</td>
-                </tr>
-                <tr>
-                    <th>Compartments</th>
-                    <td>{', '.join(self.compartments)}</td>
-                </tr>
-                <tr>
-                    <th>Reactions</th>
-                    <td>{len(self.reactions)}</td>
-                </tr>
-                <tr>
-                    <th>Metabolites</th>
-                    <td>{len(self.metabolites)}</td>
-                </tr>
-                <tr>
-                    <th>Genes</th>
-                    <td>{len(self.genes)}</td>
-                </tr>
-                <tr>
-                    <th>Exchanges</th>
-                    <td>{len(self.exchanges)}</td>
-                </tr>
-                <tr>
-                    <th>Demands</th>
-                    <td>{len(self.demands)}</td>
-                </tr>
-                <tr>
-                    <th>Sinks</th>
-                    <td>{len(self.sinks)}</td>
-                </tr>
-                <tr>
-                    <th>Objective</th>
-                    <td>{objective}</td>
-                </tr>
-                <tr>
-                    <th>Regulatory interactions</th>
-                    <td>{len(self.interactions)}</td>
-                </tr>
-                <tr>
-                    <th>Targets</th>
-                    <td>{len(self.targets)}</td>
-                </tr>
-                <tr>
-                    <th>Regulators</th>
-                    <td>{len(self.regulators)}</td>
-                </tr>
-                <tr>
-                    <th>Regulatory reactions</th>
-                    <td>{len(self.regulatory_reactions)}</td>
-                </tr>
-                <tr>
-                    <th>Regulatory metabolites</th>
-                    <td>{len(self.regulatory_metabolites)}</td>
-                </tr>
-                <tr>
-                    <th>Environmental stimuli</th>
-                    <td>{len(self.environmental_stimuli)}</td>
-                </tr>
-            </table>
-            """
-        elif self.is_metabolic():
-            return f"""
-            <table>
-                <tr>
-                    <th><b>Model</b></th>
-                    <td>{self.id}</td>
-                </tr>
-                <tr>
-                    <th>Name</th>
-                    <td>{self.name}</td>
-                </tr>
-                <tr>
-                    <th>Types</th>
-                    <td>{', '.join(self.types)}</td>
-                </tr>
-                <tr>
-                    <th>Compartments</th>
-                    <td>{', '.join(self.compartments)}</td>
-                </tr>
-                <tr>
-                    <th>Reactions</th>
-                    <td>{len(self.reactions)}</td>
-                </tr>
-                <tr>
-                    <th>Metabolites</th>
-                    <td>{len(self.metabolites)}</td>
-                </tr>
-                <tr>
-                    <th>Genes</th>
-                    <td>{len(self.genes)}</td>
-                </tr>
-                <tr>
-                    <th>Exchanges</th>
-                    <td>{len(self.exchanges)}</td>
-                </tr>
-                <tr>
-                    <th>Demands</th>
-                    <td>{len(self.demands)}</td>
-                </tr>
-                <tr>
-                    <th>Sinks</th>
-                    <td>{len(self.sinks)}</td>
-                </tr>
-                <tr>
-                    <th>Objective</th>
-                    <td>{objective}</td>
-                </tr>
-            </table>
-            """
-        elif self.is_regulatory():
-            return f"""
-            <table>
-                <tr>
-                    <th><b>Model</b></th>
-                    <td>{self.id}</td>
-                </tr>
-                <tr>
-                    <th>Name</th>
-                    <td>{self.name}</td>
-                </tr>
-                <tr>
-                    <th>Types</th>
-                    <td>{', '.join(self.types)}</td>
-                </tr>
-                <tr>
-                    <th>Compartments</th>
-                    <td>{', '.join(self.compartments)}</td>
-                </tr>
-                <tr>
-                    <th>Regulatory interactions</th>
-                    <td>{len(self.interactions)}</td>
-                </tr>
-                <tr>
-                    <th>Targets</th>
-                    <td>{len(self.targets)}</td>
-                </tr>
-                <tr>
-                    <th>Regulators</th>
-                    <td>{len(self.regulators)}</td>
-                </tr>
-                <tr>
-                    <th>Regulatory reactions</th>
-                    <td>{len(self.regulatory_reactions)}</td>
-                </tr>
-                <tr>
-                    <th>Regulatory metabolites</th>
-                    <td>{len(self.regulatory_metabolites)}</td>
-                </tr>
-                <tr>
-                    <th>Environmental stimuli</th>
-                    <td>{len(self.environmental_stimuli)}</td>
-                </tr>
-            </table>
-            """
-        return f"""
-                <table>
-                    <tr>
-                        <th><b>Model</b></th>
-                        <td>{self.id}</td>
-                    </tr>
-                    <tr>
-                        <th>Name</th>
-                        <td>{self.name}</td>
-                    </tr>
-                    <tr>
-                        <th>Types</th>
-                        <td>{', '.join(self.types)}</td>
-                    </tr>
-                </table>
-                """
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Types
+        try:
+            types_str = ", ".join(sorted(self.types))
+            rows.append(("Types", types_str))
+        except:
+            pass
+
+        # Compartments
+        try:
+            comps = self.compartments
+            if comps:
+                comp_str = ", ".join(comps) if len(comps) <= 5 else f"{len(comps)} compartments"
+                rows.append(("Compartments", comp_str))
+        except:
+            pass
+
+        # Metabolic model stats
+        if self.is_metabolic():
+            try:
+                rows.append(("Reactions", str(len(self.reactions))))
+            except:
+                pass
+
+            try:
+                rows.append(("Metabolites", str(len(self.metabolites))))
+            except:
+                pass
+
+            try:
+                rows.append(("Genes", str(len(self.genes))))
+            except:
+                pass
+
+            # Boundary reactions
+            try:
+                exchanges = len(self.exchanges)
+                demands = len(self.demands)
+                sinks = len(self.sinks)
+                if exchanges > 0:
+                    rows.append(("  Exchanges", str(exchanges)))
+                if demands > 0:
+                    rows.append(("  Demands", str(demands)))
+                if sinks > 0:
+                    rows.append(("  Sinks", str(sinks)))
+            except:
+                pass
+
+            # Objective
+            try:
+                if hasattr(self, "objective") and self.objective:
+                    obj_keys = list(self.objective.keys())
+                    if obj_keys:
+                        obj_id = obj_keys[0]
+                        obj_val = self.objective[obj_keys[0]]
+                        direction = "maximize" if obj_val > 0 else "minimize"
+                        rows.append(("Objective", f"{obj_id} ({direction})"))
+            except:
+                pass
+
+        # Regulatory model stats
+        if self.is_regulatory():
+            try:
+                rows.append(("Interactions", str(len(self.interactions))))
+            except:
+                pass
+
+            try:
+                rows.append(("Targets", str(len(self.targets))))
+            except:
+                pass
+
+            try:
+                rows.append(("Regulators", str(len(self.regulators))))
+            except:
+                pass
+
+            # Sub-categories
+            try:
+                reg_rxns = len(self.regulatory_reactions)
+                reg_mets = len(self.regulatory_metabolites)
+                env_stim = len(self.environmental_stimuli)
+                if reg_rxns > 0:
+                    rows.append(("  Regulatory reactions", str(reg_rxns)))
+                if reg_mets > 0:
+                    rows.append(("  Regulatory metabolites", str(reg_mets)))
+                if env_stim > 0:
+                    rows.append(("  Environmental stimuli", str(env_stim)))
+            except:
+                pass
+
+        return render_html_table(f"Model: {self.id}", rows)
 
     # -----------------------------------------------------------------------------
     # Model type manager

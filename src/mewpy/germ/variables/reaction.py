@@ -182,6 +182,82 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Equation
+        try:
+            equation = self.equation
+            if len(equation) > 80:
+                equation = equation[:77] + "..."
+            rows.append(("Equation", equation))
+        except:
+            rows.append(("Equation", "<not available>"))
+
+        # Bounds
+        try:
+            lb, ub = self.bounds
+            rows.append(("Bounds", f"({lb:.4g}, {ub:.4g})"))
+        except:
+            rows.append(("Bounds", "<not available>"))
+
+        # Reversibility
+        try:
+            reversible = "Yes" if self.reversibility else "No"
+            rows.append(("Reversible", reversible))
+        except:
+            pass
+
+        # Boundary
+        try:
+            boundary = "Yes" if self.boundary else "No"
+            rows.append(("Boundary", boundary))
+        except:
+            pass
+
+        # GPR
+        try:
+            gpr_str = self.gene_protein_reaction_rule
+            if gpr_str and gpr_str.strip():
+                if len(gpr_str) > 60:
+                    gpr_str = gpr_str[:57] + "..."
+                rows.append(("GPR", gpr_str))
+        except:
+            pass
+
+        # Genes count
+        try:
+            gene_count = len(self.genes)
+            if gene_count > 0:
+                rows.append(("Genes", str(gene_count)))
+        except:
+            pass
+
+        # Metabolites count
+        try:
+            met_count = len(self.metabolites)
+            rows.append(("Metabolites", str(met_count)))
+        except:
+            pass
+
+        # Compartments
+        try:
+            comps = list(self.compartments)
+            if comps:
+                comp_str = ", ".join(comps) if len(comps) <= 3 else f"{len(comps)} compartments"
+                rows.append(("Compartments", comp_str))
+        except:
+            pass
+
+        return render_html_table(f"Reaction: {self.id}", rows)
+
     def _reaction_to_html(self):
         """
         It returns a html representation.

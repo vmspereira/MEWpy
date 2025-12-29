@@ -321,6 +321,78 @@ class AbstractProblem(ABC):
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Model info
+        try:
+            if hasattr(self.model, "id"):
+                model_id = self.model.id
+            elif hasattr(self, "simulator") and hasattr(self.simulator, "model"):
+                model_id = self.simulator.model.id if hasattr(self.simulator.model, "id") else str(self.simulator.model)
+            else:
+                model_id = str(self.model)
+            rows.append(("Model", model_id))
+        except:
+            rows.append(("Model", "<not available>"))
+
+        # Strategy (KO/OU)
+        try:
+            if hasattr(self, "strategy"):
+                rows.append(("Strategy", self.strategy.value))
+        except:
+            pass
+
+        # Targets
+        try:
+            if self._trg_list is not None:
+                rows.append(("Targets", str(len(self._trg_list))))
+            elif hasattr(self, "simulator"):
+                # Try to estimate from model
+                sim = self.simulator
+                if hasattr(sim, "genes"):
+                    rows.append(("Targets (estimated)", f"{len(sim.genes)} genes"))
+        except:
+            pass
+
+        # Solution size constraints
+        try:
+            rows.append(("Min modifications", str(self.candidate_min_size)))
+            rows.append(("Max modifications", str(self.candidate_max_size)))
+        except:
+            pass
+
+        # Objectives
+        try:
+            rows.append(("Objectives", str(self.number_of_objectives)))
+            if self.fevaluation and len(self.fevaluation) <= 3:
+                for i, feval in enumerate(self.fevaluation, 1):
+                    feval_name = feval.__class__.__name__ if hasattr(feval, "__class__") else str(feval)
+                    rows.append((f"  {i}.", feval_name))
+            elif self.fevaluation and len(self.fevaluation) > 3:
+                rows.append(("  (Use .fevaluation)", "to view all objectives"))
+        except:
+            pass
+
+        # Product target (if specified)
+        try:
+            if self.product:
+                rows.append(("Product", self.product))
+        except:
+            pass
+
+        # Environmental conditions
+        try:
+            if self.environmental_conditions and len(self.environmental_conditions) > 0:
+                rows.append(("Medium conditions", f"{len(self.environmental_conditions)} constraints"))
+        except:
+            pass
+
+        return render_html_table(f"Problem: {self.__class__.__name__}", rows)
+
     @property
     def target_list(self):
         "list of modification targets"
