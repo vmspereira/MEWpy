@@ -493,6 +493,44 @@ class ODEModel:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+        rows.append(("Type", "ODE-based kinetic model"))
+
+        if len(self.metabolites) > 0:
+            rows.append(("Metabolites", str(len(self.metabolites))))
+
+        if len(self.ratelaws) > 0:
+            rows.append(("Reactions", str(len(self.ratelaws))))
+
+        if len(self.compartments) > 0:
+            rows.append(("Compartments", str(len(self.compartments))))
+
+        const_param_count = len(self.constant_params)
+        var_param_count = len(self.variable_params)
+        total_params = const_param_count + var_param_count
+
+        if total_params > 0:
+            rows.append(("Parameters", str(total_params)))
+            if const_param_count > 0:
+                rows.append(("  Constant", str(const_param_count)))
+            if var_param_count > 0:
+                rows.append(("  Variable", str(var_param_count)))
+
+        if len(self.concentrations) > 0:
+            rows.append(("Init. concentrations", str(len(self.concentrations))))
+
+        if len(self.assignment_rules) > 0:
+            rows.append(("Assignment rules", str(len(self.assignment_rules))))
+
+        if len(self.function_definition) > 0:
+            rows.append(("Functions", str(len(self.function_definition))))
+
+        return render_html_table(f"ODEModel: {self.id}", rows)
+
     def _clear_temp(self):
         self._func_str = None
 
