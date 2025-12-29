@@ -119,6 +119,64 @@ class EvaluationFunction:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Method description
+        try:
+            method = self.method_str()
+            if method and len(method) > 0:
+                # Wrap long descriptions
+                if len(method) > 50:
+                    rows.append(("Description", method[:50] + "..."))
+                    rows.append(("", "(Use .method_str() for full)"))
+                else:
+                    rows.append(("Description", method))
+        except:
+            pass
+
+        # Optimization direction
+        try:
+            direction = "Maximize" if self.maximize else "Minimize"
+            rows.append(("Direction", direction))
+        except:
+            pass
+
+        # Worst fitness
+        try:
+            if self.worst_fitness is not None:
+                rows.append(("Worst fitness", str(self.worst_fitness)))
+        except:
+            pass
+
+        # Required simulations
+        try:
+            req_sims = self.required_simulations()
+            if req_sims and len(req_sims) > 0:
+                sims_str = ", ".join(str(s) for s in req_sims)
+                rows.append(("Required methods", sims_str))
+        except:
+            pass
+
+        # Type-specific attributes
+        try:
+            # For phenotype evaluation functions with targets
+            if hasattr(self, "biomass") and self.biomass:
+                rows.append(("Biomass", self.biomass))
+            if hasattr(self, "product") and self.product:
+                rows.append(("Product", self.product))
+            if hasattr(self, "target") and self.target:
+                rows.append(("Target", self.target))
+            if hasattr(self, "substrate") and self.substrate:
+                rows.append(("Substrate", self.substrate))
+        except:
+            pass
+
+        return render_html_table(f"Evaluation Function: {self.__class__.__name__}", rows)
+
     @abstractmethod
     def required_simulations(self):
         return None

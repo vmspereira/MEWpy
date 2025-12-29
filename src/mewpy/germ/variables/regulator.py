@@ -130,6 +130,67 @@ class Regulator(Variable, variable_type="regulator", register=True, constructor=
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Regulator type
+        try:
+            types = list(self.types)
+            if self.environmental_stimulus:
+                reg_type = "Environmental stimulus"
+            elif "reaction" in types:
+                reg_type = "Reaction regulator"
+            elif "metabolite" in types:
+                reg_type = "Metabolite regulator"
+            else:
+                reg_type = "Transcription factor"
+            rows.append(("Type", reg_type))
+        except:
+            pass
+
+        # Activity status
+        try:
+            status = "Active" if self.is_active else "Inactive"
+            rows.append(("Status", status))
+        except:
+            pass
+
+        # Coefficients
+        try:
+            coef = self.coefficients
+            if len(coef) <= 3:
+                coef_str = ", ".join(f"{c:.4g}" for c in coef)
+            else:
+                coef_str = f"{len(coef)} values: [{coef[0]:.4g}, ..., {coef[-1]:.4g}]"
+            rows.append(("Coefficients", coef_str))
+        except:
+            pass
+
+        # Interactions count
+        try:
+            inter_count = len(self.interactions)
+            if inter_count > 0:
+                rows.append(("Interactions", str(inter_count)))
+        except:
+            pass
+
+        # Targets count
+        try:
+            targets_count = len(self.targets)
+            if targets_count > 0:
+                rows.append(("Targets", str(targets_count)))
+        except:
+            pass
+
+        return render_html_table(f"Regulator: {self.id}", rows)
+
     def _regulator_to_html(self):
         """
         It returns a html representation.

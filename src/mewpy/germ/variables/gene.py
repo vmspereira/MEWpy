@@ -92,7 +92,44 @@ class Gene(Variable, variable_type="gene", register=True, constructor=True, chec
         lines.append("=" * 60)
         return "\n".join(lines)
 
-    def _gene_to_html(self):
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Activity status
+        try:
+            status = "Active" if self.is_active else "Inactive"
+            rows.append(("Status", status))
+        except:
+            pass
+
+        # Coefficients
+        try:
+            coef = self.coefficients
+            if len(coef) <= 3:
+                coef_str = ", ".join(f"{c:.4g}" for c in coef)
+            else:
+                coef_str = f"{len(coef)} values: [{coef[0]:.4g}, ..., {coef[-1]:.4g}]"
+            rows.append(("Coefficients", coef_str))
+        except:
+            pass
+
+        # Reactions count
+        try:
+            rxn_count = len(self.reactions)
+            rows.append(("Reactions", str(rxn_count)))
+        except:
+            pass
+
+        return render_html_table(f"Gene: {self.id}", rows)
+
+    def _gene_to_html_(self):
         """
         It returns a html dict representation.
         """

@@ -117,6 +117,63 @@ class VariableContainer:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Sub-variables count
+        try:
+            sub_var_count = len(self.sub_variables)
+            rows.append(("Sub-variables", str(sub_var_count)))
+
+            # Show first few sub-variables
+            if sub_var_count > 0 and sub_var_count <= 3:
+                for sv in self.sub_variables:
+                    rows.append(("  -", sv))
+            elif sub_var_count > 3:
+                for sv in self.sub_variables[:3]:
+                    rows.append(("  -", sv))
+                rows.append(("  ...", f"and {sub_var_count - 3} more"))
+        except:
+            pass
+
+        # Bounds summary
+        try:
+            if len(self.lbs) > 0:
+                lb_min = min(self.lbs)
+                lb_max = max(self.lbs)
+                ub_min = min(self.ubs)
+                ub_max = max(self.ubs)
+
+                if lb_min == lb_max and ub_min == ub_max:
+                    rows.append(("Bounds", f"({lb_min:.4g}, {ub_max:.4g})"))
+                else:
+                    rows.append(("Lower bounds", f"[{lb_min:.4g}, {lb_max:.4g}]"))
+                    rows.append(("Upper bounds", f"[{ub_min:.4g}, {ub_max:.4g}]"))
+        except:
+            pass
+
+        # Variable types
+        try:
+            if len(self.variables_type) > 0:
+                type_counts = {}
+                for vt in self.variables_type:
+                    type_name = vt.name if hasattr(vt, "name") else str(vt)
+                    type_counts[type_name] = type_counts.get(type_name, 0) + 1
+
+                if len(type_counts) == 1:
+                    type_name = list(type_counts.keys())[0]
+                    rows.append(("Type", type_name))
+                else:
+                    types_str = ", ".join(f"{k}: {v}" for k, v in type_counts.items())
+                    rows.append(("Types", types_str))
+        except:
+            pass
+
+        return render_html_table(f"VariableContainer: {self.name}", rows)
+
     def __eq__(self, other: "VariableContainer"):
         return self.name == other.name
 
@@ -254,6 +311,53 @@ class ConstraintContainer:
 
         lines.append("=" * 60)
         return "\n".join(lines)
+
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Number of constraints/rows
+        try:
+            constraint_count = len(self.coefs)
+            rows.append(("Constraints", str(constraint_count)))
+        except:
+            pass
+
+        # Bounds summary
+        try:
+            if len(self.lbs) > 0:
+                lb_min = min(self.lbs)
+                lb_max = max(self.lbs)
+                ub_min = min(self.ubs)
+                ub_max = max(self.ubs)
+
+                if lb_min == lb_max and ub_min == ub_max:
+                    rows.append(("Bounds", f"({lb_min:.4g}, {ub_max:.4g})"))
+                else:
+                    rows.append(("Lower bounds", f"[{lb_min:.4g}, {lb_max:.4g}]"))
+                    rows.append(("Upper bounds", f"[{ub_min:.4g}, {ub_max:.4g}]"))
+        except:
+            pass
+
+        # Coefficient statistics
+        try:
+            if len(self.coefs) > 0:
+                # Count total variables involved
+                all_vars = set()
+                for coef_dict in self.coefs:
+                    all_vars.update(coef_dict.keys())
+
+                rows.append(("Variables", str(len(all_vars))))
+
+                # Average non-zero coefficients per constraint
+                avg_nonzero = sum(len(c) for c in self.coefs) / len(self.coefs)
+                rows.append(("Avg non-zero/row", f"{avg_nonzero:.1f}"))
+        except:
+            pass
+
+        return render_html_table(f"ConstraintContainer: {self.name}", rows)
 
     def __eq__(self, other: "ConstraintContainer"):
         return self.name == other.name

@@ -200,10 +200,76 @@ class Expression:
         return str(self.symbolic)
 
     def _repr_html_(self):
-        """
-        It returns a html representation of the gene.
-        """
-        return str(self.symbolic)
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Show formula
+        try:
+            if not self.is_none:
+                formula = self.to_string()
+                if len(formula) > 70:
+                    rows.append(("Formula", formula[:67] + "..."))
+                    rows.append(("", "(Use .to_string() for full)"))
+                else:
+                    rows.append(("Formula", formula))
+            else:
+                rows.append(("Formula", "<empty>"))
+        except:
+            rows.append(("Formula", "<not available>"))
+
+        # Show variable count and types
+        try:
+            var_count = len(self._variables)
+            if var_count > 0:
+                rows.append(("Variables", str(var_count)))
+
+                # Determine variable types
+                var_types = set()
+                for var in self._variables.values():
+                    if hasattr(var, "types"):
+                        var_types.update(var.types)
+                    else:
+                        var_types.add(type(var).__name__.lower())
+
+                if var_types:
+                    types_str = ", ".join(sorted(var_types))
+                    if len(types_str) > 40:
+                        types_str = types_str[:37] + "..."
+                    rows.append(("Types", types_str))
+        except:
+            pass
+
+        # Show operator types
+        try:
+            if not self.is_none:
+                formula = self.to_string()
+                operators = []
+                if " and " in formula.lower() or " & " in formula:
+                    operators.append("AND")
+                if " or " in formula.lower() or " | " in formula:
+                    operators.append("OR")
+                if " not " in formula.lower() or "~" in formula:
+                    operators.append("NOT")
+                if ">" in formula or "<" in formula or "==" in formula:
+                    operators.append("comparison")
+
+                if operators:
+                    op_str = ", ".join(operators)
+                    rows.append(("Operators", op_str))
+        except:
+            pass
+
+        # Show symbolic type
+        try:
+            symbolic_type = self.symbolic.__class__.__name__
+            if symbolic_type != "NoneAtom":
+                rows.append(("Type", symbolic_type))
+        except:
+            pass
+
+        return render_html_table("Expression", rows)
 
     def to_string(self):
         """

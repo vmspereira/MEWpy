@@ -259,6 +259,66 @@ class Simulator(ModelContainer, SimulationInterface):
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Simulator type
+        sim_type = self.__class__.__name__
+
+        # Model info
+        try:
+            model_id = self.model.id if hasattr(self.model, "id") else str(self.model)
+            rows.append(("Model", model_id))
+        except:
+            rows.append(("Model", "<not available>"))
+
+        # Model statistics
+        try:
+            rows.append(("Reactions", str(len(self.reactions))))
+        except:
+            pass
+
+        try:
+            rows.append(("Metabolites", str(len(self.metabolites))))
+        except:
+            pass
+
+        try:
+            rows.append(("Genes", str(len(self.genes))))
+        except:
+            pass
+
+        # Objective
+        try:
+            obj = self.get_objective()
+            if obj:
+                if isinstance(obj, dict):
+                    obj_ids = list(obj.keys())[:3]
+                    obj_str = ", ".join(str(o) for o in obj_ids)
+                    if len(obj) > 3:
+                        obj_str += f", ... ({len(obj)} total)"
+                    rows.append(("Objective", obj_str))
+                else:
+                    rows.append(("Objective", str(obj)))
+        except:
+            pass
+
+        # Environmental conditions
+        try:
+            env = self.environmental_conditions
+            if env and len(env) > 0:
+                rows.append(("Medium conditions", f"{len(env)} constraints"))
+        except:
+            pass
+
+        # Status
+        rows.append(("Status", "Ready"))
+
+        return render_html_table(f"Simulator: {sim_type}", rows)
+
     def simulate(self, *args, **kwargs):
         """Abstract method to run a phenotype simulation.
 
@@ -718,6 +778,67 @@ class SimulationResult(object):
 
         lines.append("=" * 60)
         return "\n".join(lines)
+
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Status
+        if self.status:
+            rows.append(("Status", str(self.status)))
+
+        # Objective value with direction
+        if self.objective_value is not None:
+            direction = "maximize" if self.maximize else "minimize"
+            rows.append((f"Objective ({direction})", f"{self.objective_value:.6g}"))
+
+        # Method
+        if self.method:
+            if callable(self.method):
+                method_name = getattr(self.method, "__name__", repr(self.method))
+            else:
+                method_name = str(self.method)
+            rows.append(("Method", method_name))
+
+        # Model info
+        if self.model:
+            if hasattr(self.model, "id"):
+                model_id = self.model.id
+            else:
+                model_id = str(self.model)[:30]
+            rows.append(("Model", model_id))
+
+        # Fluxes summary
+        if self.fluxes:
+            total_fluxes = len(self.fluxes)
+            non_zero_fluxes = sum(1 for v in self.fluxes.values() if abs(v) > 1e-9)
+            rows.append(("Fluxes", f"{non_zero_fluxes} non-zero / {total_fluxes} total"))
+
+        # Constraints summary
+        all_constraints = self.get_constraints()
+        if all_constraints:
+            constraint_count = len(all_constraints)
+            rows.append(("Constraints", str(constraint_count)))
+
+            env_count = len(self.envcond) if self.envcond else 0
+            model_count = len(self.model_constraints) if self.model_constraints else 0
+            simul_count = len(self.simulation_constraints) if self.simulation_constraints else 0
+
+            if env_count > 0:
+                rows.append(("  Environment", str(env_count)))
+            if model_count > 0:
+                rows.append(("  Model", str(model_count)))
+            if simul_count > 0:
+                rows.append(("  Simulation", str(simul_count)))
+
+        # Shadow prices
+        if self.shadow_prices:
+            sp_count = len(self.shadow_prices)
+            rows.append(("Shadow prices", f"{sp_count} available"))
+
+        return render_html_table("Simulation Result", rows)
 
     def __str__(self):
         return self.__repr__()

@@ -221,6 +221,61 @@ class CommunityModel:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        org_count = len(self.organisms)
+        rows.append(("Organisms", str(org_count)))
+
+        if org_count > 0:
+            org_ids = list(self.organisms.keys())
+            if org_count <= 5:
+                for org_id in org_ids:
+                    rows.append((f"  {org_id}", ""))
+            else:
+                for org_id in org_ids[:5]:
+                    rows.append((f"  {org_id}", ""))
+                rows.append(("  ...", f"and {org_count - 5} more"))
+
+        if self.flavor:
+            rows.append(("Flavor", self.flavor))
+
+        if hasattr(self, "organisms_abundance") and self.organisms_abundance:
+            abundances = list(self.organisms_abundance.values())
+            if len(set(abundances)) == 1:
+                rows.append(("Abundances", f"Uniform ({abundances[0]})"))
+            else:
+                rows.append(("Abundances", "Variable"))
+                items = list(self.organisms_abundance.items())[:3]
+                for org_id, abundance in items:
+                    rows.append((f"  {org_id}", f"{abundance:.4g}"))
+                if len(self.organisms_abundance) > 3:
+                    rows.append(("  ...", ""))
+
+        if self._merge_biomasses:
+            rows.append(("Merged biomass", "Yes"))
+        if self._add_compartments:
+            rows.append(("Add compartments", "Yes"))
+
+        if self._comm_model is not None:
+            rows.append(("Status", "Built"))
+            if hasattr(self._comm_model, "reactions"):
+                rxn_count = len(self._comm_model.reactions)
+                rows.append(("Community reactions", str(rxn_count)))
+            if hasattr(self._comm_model, "metabolites"):
+                met_count = len(self._comm_model.metabolites)
+                rows.append(("Community metabolites", str(met_count)))
+        else:
+            rows.append(("Status", "Not built (call merge() or build())"))
+
+        if self.biomass:
+            rows.append(("Community biomass", self.biomass))
+
+        return render_html_table("Community Model", rows)
+
     def init_model(self):
         sid = " ".join(sorted(self.model_ids))
         if self.flavor == "reframed":
