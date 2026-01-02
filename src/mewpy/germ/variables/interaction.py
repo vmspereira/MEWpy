@@ -103,69 +103,8 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
         return target_str + expression_str
 
     def __repr__(self):
-        """Rich representation showing interaction details."""
-        lines = []
-        lines.append("=" * 60)
-        lines.append(f"Interaction: {self.id}")
-        lines.append("=" * 60)
-
-        # Name if available
-        if hasattr(self, "name") and self.name and self.name != self.id:
-            lines.append(f"{'Name:':<20} {self.name}")
-
-        # Target
-        try:
-            if self.target:
-                target_id = self.target.id if hasattr(self.target, "id") else str(self.target)
-                lines.append(f"{'Target:':<20} {target_id}")
-        except:
-            pass
-
-        # Regulators
-        try:
-            regs = self.regulators
-            if regs:
-                reg_count = len(regs)
-                lines.append(f"{'Regulators:':<20} {reg_count}")
-                # Show first few regulators
-                if reg_count <= 3:
-                    for reg_id in regs:
-                        lines.append(f"{'  -':<20} {reg_id}")
-                elif reg_count > 3:
-                    reg_ids = list(regs.keys())[:3]
-                    for reg_id in reg_ids:
-                        lines.append(f"{'  -':<20} {reg_id}")
-                    lines.append(f"{'  ...':<20} and {reg_count - 3} more")
-        except:
-            pass
-
-        # Regulatory events/rules
-        try:
-            events = self.regulatory_events
-            if events and len(events) > 0:
-                lines.append(f"{'Regulatory rules:':<20} {len(events)} events")
-                # Show first few events
-                events_list = list(events.items())
-                if len(events_list) <= 2:
-                    for coef, expr in events_list:
-                        if not expr.is_none:
-                            expr_str = expr.to_string()
-                            if len(expr_str) > 40:
-                                expr_str = expr_str[:37] + "..."
-                            lines.append(f"  {coef} = {expr_str}")
-                elif len(events_list) > 2:
-                    for coef, expr in events_list[:2]:
-                        if not expr.is_none:
-                            expr_str = expr.to_string()
-                            if len(expr_str) > 40:
-                                expr_str = expr_str[:37] + "..."
-                            lines.append(f"  {coef} = {expr_str}")
-                    lines.append(f"  ... and {len(events_list) - 2} more")
-        except:
-            pass
-
-        lines.append("=" * 60)
-        return "\n".join(lines)
+        """Return clean representation for dict keys and printing."""
+        return self.__str__()
 
     def _repr_html_(self):
         """Pandas-like HTML representation for Jupyter notebooks."""
