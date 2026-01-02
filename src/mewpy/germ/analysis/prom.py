@@ -98,6 +98,12 @@ class PROM(_RegulatoryAnalysisBase):
 
             reference_rate = reference[reaction]
 
+            # Handle None values from infeasible solutions
+            if min_rxn is None:
+                min_rxn = reference_rate
+            if max_rxn is None:
+                max_rxn = reference_rate
+
             if reference_rate < 0:
                 value = min((min_rxn, max_rxn, reference_rate))
             elif reference_rate > 0:
@@ -125,7 +131,11 @@ class PROM(_RegulatoryAnalysisBase):
         solver_constrains = solver_kwargs.get("constraints", {})
 
         # Get reaction bounds from simulator
-        prom_constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
+        # yield_reactions() returns reaction IDs (strings), not objects
+        prom_constraints = {}
+        for rxn_id in self.model.yield_reactions():
+            rxn_data = self._get_reaction(rxn_id)
+            prom_constraints[rxn_id] = (rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND), rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND))
 
         genes = self.model.genes
         state = {gene: 1 for gene in genes}
@@ -290,7 +300,8 @@ class PROM(_RegulatoryAnalysisBase):
         else:
             if isinstance(regulators, str):
                 regulators = [regulators]
-            regulators = [self.model.get(regulator) for regulator in regulators]
+            # Get regulator objects using get_regulator method
+            regulators = [self.model.get_regulator(regulator) for regulator in regulators]
 
         if not solver_kwargs:
             solver_kwargs = {}

@@ -130,7 +130,11 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         result = CoRegResult()
 
         # Get reaction constraints from simulator
-        constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
+        # yield_reactions() returns reaction IDs (strings), not objects
+        constraints = {}
+        for rxn_id in self.model.yield_reactions():
+            rxn_data = self._get_reaction(rxn_id)
+            constraints[rxn_id] = (rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND), rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND))
 
         if metabolites:
             # Update coregflux constraints using metabolite concentrations
@@ -207,7 +211,8 @@ class CoRegFlux(_RegulatoryAnalysisBase):
 
             previous_time_step = time_step
 
-        return DynamicSolution(solutions=solutions, method="CoRegFlux")
+        # DynamicSolution expects positional args, not keyword 'solutions'
+        return DynamicSolution(*solutions, time=time_steps)
 
     def optimize(
         self,
@@ -407,7 +412,8 @@ def predict_gene_expression(
     :return: Predicted expression of genes in test dataset
     """
     # Filter only gene expression and influences data of metabolic genes in the model
-    interactions = {target.id: _get_target_regulators(target) for target in model.yield_targets()}
+    # yield_targets() returns (target_id, target_object) tuples
+    interactions = {target.id: _get_target_regulators(target) for _, target in model.yield_targets()}
     influence, expression, experiments = _filter_influence_and_expression(
         interactions=interactions, influence=influence, expression=expression, experiments=experiments
     )

@@ -88,16 +88,30 @@ def build_metabolites(
     model: Union["Model", "MetabolicModel", "RegulatoryModel"], metabolites: Dict[str, float]
 ) -> Dict[str, CoRegMetabolite]:
     res = {}
+
+    # Build map from metabolite to exchange reaction
+    exchange_reactions = model.get_exchange_reactions()
+    met_to_exchange = {}
+    for ex_rxn_id in exchange_reactions:
+        rxn = model.get_reaction(ex_rxn_id)
+        for met_id in rxn.stoichiometry.keys():
+            met_to_exchange[met_id] = ex_rxn_id
+
     for metabolite, concentration in metabolites.items():
-        exchange = model.get(metabolite).exchange_reaction.id
+        # Find exchange reaction for this metabolite
+        exchange = met_to_exchange.get(metabolite)
+        if exchange is None:
+            # Skip metabolites without exchange reactions
+            continue
 
         res[metabolite] = CoRegMetabolite(id=metabolite, concentration=concentration, exchange=exchange)
     return res
 
 
 def build_biomass(model: Union["Model", "MetabolicModel", "RegulatoryModel"], biomass: float) -> CoRegBiomass:
-    variable = next(iter(model.objective))
-    return CoRegBiomass(id=variable.id, biomass_yield=biomass)
+    # model.objective is a dict with reaction IDs as keys
+    variable_id = next(iter(model.objective))
+    return CoRegBiomass(id=variable_id, biomass_yield=biomass)
 
 
 def concentration_to_lb(concentration, biomass, time_step):
@@ -167,15 +181,19 @@ def continuous_gpr(
     operators = {And: min, Or: max}
 
     states = {}
-    for reaction in model.yield_reactions():
+    # Iterate over reaction IDs and get parsed GPR for each
+    for rxn_id in model.reactions:
+        gpr = model.get_parsed_gpr(rxn_id)
 
-        if reaction.gpr.is_none:
+        if gpr.is_none:
             continue
 
-        if not set(reaction.genes).issubset(state):
+        # Extract gene IDs from GPR variables (Symbol objects)
+        gene_ids = [var.name for var in gpr.variables]
+        if not set(gene_ids).issubset(state):
             continue
 
-        states[reaction.id] = reaction.gpr.evaluate(values=state, operators=operators, missing_value=0)
+        states[rxn_id] = gpr.evaluate(values=state, operators=operators, missing_value=0)
 
     if scale:
         _max_state = max(states.values())
