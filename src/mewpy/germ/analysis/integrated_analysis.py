@@ -499,9 +499,9 @@ def find_conflicts(
         initial_state = initial_state.copy()
 
     # 1. it performs a FBA simulation to find the optimal growth rate
-    from mewpy.germ.analysis import FBA
+    from mewpy.germ.analysis.fba import _FBA
 
-    solution = FBA(model).build().optimize(solver_kwargs={"constraints": constraints})
+    solution = _FBA(model).build().optimize(solver_kwargs={"constraints": constraints})
 
     if not solution.objective_value:
         raise RuntimeError(

@@ -1,13 +1,13 @@
 from typing import Dict, Union
 
-from mewpy.germ.analysis import FBA
+from mewpy.germ.analysis.fba import _FBA
 from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import Solution, Status
 from mewpy.solvers.solver import Solver
 
 
-class pFBA(FBA):
+class _pFBA(_FBA):
     """
     Parsimonious Flux Balance Analysis (pFBA) using pure simulator-based approach.
 

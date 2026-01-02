@@ -297,20 +297,21 @@ class TestGERMModel(unittest.TestCase):
         model = read_model(self.metabolic_reader)
         model.objective = {"Biomass_Ecoli_core": 1}
 
-        # fba
-        from mewpy.germ.analysis import FBA, slim_fba
+        # fba - use simulator directly
+        from mewpy.germ.analysis import slim_fba
+        from mewpy.simulation import get_simulator
 
-        simulator = FBA(model)
-        sol = simulator.optimize()
-        self.assertGreater(sol.objective_value, 0)
+        simulator = get_simulator(model)
+        result = simulator.simulate()
+        self.assertGreater(result.objective_value, 0)
         self.assertGreater(slim_fba(model), 0)
 
-        # pfba
-        from mewpy.germ.analysis import pFBA, slim_pfba
+        # pfba - use simulator directly
+        from mewpy.germ.analysis import slim_pfba
+        from mewpy.simulation import SimulationMethod
 
-        simulator = pFBA(model)
-        sol = simulator.optimize()
-        self.assertGreater(sol.objective_value, 0)
+        result = simulator.simulate(method=SimulationMethod.pFBA)
+        self.assertGreater(result.objective_value, 0)
         self.assertGreater(slim_pfba(model), 0)
 
         # deletions
@@ -467,20 +468,19 @@ class TestGERMModel(unittest.TestCase):
         self.assertEqual(len(model.compartments), 1)
         self.assertEqual(model.external_compartment, "c")
 
-        # fba
-        from mewpy.germ.analysis import FBA
+        # fba - use simulator directly
+        from mewpy.simulation import get_simulator
 
-        fba = FBA(model)
-        sol = fba.optimize()
-        self.assertGreater(sol.x.get("r11"), 0)
+        simulator = get_simulator(model)
+        result = simulator.simulate()
+        self.assertGreater(result.fluxes.get("r11"), 0)
         self.assertEqual(len(model.simulators), 0)
 
-        # pfba
-        from mewpy.germ.analysis import pFBA
+        # pfba - use simulator directly
+        from mewpy.simulation import SimulationMethod
 
-        pfba = pFBA(model)
-        sol = pfba.optimize()
-        self.assertGreater(sol.x.get("r11"), 0)
+        result = simulator.simulate(method=SimulationMethod.pFBA)
+        self.assertGreater(result.fluxes.get("r11"), 0)
         self.assertEqual(len(model.simulators), 0)
 
         # RFBA
@@ -520,38 +520,31 @@ class TestGERMModel(unittest.TestCase):
         self.assertGreater(sol.x.get("r11"), 0)
         self.assertEqual(len(model.simulators), 0)
 
-        # multiple simulators attached
-        fba = FBA(model, attach=True)
-        pfba = pFBA(model, attach=True)
+        # Test simulator attached to model - using regulatory analysis methods
+        rfba = RFBA(model, attach=True)
         srfba = SRFBA(model, attach=True)
 
         model.get("r16").ko()
 
-        fba_sol = fba.optimize()
-        pfba_sol = pfba.optimize()
+        rfba_sol = rfba.optimize(initial_state=initial_state)
         srfba_sol = srfba.optimize()
 
         # if r16 is knocked-out, only r8 can have flux, and vice-versa
-        self.assertGreater(fba_sol.x.get("r8"), 333)
-        self.assertGreater(pfba_sol.x.get("r8"), 333)
+        self.assertGreater(rfba_sol.x.get("r8"), 333)
         self.assertGreater(srfba_sol.x.get("r8"), 333)
 
         model.undo()
 
         solver_kwargs = {"constraints": {"r16": (0, 0), "r8": (0, 0)}}
 
-        fba_sol = fba.optimize(solver_kwargs=solver_kwargs)
-        pfba_sol = pfba.optimize(solver_kwargs=solver_kwargs)
+        rfba_sol = rfba.optimize(solver_kwargs=solver_kwargs, initial_state=initial_state)
         srfba_sol = srfba.optimize(solver_kwargs=solver_kwargs)
-        self.assertEqual(fba_sol.objective_value, 0.0)
-        self.assertEqual(pfba_sol.x.get("r11"), 0.0)
+        self.assertEqual(rfba_sol.objective_value, 0.0)
         self.assertEqual(srfba_sol.objective_value, 0.0)
 
-        fba_sol = fba.optimize()
-        pfba_sol = pfba.optimize()
+        rfba_sol = rfba.optimize(initial_state=initial_state)
         srfba_sol = srfba.optimize()
-        self.assertGreater(fba_sol.objective_value, 0.0)
-        self.assertGreater(pfba_sol.x.get("r11"), 0.0)
+        self.assertGreater(rfba_sol.objective_value, 0.0)
         self.assertGreater(srfba_sol.objective_value, 0.0)
 
     @pytest.mark.xfail
@@ -570,23 +563,20 @@ class TestGERMModel(unittest.TestCase):
         model.get("pH").coefficients = (0, 14)
 
         # multiple simulators attached
-        from mewpy.germ.analysis import FBA, SRFBA, pFBA
+        from mewpy.germ.analysis import RFBA, SRFBA
 
-        fba = FBA(model, attach=True)
-        pfba = pFBA(model, attach=True)
+        rfba = RFBA(model, attach=True)
         srfba = SRFBA(model, attach=True)
 
         old_lb, old_ub = tuple(model.reactions.get("r16").bounds)
         model.get("r16").ko()
         self.assertEqual(model.get("r16").bounds, (0, 0))
 
-        fba_sol = fba.optimize()
-        pfba_sol = pfba.optimize()
+        rfba_sol = rfba.optimize()
         srfba_sol = srfba.optimize()
 
         # if r16 is knocked-out, only r8 can have flux, and vice-versa
-        self.assertGreater(fba_sol.x.get("r8"), 333)
-        self.assertGreater(pfba_sol.x.get("r8"), 333)
+        self.assertGreater(rfba_sol.x.get("r8"), 333)
         self.assertGreater(srfba_sol.x.get("r8"), 333)
 
         # revert bound change
@@ -716,13 +706,11 @@ class TestGERMModel(unittest.TestCase):
         }
 
         # multiple simulators attached
-        from mewpy.germ.analysis import FBA, RFBA, SRFBA, pFBA
+        from mewpy.germ.analysis import RFBA, SRFBA
 
-        fba = FBA(model, attach=True)
-        pfba = pFBA(model, attach=True)
         rfba = RFBA(model, attach=True)
         srfba = SRFBA(model, attach=True)
-        simulators = [fba, pfba, rfba, srfba]
+        simulators = [rfba, srfba]
 
         # adding new reactions, metabolites, genes, interactions, targets and regulators
         # g37: g39 and not g40

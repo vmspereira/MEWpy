@@ -5,7 +5,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from mewpy.germ.analysis import FBA, fva, pFBA
+from mewpy.germ.analysis import fva
+from mewpy.germ.analysis.fba import _FBA
+from mewpy.germ.analysis.pfba import _pFBA
 from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 from mewpy.germ.variables import Reaction
 from mewpy.solvers.solution import Solution, Status
@@ -650,7 +652,7 @@ class Simulation(GERMModel, Simulator):
             return Solution(status=solver_status, fobj=result.objective_value, values=result.fluxes)
 
         # Fallback to native GERM FBA for regulatory models or pure metabolic models
-        fba = FBA(model).build()
+        fba = _FBA(model).build()
         solver_kwargs = {"linear": objective, "minimize": minimize, "constraints": constraints}
         sol = fba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
         return sol
@@ -693,7 +695,7 @@ class Simulation(GERMModel, Simulator):
             return Solution(status=solver_status, fobj=result.objective_value, values=result.fluxes)
 
         # Fallback to native GERM pFBA for regulatory models or pure metabolic models
-        pfba = pFBA(model).build()
+        pfba = _pFBA(model).build()
         solver_kwargs = {"linear": objective, "minimize": minimize, "constraints": constraints}
         sol = pfba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
         return sol

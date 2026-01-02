@@ -442,6 +442,6 @@ class _RegulatoryAnalysisBase:
         return solution
 
 
-# Alias for backwards compatibility during transition
-# Users should not use this directly - use simulator.optimize() instead
-FBA = _RegulatoryAnalysisBase
+# Private alias - not for public use
+# Users should use simulator.optimize() instead
+_FBA = _RegulatoryAnalysisBase
