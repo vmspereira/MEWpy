@@ -221,13 +221,22 @@ class RFBA(_RegulatoryAnalysisBase):
         if "constraints" in solver_kwargs:
             constraints.update(solver_kwargs["constraints"])
 
+        # Make a copy to avoid modifying the original
+        solver_kwargs_copy = solver_kwargs.copy()
+
+        # Remove conflicting arguments that we set explicitly
+        solver_kwargs_copy.pop("constraints", None)
+        solver_kwargs_copy.pop("linear", None)
+        solver_kwargs_copy.pop("minimize", None)
+        solver_kwargs_copy.pop("get_values", None)
+
         # Solve
         solution = self.solver.solve(
             linear=self._linear_objective,
             minimize=self._minimize,
             constraints=constraints,
             get_values=True,
-            **solver_kwargs,
+            **solver_kwargs_copy,
         )
 
         if to_solver:
