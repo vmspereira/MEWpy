@@ -121,16 +121,15 @@ class SRFBA(_RegulatoryAnalysisBase):
         Add GPR constraint for a reaction using boolean algebra.
 
         :param rxn_id: Reaction identifier
-        :param gpr: Parsed GPR expression
+        :param gpr: Parsed GPR expression (symbolic expression object)
         :param rxn_data: Reaction data dict from simulator
         """
-        # Check if GPR has a symbolic representation
-        if not hasattr(gpr, "symbolic") or gpr.symbolic is None:
-            return
-
         # Skip if GPR is none/empty
         if hasattr(gpr, "is_none") and gpr.is_none:
             return
+
+        # The GPR object itself is the symbolic expression (Or, And, Symbol, etc.)
+        # No need to check for .symbolic attribute
 
         # Create boolean variable for the reaction
         boolean_variable = f"bool_{rxn_id}"
@@ -155,9 +154,9 @@ class SRFBA(_RegulatoryAnalysisBase):
                 f"gpr_lower_{rxn_id}", {rxn_id: 1.0, boolean_variable: -float(lb)}, ">", 0.0, update=False
             )
 
-        # Add constraints for the GPR expression if it's properly parsed
+        # Add constraints for the GPR expression (gpr is already the symbolic expression)
         try:
-            self._linearize_expression(boolean_variable, gpr.symbolic)
+            self._linearize_expression(boolean_variable, gpr)
         except Exception as e:
             # If linearization fails, skip this constraint but log warning
             # The reaction will still work with just the flux bounds
@@ -176,10 +175,16 @@ class SRFBA(_RegulatoryAnalysisBase):
             symbolic = None
             for coefficient, expression in interaction.regulatory_events.items():
                 if coefficient > 0.0:
-                    symbolic = expression.symbolic
-                    break
+                    # For regulatory interactions, expression has .symbolic attribute
+                    if hasattr(expression, "symbolic") and expression.symbolic is not None:
+                        symbolic = expression.symbolic
+                        break
 
             if symbolic is None:
+                return
+
+            # Skip if expression is none/empty
+            if hasattr(symbolic, "is_none") and symbolic.is_none:
                 return
 
             # Get target bounds
