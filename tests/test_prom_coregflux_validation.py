@@ -121,6 +121,7 @@ class TestPROMValidation:
 
     def test_prom_probability_calculation(self, integrated_model):
         """Test PROM probability calculation function."""
+        pytest.importorskip("scipy", reason="scipy is required for PROM probability calculation")
         from mewpy.germ.analysis import target_regulator_interaction_probability
 
         # Create mock expression data
@@ -232,6 +233,7 @@ class TestCoRegFluxValidation:
 
     def test_coregflux_gene_expression_prediction(self, integrated_model):
         """Test CoRegFlux gene expression prediction function."""
+        pytest.importorskip("sklearn", reason="sklearn is required for CoRegFlux gene expression prediction")
         from mewpy.germ.analysis import predict_gene_expression
 
         # Create mock data
