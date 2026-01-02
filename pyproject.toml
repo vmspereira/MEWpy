@@ -59,21 +59,29 @@ scip = [
 solvers = [
     "pyscipopt>=5.0.0",
 ]
+germ = [
+    "scikit-learn>=1.0.0",
+    "scipy>=1.7.0",
+]
 test = [
     "pytest>=6.0",
     "pytest-runner",
     "cplex",
     "tox",
     "pyscipopt>=5.0.0",
+    "scikit-learn>=1.0.0",
+    "scipy>=1.7.0",
 ]
 dev = [
     "pytest>=6.0",
-    "pytest-runner", 
+    "pytest-runner",
     "cplex",
     "tox",
     "flake8",
     "black",
     "isort",
+    "scikit-learn>=1.0.0",
+    "scipy>=1.7.0",
 ]
 docs = [
     "sphinx",
