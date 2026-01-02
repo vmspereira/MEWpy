@@ -192,17 +192,34 @@ class Solution(object):
         return render_html_table(title, rows)
 
     def to_dataframe(self):
-        """Convert reaction fluxes to *pandas.DataFrame*
+        """Convert solution to *pandas.DataFrame*
+
+        Creates a DataFrame with values (fluxes) and optionally includes
+        shadow prices and reduced costs if available.
 
         Returns:
-            pandas.DataFrame: flux values
+            pandas.DataFrame: DataFrame with 'value' column and optional
+                'shadow_price' and 'reduced_cost' columns
         """
         try:
             import pandas as pd
         except ImportError:
             raise RuntimeError("Pandas is not installed.")
 
-        return pd.DataFrame(self.values.values(), columns=["value"], index=self.values.keys())
+        # Start with values
+        df = pd.DataFrame(self.values.values(), columns=["value"], index=self.values.keys())
+
+        # Add shadow prices if available
+        if self.shadow_prices:
+            shadow_series = pd.Series(self.shadow_prices, name="shadow_price")
+            df = df.join(shadow_series, how="left")
+
+        # Add reduced costs if available
+        if self.reduced_costs:
+            reduced_series = pd.Series(self.reduced_costs, name="reduced_cost")
+            df = df.join(reduced_series, how="left")
+
+        return df
 
     def to_series(self):
         """Convert solution values to pandas Series (ModelSolution compatibility)."""
