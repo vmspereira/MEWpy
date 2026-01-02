@@ -140,6 +140,57 @@ class Solution(object):
 
         return "\n".join(lines)
 
+    def _repr_html_(self):
+        """HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Method
+        if self._method:
+            rows.append(("Method", self._method))
+
+        # Status
+        if self.status:
+            status_str = self.status.value
+            # Add color based on status
+            if self.status == Status.OPTIMAL:
+                status_str = f'<span style="color: green; font-weight: bold;">{status_str}</span>'
+            elif self.status == Status.INFEASIBLE:
+                status_str = f'<span style="color: red; font-weight: bold;">{status_str}</span>'
+            elif self.status == Status.SUBOPTIMAL:
+                status_str = f'<span style="color: orange; font-weight: bold;">{status_str}</span>'
+            rows.append(("Status", status_str))
+
+        # Objective value
+        if self.fobj is not None:
+            rows.append(("Objective", f"{self.fobj:.6g}"))
+
+        # Objective direction
+        if self._objective_direction:
+            rows.append(("Direction", self._objective_direction.capitalize()))
+
+        # Number of variables
+        if self.values:
+            rows.append(("Variables", str(len(self.values))))
+
+        # Shadow prices count (if available)
+        if self.shadow_prices:
+            rows.append(("Shadow prices", str(len(self.shadow_prices))))
+
+        # Reduced costs count (if available)
+        if self.reduced_costs:
+            rows.append(("Reduced costs", str(len(self.reduced_costs))))
+
+        # Message (if available)
+        if self.message:
+            # Truncate long messages
+            msg = self.message if len(self.message) <= 100 else self.message[:97] + "..."
+            rows.append(("Message", msg))
+
+        title = f"{self._method} Solution" if self._method else "Solution"
+        return render_html_table(title, rows)
+
     def to_dataframe(self):
         """Convert reaction fluxes to *pandas.DataFrame*
 
