@@ -135,7 +135,10 @@ class PROM(_RegulatoryAnalysisBase):
         prom_constraints = {}
         for rxn_id in self.model.yield_reactions():
             rxn_data = self._get_reaction(rxn_id)
-            prom_constraints[rxn_id] = (rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND), rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND))
+            prom_constraints[rxn_id] = (
+                rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
+                rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND)
+            )
 
         genes = self.model.genes
         state = {gene: 1 for gene in genes}
