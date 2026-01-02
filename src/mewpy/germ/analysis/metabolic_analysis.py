@@ -7,70 +7,11 @@ from mewpy.solvers import solver_prefers_fresh_instance
 from mewpy.util.constants import ModelConstants
 
 from .analysis_utils import run_method_and_decode
-from .fba import FBA
-from .pfba import pFBA
+from .fba import _FBA
+from .pfba import _pFBA
 
 if TYPE_CHECKING:
     from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
-
-
-def slim_fba(
-    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
-    objective: Union[str, Dict[str, float]] = None,
-    constraints: Dict[str, Tuple[float, float]] = None,
-) -> Optional[float]:
-    """
-    A Flux Balance Analysis simulation of a metabolic model.
-    A slim analysis produces a single and simple solution for the model. This method returns the objective value for the
-    FBA simulation.
-
-    Fundamentals of the FBA procedure:
-        - A linear problem based on the mass balance constraints
-        - Reactions are linear variables constrained by their bounds
-        - The objective function is a linear combination of the reactions
-        - The objective function is solved using a linear solver
-
-    :param model: a metabolic model to be simulated
-    :param objective: the objective function to be used for the simulation.
-    If not provided, the default objective is used.
-    :param constraints: additional constraints to be used for the simulation.
-    :return: the objective value for the simulation
-    """
-    fba = FBA(model).build()
-
-    objective_value, _ = run_method_and_decode(method=fba, objective=objective, constraints=constraints)
-    return objective_value
-
-
-def slim_pfba(
-    model: Union["Model", "MetabolicModel", "RegulatoryModel"],
-    objective: Union[str, Dict[str, float]] = None,
-    constraints: Dict[str, Tuple[float, float]] = None,
-) -> Optional[float]:
-    """
-    A parsimonious Flux Balance Analysis simulation of a metabolic model.
-    A slim analysis produces a single and simple solution for the model. This method returns the objective value for the
-    pFBA simulation.
-
-    Fundamentals of the pFBA procedure:
-        - A linear problem based on the mass balance constraints
-        - Reactions are linear variables constrained by their bounds
-        - The objective function is a linear combination of the reactions plus the sum of the absolute values of the
-        reactions
-        - The objective function is solved using a linear solver by minimizing the sum of the absolute values of the
-        reactions
-
-    :param model: a metabolic model to be simulated
-    If not provided, a new instance will be created.
-    :param objective: the objective function to be used for the simulation.
-    If not provided, the default objective is used.
-    :param constraints: additional constraints to be used for the simulation.
-    :return: the objective value for the simulation
-    """
-    pfba = pFBA(model).build()
-
-    objective_value, _ = run_method_and_decode(method=pfba, objective=objective, constraints=constraints)
-    return objective_value
 
 
 def fva(
@@ -115,7 +56,7 @@ def fva(
         obj = next(iter(model.objective)).id
 
     # Get optimal objective value
-    _fba = FBA(model).build()
+    _fba = _FBA(model).build()
     objective_value, _ = run_method_and_decode(method=_fba, objective=objective, constraints=constraints)
     constraints[obj] = (fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND)
 
@@ -124,18 +65,18 @@ def fva(
 
     if not use_fresh_instance:
         # CPLEX/Gurobi: Create once and reuse
-        fba = FBA(model).build()
+        fba = _FBA(model).build()
 
     result = defaultdict(list)
     for rxn in reactions:
         if use_fresh_instance:
             # SCIP: Create fresh FBA instances for each min/max
-            fba_min = FBA(model).build()
+            fba_min = _FBA(model).build()
             min_val, _ = run_method_and_decode(
                 method=fba_min, objective={rxn: 1.0}, constraints=constraints, minimize=True
             )
 
-            fba_max = FBA(model).build()
+            fba_max = _FBA(model).build()
             max_val, _ = run_method_and_decode(
                 method=fba_max, objective={rxn: 1.0}, constraints=constraints, minimize=False
             )
@@ -187,11 +128,11 @@ def single_gene_deletion(
 
     # Get wild-type result
     if use_fresh_instance:
-        wt_fba = FBA(model).build()
+        wt_fba = _FBA(model).build()
         wt_objective_value, wt_status = run_method_and_decode(method=wt_fba, constraints=constraints)
     else:
         # Reuse FBA instance for all deletions (CPLEX/Gurobi)
-        fba = FBA(model).build()
+        fba = _FBA(model).build()
         wt_objective_value, wt_status = run_method_and_decode(method=fba, constraints=constraints)
 
     state = {gene.id: max(gene.coefficients) for gene in model.yield_genes()}
@@ -219,7 +160,7 @@ def single_gene_deletion(
             if use_fresh_instance:
                 # SCIP: Create fresh FBA instance for each deletion
                 # This avoids freeTransform() overhead and is more stable
-                gene_fba = FBA(model).build()
+                gene_fba = _FBA(model).build()
                 solution, status = run_method_and_decode(
                     method=gene_fba, constraints={**constraints, **gene_constraints}
                 )
@@ -270,7 +211,7 @@ def single_reaction_deletion(
 
     if not use_fresh_instance:
         # CPLEX/Gurobi: Create once and reuse
-        fba = FBA(model).build()
+        fba = _FBA(model).build()
 
     result = {}
     for reaction in reactions:
@@ -278,7 +219,7 @@ def single_reaction_deletion(
 
         if use_fresh_instance:
             # SCIP: Create fresh FBA instance for each deletion
-            reaction_fba = FBA(model).build()
+            reaction_fba = _FBA(model).build()
             solution, status = run_method_and_decode(
                 method=reaction_fba, constraints={**constraints, **reaction_constraints}
             )

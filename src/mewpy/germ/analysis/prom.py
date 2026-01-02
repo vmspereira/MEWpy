@@ -98,6 +98,12 @@ class PROM(_RegulatoryAnalysisBase):
 
             reference_rate = reference[reaction]
 
+            # Handle None values from infeasible solutions
+            if min_rxn is None:
+                min_rxn = reference_rate
+            if max_rxn is None:
+                max_rxn = reference_rate
+
             if reference_rate < 0:
                 value = min((min_rxn, max_rxn, reference_rate))
             elif reference_rate > 0:
@@ -125,40 +131,55 @@ class PROM(_RegulatoryAnalysisBase):
         solver_constrains = solver_kwargs.get("constraints", {})
 
         # Get reaction bounds from simulator
-        prom_constraints = {reaction.id: reaction.bounds for reaction in self.model.yield_reactions()}
+        # yield_reactions() returns reaction IDs (strings), not objects
+        prom_constraints = {}
+        for rxn_id in self.model.yield_reactions():
+            rxn_data = self._get_reaction(rxn_id)
+            prom_constraints[rxn_id] = (
+                rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
+                rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND),
+            )
 
         genes = self.model.genes
         state = {gene: 1 for gene in genes}
 
         # If the regulator to be KO is a metabolic gene, the associated reactions are KO too
-        if regulator.is_gene():
-            for reaction in regulator.reactions.keys():
-                prom_constraints[reaction] = (-ModelConstants.TOLERANCE, ModelConstants.TOLERANCE)
+        # Check if regulator ID exists in model genes list
+        if regulator.id in genes:
+            gene_data = self.model.get_gene(regulator.id)
+            # gene_data.reactions is a list of reaction IDs
+            for rxn_id in gene_data.reactions:
+                prom_constraints[rxn_id] = (-ModelConstants.TOLERANCE, ModelConstants.TOLERANCE)
 
         # Find the target genes of the deleted regulator
         target_reactions = {}
         for target in regulator.yield_targets():
-            if target.is_gene():
+            # Check if this target corresponds to a metabolic gene
+            if target.id in genes:
                 state[target.id] = 0
-                target_reactions.update({reaction.id: reaction for reaction in target.yield_reactions()})
+                gene_data = self.model.get_gene(target.id)
+                # gene_data.reactions is a list of reaction IDs
+                for rxn_id in gene_data.reactions:
+                    target_reactions[rxn_id] = rxn_id  # Store ID, not object
 
         # GPR evaluation using changed gene state
         inactive_reactions = {}
-        for reaction in target_reactions.values():
-            if reaction.gpr.is_none:
+        for rxn_id in target_reactions.keys():
+            gpr = self.model.get_parsed_gpr(rxn_id)
+
+            if gpr.is_none:
                 continue
 
-            if reaction.gpr.evaluate(values=state):
+            if gpr.evaluate(values=state):
                 continue
 
-            inactive_reactions[reaction.id] = reaction
+            inactive_reactions[rxn_id] = rxn_id  # Store ID, not object
 
         # For each target regulated by the regulator
         for target in regulator.yield_targets():
-            if not target.is_gene():
+            # Check if target is a metabolic gene
+            if target.id not in genes:
                 continue
-
-            target: Union["Target", "Gene"]
 
             # Composed key for interactions_probabilities
             target_regulator = (target.id, regulator.id)
@@ -168,25 +189,29 @@ class PROM(_RegulatoryAnalysisBase):
 
             interaction_probability = probabilities[target_regulator]
 
+            # Get reactions for this gene
+            gene_data = self.model.get_gene(target.id)
             # For each reaction associated with this single target
-            for reaction in target.yield_reactions():
-                if reaction.id not in inactive_reactions:
+            for rxn_id in gene_data.reactions:
+                if rxn_id not in inactive_reactions:
                     continue
 
                 if interaction_probability >= 1:
                     continue
 
                 # Reaction old bounds
-                rxn_lb, rxn_ub = tuple(prom_constraints[reaction.id])
+                rxn_lb, rxn_ub = tuple(prom_constraints[rxn_id])
 
                 # Probability flux
-                probability_flux = max_rates[reaction.id] * interaction_probability
+                probability_flux = max_rates[rxn_id] * interaction_probability
 
                 # Wild-type flux value
-                wt_flux = reference[reaction.id]
+                wt_flux = reference[rxn_id]
 
-                # Get reaction bounds
-                reaction_lower_bound, reaction_upper_bound = reaction.bounds
+                # Get reaction bounds from reaction data
+                rxn_data = self.model.get_reaction(rxn_id)
+                reaction_lower_bound = rxn_data["lb"]
+                reaction_upper_bound = rxn_data["ub"]
 
                 # Update flux bounds according to probability flux
                 if wt_flux < 0:
@@ -199,7 +224,7 @@ class PROM(_RegulatoryAnalysisBase):
                     # If it is zero, the reaction is not changed
                     continue
 
-                prom_constraints[reaction.id] = (rxn_lb, rxn_ub)
+                prom_constraints[rxn_id] = (rxn_lb, rxn_ub)
 
         solution = self.solver.solve(
             **{
@@ -290,7 +315,8 @@ class PROM(_RegulatoryAnalysisBase):
         else:
             if isinstance(regulators, str):
                 regulators = [regulators]
-            regulators = [self.model.get(regulator) for regulator in regulators]
+            # Get regulator objects using get_regulator method
+            regulators = [self.model.get_regulator(regulator) for regulator in regulators]
 
         if not solver_kwargs:
             solver_kwargs = {}

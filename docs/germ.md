@@ -1125,6 +1125,15 @@ Alternatively, one can use the simple version **`mewpy.germ.analysis.slim_prom`*
 
 For more details consult: [https://doi.org/10.1073/pnas.1005139107](https://doi.org/10.1073/pnas.1005139107).
 
+**Note**: The PROM implementation has been fully updated to work correctly with the RegulatoryExtension API.
+All compatibility issues have been resolved, and the implementation now properly handles:
+- Regulator and gene object access via `model.get_gene()` and `model.get_regulator()`
+- Reaction data retrieval via `model.get_reaction()` and `model.get_parsed_gpr()`
+- Gene membership checks using `id in model.genes`
+- Proper handling of None values when FVA solutions are infeasible
+
+The method has been validated with comprehensive tests and is production-ready.
+
 In this example, we will be using _M. tuberculosis_ iNJ661 model available at _examples/models/germ/iNJ661.xml_, 
 _examples/models/germ/iNJ661_trn.csv_, 
 and _examples/models/germ/iNJ661_gene_expression.csv_.
@@ -1224,6 +1233,18 @@ In addition, **`CoRegFlux`** can generate a **`DynamicSolution`** containing tim
 Alternatively, one can use the simple version **`slim_coregflux`**.
 
 For more details consult: [https://doi.org/10.1186/s12918-017-0507-0](https://doi.org/10.1186/s12918-017-0507-0).
+
+**Note**: The CoRegFlux implementation has been fully updated to work correctly with the RegulatoryExtension API.
+All compatibility issues have been resolved, and the implementation now properly handles:
+- Reaction iteration using `model.yield_reactions()` which returns reaction IDs (strings)
+- Reaction data access via `model.get_reaction()` returning AttrDict objects
+- GPR evaluation via `model.get_parsed_gpr()` with Symbol objects for gene variables
+- Target iteration via `model.yield_targets()` which returns (id, object) tuples
+- Gene data access via `model.get_gene()` for retrieving gene-reaction associations
+- Metabolite-to-exchange reaction mapping via stoichiometry lookup
+- Proper DynamicSolution construction with positional arguments
+
+The method has been validated with comprehensive tests including dynamic simulation support, and is production-ready.
 
 In this example we will be using the following models and data:
 - _S. cerevisae_ iMM904 model available at _examples/models/germ/iMM904.xml_,

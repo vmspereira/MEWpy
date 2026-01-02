@@ -1,7 +1,6 @@
 from enum import Enum
 
 from .coregflux import CoRegFlux, predict_gene_expression
-from .fba import FBA
 from .integrated_analysis import (
     find_conflicts,
     ifva,
@@ -13,8 +12,7 @@ from .integrated_analysis import (
     slim_rfba,
     slim_srfba,
 )
-from .metabolic_analysis import fva, single_gene_deletion, single_reaction_deletion, slim_fba, slim_pfba
-from .pfba import pFBA
+from .metabolic_analysis import fva, single_gene_deletion, single_reaction_deletion
 from .prom import PROM, target_regulator_interaction_probability
 from .regulatory_analysis import regulatory_truth_table
 from .rfba import RFBA
@@ -24,10 +22,12 @@ from .srfba import SRFBA
 class Analysis(Enum):
     """
     Enumeration of the available analysis methods.
+
+    Note: For FBA and pFBA, use simulators directly:
+        - model.simulator.simulate(method=SimulationMethod.FBA)
+        - model.simulator.simulate(method=SimulationMethod.pFBA)
     """
 
-    FBA = FBA
-    pFBA = pFBA
     RFBA = RFBA
     SRFBA = SRFBA
     PROM = PROM
@@ -44,7 +44,7 @@ class Analysis(Enum):
         return analysis in cls.__members__
 
     @classmethod
-    def get(cls, analysis: str, default=FBA) -> "Analysis":
+    def get(cls, analysis: str, default=RFBA) -> "Analysis":
         """
         Get the analysis class.
 

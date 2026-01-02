@@ -116,6 +116,18 @@ class RFBA(_RegulatoryAnalysisBase):
         """
         constraints = {}
 
+        # Handle ID mismatch between regulatory targets and metabolic genes
+        # Regulatory targets use IDs like 'b0351', while GPRs use 'G_b0351'
+        # Create an extended state dict with both naming conventions
+        extended_state = dict(state)
+        for gene_id, value in list(state.items()):
+            # If the gene ID doesn't start with 'G_', add a version with prefix
+            if not gene_id.startswith("G_"):
+                extended_state[f"G_{gene_id}"] = value
+            # If the gene ID starts with 'G_', add a version without prefix
+            elif gene_id.startswith("G_"):
+                extended_state[gene_id[2:]] = value
+
         # Evaluate GPRs for all reactions
         for rxn_id in self.model.reactions:
             # Get cached parsed GPR expression
@@ -124,8 +136,8 @@ class RFBA(_RegulatoryAnalysisBase):
             if gpr.is_none:
                 continue
 
-            # Evaluate GPR with current gene states
-            is_active = gpr.evaluate(values=state)
+            # Evaluate GPR with extended gene states
+            is_active = gpr.evaluate(values=extended_state)
 
             if not is_active:
                 # Reaction is knocked out - set bounds to zero
@@ -209,13 +221,22 @@ class RFBA(_RegulatoryAnalysisBase):
         if "constraints" in solver_kwargs:
             constraints.update(solver_kwargs["constraints"])
 
+        # Make a copy to avoid modifying the original
+        solver_kwargs_copy = solver_kwargs.copy()
+
+        # Remove conflicting arguments that we set explicitly
+        solver_kwargs_copy.pop("constraints", None)
+        solver_kwargs_copy.pop("linear", None)
+        solver_kwargs_copy.pop("minimize", None)
+        solver_kwargs_copy.pop("get_values", None)
+
         # Solve
         solution = self.solver.solve(
             linear=self._linear_objective,
             minimize=self._minimize,
             constraints=constraints,
             get_values=True,
-            **solver_kwargs,
+            **solver_kwargs_copy,
         )
 
         if to_solver:
@@ -242,7 +263,7 @@ class RFBA(_RegulatoryAnalysisBase):
 
         for iteration in range(max_iterations):
             # Solve with current state
-            solution = self._optimize_steady_state(state, to_solver=True, solver_kwargs=solver_kwargs)
+            solution = self._optimize_steady_state(state, to_solver=False, solver_kwargs=solver_kwargs)
             solutions.append(solution)
 
             # Check if solution is optimal
@@ -261,7 +282,9 @@ class RFBA(_RegulatoryAnalysisBase):
             # Update state for next iteration
             state = new_state
 
-        return DynamicSolution(solutions=solutions, method=self.method)
+        # DynamicSolution expects positional args, not keyword 'solutions'
+        # Use time parameter to track iterations
+        return DynamicSolution(*solutions, time=range(len(solutions)))
 
     def _update_state_from_solution(self, current_state: Dict[str, float], solution) -> Dict[str, float]:
         """

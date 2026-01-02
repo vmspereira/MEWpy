@@ -146,16 +146,12 @@ class TestRegulatoryExtensionWithAnalysis:
         )
 
     def test_fba_analysis(self, integrated_model):
-        """Test FBA works with RegulatoryExtension."""
-        from mewpy.germ.analysis import FBA
+        """Test FBA works with RegulatoryExtension via simulator."""
+        # Use simulator directly which works with RegulatoryExtension
+        result = integrated_model.simulator.simulate()
 
-        fba = FBA(integrated_model)
-        solution = fba.optimize()
-
-        assert solution is not None
-        assert solution.objective_value is not None or solution.fobj is not None
-        obj_val = solution.objective_value if solution.objective_value is not None else solution.fobj
-        assert obj_val > 0
+        assert result.objective_value is not None
+        assert result.objective_value > 0
 
     def test_rfba_analysis(self, integrated_model):
         """Test RFBA works with RegulatoryExtension."""
@@ -186,8 +182,8 @@ class TestBackwardsCompatibility:
 
     def test_analysis_with_legacy_model(self):
         """Test that analysis methods work with legacy read_model()."""
-        from mewpy.germ.analysis import FBA
         from mewpy.io import Engines, Reader, read_model
+        from mewpy.simulation import get_simulator
 
         model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
@@ -197,12 +193,12 @@ class TestBackwardsCompatibility:
 
         legacy_model = read_model(metabolic_reader, regulatory_reader, warnings=False)
 
-        # Should work with FBA
-        fba = FBA(legacy_model)
-        solution = fba.optimize()
+        # Should work with simulator
+        simulator = get_simulator(legacy_model)
+        result = simulator.simulate()
 
-        assert solution is not None
-        assert solution.objective_value is not None or solution.fobj is not None
+        assert result.objective_value is not None
+        assert result.objective_value > 0
 
 
 if __name__ == "__main__":
