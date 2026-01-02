@@ -69,6 +69,73 @@ class Target(Variable, variable_type="target", register=True, constructor=True, 
 
         return f"{self.id} || {self.coefficients}"
 
+    def __repr__(self):
+        """Return clean representation for dict keys and printing."""
+        return self.__str__()
+
+    def _repr_html_(self):
+        """Pandas-like HTML representation for Jupyter notebooks."""
+        from mewpy.util.html_repr import render_html_table
+
+        rows = []
+
+        # Name
+        if hasattr(self, "name") and self.name and self.name != self.id:
+            rows.append(("Name", self.name))
+
+        # Aliases
+        try:
+            if hasattr(self, "aliases") and self.aliases:
+                aliases_list = sorted(list(self.aliases))
+                if len(aliases_list) <= 5:
+                    aliases_str = ", ".join(aliases_list)
+                else:
+                    aliases_str = f"{', '.join(aliases_list[:5])}, ... ({len(aliases_list)} total)"
+                rows.append(("Aliases", aliases_str))
+        except:
+            pass
+
+        # Activity status
+        try:
+            status = "Active" if self.is_active else "Inactive"
+            rows.append(("Status", status))
+        except:
+            pass
+
+        # Coefficients
+        try:
+            coef = self.coefficients
+            if len(coef) <= 3:
+                coef_str = ", ".join(f"{c:.4g}" for c in coef)
+            else:
+                coef_str = f"{len(coef)} values: [{coef[0]:.4g}, ..., {coef[-1]:.4g}]"
+            rows.append(("Coefficients", coef_str))
+        except:
+            pass
+
+        # Interaction
+        try:
+            if self.interaction:
+                interaction_id = self.interaction.id if hasattr(self.interaction, "id") else str(self.interaction)
+                rows.append(("Interaction", interaction_id))
+        except:
+            pass
+
+        # Regulators (detailed list)
+        try:
+            regulators = self.regulators
+            if regulators:
+                reg_ids = sorted(list(regulators.keys()))
+                if len(reg_ids) <= 5:
+                    reg_str = ", ".join(reg_ids)
+                else:
+                    reg_str = f"{', '.join(reg_ids[:5])}, ... ({len(reg_ids)} total)"
+                rows.append(("Regulators", reg_str))
+        except:
+            pass
+
+        return render_html_table(f"Target: {self.id}", rows)
+
     def _target_to_html(self):
         """
         It returns a html representation.

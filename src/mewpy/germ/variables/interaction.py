@@ -116,6 +116,18 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
         if hasattr(self, "name") and self.name and self.name != self.id:
             rows.append(("Name", self.name))
 
+        # Aliases
+        try:
+            if hasattr(self, "aliases") and self.aliases:
+                aliases_list = sorted(list(self.aliases))
+                if len(aliases_list) <= 5:
+                    aliases_str = ", ".join(aliases_list)
+                else:
+                    aliases_str = f"{', '.join(aliases_list[:5])}, ... ({len(aliases_list)} total)"
+                rows.append(("Aliases", aliases_str))
+        except:
+            pass
+
         # Target
         try:
             if self.target:

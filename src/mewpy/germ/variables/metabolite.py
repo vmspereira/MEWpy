@@ -146,6 +146,18 @@ class Metabolite(Variable, variable_type="metabolite", register=True, constructo
         if hasattr(self, "name") and self.name and self.name != self.id:
             rows.append(("Name", self.name))
 
+        # Aliases
+        try:
+            if hasattr(self, "aliases") and self.aliases:
+                aliases_list = sorted(list(self.aliases))
+                if len(aliases_list) <= 5:
+                    aliases_str = ", ".join(aliases_list)
+                else:
+                    aliases_str = f"{', '.join(aliases_list[:5])}, ... ({len(aliases_list)} total)"
+                rows.append(("Aliases", aliases_str))
+        except:
+            pass
+
         # Formula
         try:
             if self.formula and self.formula.strip():
@@ -176,10 +188,16 @@ class Metabolite(Variable, variable_type="metabolite", register=True, constructo
         except:
             pass
 
-        # Reactions count
+        # Reactions (detailed list)
         try:
-            rxn_count = len(self.reactions)
-            rows.append(("Reactions", str(rxn_count)))
+            reactions = self.reactions
+            if reactions:
+                rxn_ids = sorted(list(reactions.keys()))
+                if len(rxn_ids) <= 5:
+                    rxn_str = ", ".join(rxn_ids)
+                else:
+                    rxn_str = f"{', '.join(rxn_ids[:5])}, ... ({len(rxn_ids)} total)"
+                rows.append(("Reactions", rxn_str))
         except:
             pass
 
