@@ -275,15 +275,25 @@ class Solution(object):
             # Try to separate metabolic and regulatory variables
             metabolic_ids = set()
             regulatory_ids = set()
+            exchange_ids = set()
 
-            # Get reaction IDs (metabolic)
+            # Get reaction IDs (metabolic) and identify exchange reactions
             if hasattr(self._model, "reactions"):
                 try:
-                    metabolic_ids = set(
-                        self._model.reactions.keys()
+                    reactions_dict = (
+                        self._model.reactions
                         if hasattr(self._model.reactions, "keys")
-                        else self._model.reactions
+                        else {r: r for r in self._model.reactions}
                     )
+                    metabolic_ids = set(reactions_dict.keys())
+
+                    # Identify exchange reactions (boundary reactions)
+                    for rxn_id, rxn in reactions_dict.items():
+                        try:
+                            if hasattr(rxn, "boundary") and rxn.boundary:
+                                exchange_ids.add(rxn_id)
+                        except:
+                            pass
                 except:
                     pass
 
@@ -305,14 +315,22 @@ class Solution(object):
                 except:
                     pass
 
-            # Separate values into metabolic and regulatory
-            metabolic_values = {k: v for k, v in self.values.items() if k in metabolic_ids}
+            # Separate values into metabolic and regulatory (excluding exchange reactions from metabolic)
+            metabolic_values = {k: v for k, v in self.values.items() if k in metabolic_ids and k not in exchange_ids}
             regulatory_values = {k: v for k, v in self.values.items() if k in regulatory_ids}
+
+            # Separate exchange reactions into inputs (negative flux) and outputs (positive flux)
+            input_values = {k: v for k, v in self.values.items() if k in exchange_ids and v < 0}
+            output_values = {k: v for k, v in self.values.items() if k in exchange_ids and v > 0}
 
             if metabolic_values:
                 metabolic = pd.DataFrame(metabolic_values.values(), columns=["value"], index=metabolic_values.keys())
             if regulatory_values:
                 regulatory = pd.DataFrame(regulatory_values.values(), columns=["value"], index=regulatory_values.keys())
+            if input_values:
+                inputs = pd.DataFrame(input_values.values(), columns=["value"], index=input_values.keys())
+            if output_values:
+                outputs = pd.DataFrame(output_values.values(), columns=["value"], index=output_values.keys())
 
         # If we couldn't separate, put everything in metabolic
         if metabolic.empty and regulatory.empty and not df.empty:

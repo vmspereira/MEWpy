@@ -116,6 +116,18 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
         if hasattr(self, "name") and self.name and self.name != self.id:
             rows.append(("Name", self.name))
 
+        # Aliases
+        try:
+            if hasattr(self, "aliases") and self.aliases:
+                aliases_list = sorted(list(self.aliases))
+                if len(aliases_list) <= 5:
+                    aliases_str = ", ".join(aliases_list)
+                else:
+                    aliases_str = f"{', '.join(aliases_list[:5])}, ... ({len(aliases_list)} total)"
+                rows.append(("Aliases", aliases_str))
+        except:
+            pass
+
         # Equation
         try:
             equation = self.equation
@@ -156,20 +168,38 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
         except:
             pass
 
-        # Genes count
+        # Genes (detailed list)
         try:
-            gene_count = len(self.genes)
-            if gene_count > 0:
-                rows.append(("Genes", str(gene_count)))
+            genes = self.genes
+            if genes:
+                gene_ids = sorted(list(genes.keys()))
+                if len(gene_ids) <= 5:
+                    gene_str = ", ".join(gene_ids)
+                else:
+                    gene_str = f"{', '.join(gene_ids[:5])}, ... ({len(gene_ids)} total)"
+                rows.append(("Genes", gene_str))
         except:
             pass
 
-        # Metabolites count
+        # Metabolites (detailed list with stoichiometry)
         try:
-            met_count = len(self.metabolites)
-            rows.append(("Metabolites", str(met_count)))
+            metabolites = self.stoichiometry
+            if metabolites:
+                met_items = sorted(metabolites.items(), key=lambda x: x[0])
+                if len(met_items) <= 5:
+                    met_strs = [f"{met_id}: {coef:.4g}" for met_id, coef in met_items]
+                    met_str = ", ".join(met_strs)
+                else:
+                    met_strs = [f"{met_id}: {coef:.4g}" for met_id, coef in met_items[:5]]
+                    met_str = f"{', '.join(met_strs)}, ... ({len(met_items)} total)"
+                rows.append(("Metabolites", met_str))
         except:
-            pass
+            # Fallback to just count
+            try:
+                met_count = len(self.metabolites)
+                rows.append(("Metabolites", str(met_count)))
+            except:
+                pass
 
         # Compartments
         try:
