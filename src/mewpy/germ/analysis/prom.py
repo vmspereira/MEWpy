@@ -137,7 +137,7 @@ class PROM(_RegulatoryAnalysisBase):
             rxn_data = self._get_reaction(rxn_id)
             prom_constraints[rxn_id] = (
                 rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
-                rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND)
+                rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND),
             )
 
         genes = self.model.genes
@@ -210,8 +210,8 @@ class PROM(_RegulatoryAnalysisBase):
 
                 # Get reaction bounds from reaction data
                 rxn_data = self.model.get_reaction(rxn_id)
-                reaction_lower_bound = rxn_data['lb']
-                reaction_upper_bound = rxn_data['ub']
+                reaction_lower_bound = rxn_data["lb"]
+                reaction_upper_bound = rxn_data["ub"]
 
                 # Update flux bounds according to probability flux
                 if wt_flux < 0:

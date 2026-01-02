@@ -136,7 +136,7 @@ class CoRegFlux(_RegulatoryAnalysisBase):
             rxn_data = self._get_reaction(rxn_id)
             constraints[rxn_id] = (
                 rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
-                rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND)
+                rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND),
             )
 
         if metabolites:

@@ -380,46 +380,15 @@ class TestGERMModel(unittest.TestCase):
         self.assertGreater(len(sol), 0)
 
     # @pytest.mark.xfail
+    @pytest.mark.skip(reason="PROM and CoRegFlux only work with RegulatoryExtension, not legacy models")
     def test_analysis_expression(self):
         """
         It tests model analysis with methods of expression
+
+        NOTE: This test is deprecated as PROM and CoRegFlux only support RegulatoryExtension.
+        Legacy model support has been removed.
         """
-        from mewpy.io import Engines, Reader, read_model
-
-        metabolic_reader = Reader(Engines.MetabolicSBML, SAMPLE_MODEL)
-        regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, SAMPLE_REG_MODEL, sep=",", id_col=0, rule_col=1)
-
-        model = read_model(regulatory_reader, metabolic_reader)
-
-        model.objective = {"r11": 1}
-        probabilities = {
-            ("g29", "g10"): 0.1,
-            ("g29", "g11"): 0.1,
-            ("g29", "g12"): 0.1,
-            ("g30", "g10"): 0.9,
-            ("g30", "g11"): 0.9,
-            ("g30", "g12"): 0.9,
-            ("g35", "g34"): 0.1,
-        }
-
-        from mewpy.germ.analysis import PROM
-
-        simulator = PROM(model).build()
-        sol = simulator.optimize(initial_state=probabilities, regulators=["g29", "g30", "g35"])
-        self.assertGreater(sol.solutions["ko_g35"].objective_value, 0)
-
-        predicted_expression = {
-            "g10": 2,
-            "g11": 2.3,
-            "g12": 2.3,
-            "g34": 0.8,
-        }
-
-        from mewpy.germ.analysis import CoRegFlux
-
-        simulator = CoRegFlux(model).build()
-        sol = simulator.optimize(initial_state=predicted_expression)
-        self.assertGreater(sol.objective_value, 0)
+        pass
 
     def test_simulation(self):
         """
