@@ -62,11 +62,9 @@ def example_1_regulatory_extension_from_simulator():
     print(f"  - Name: {rxn_data.get('name')}")
     print(f"  - GPR: {rxn_data.get('gpr', 'None')}")
 
-    # Step 5: Run FBA (no regulatory network yet)
-    print(f"\n✓ Running FBA:")
-    fba = FBA(extension)
-    fba.build()
-    solution = fba.optimize()
+    # Step 5: Run FBA via simulator (no regulatory network yet)
+    print(f"\n✓ Running FBA via simulator:")
+    solution = extension.simulator.simulate()
     print(f"  - Status: {solution.status}")
     if solution.objective_value is not None:
         print(f"  - Objective: {solution.objective_value:.6f}")
@@ -249,8 +247,9 @@ def example_5_prom_analysis():
     from mewpy.germ.analysis import PROM
 
     # Load model with regulatory network
-    model_path = get_model_path('e_coli_core.xml')
-    reg_path = get_model_path('e_coli_core_trn.csv')
+    path = Path(os.path.dirname(os.path.realpath(__file__))).parent
+    model_path = path.joinpath('models', 'germ', 'e_coli_core.xml')
+    reg_path = path.joinpath('models', 'germ', 'e_coli_core_trn.csv')
 
     model = RegulatoryExtension.from_sbml(
         str(model_path),
@@ -300,8 +299,9 @@ def example_6_coregflux_analysis():
     from mewpy.germ.analysis import CoRegFlux
 
     # Load model with regulatory network
-    model_path = get_model_path('e_coli_core.xml')
-    reg_path = get_model_path('e_coli_core_trn.csv')
+    path = Path(os.path.dirname(os.path.realpath(__file__))).parent
+    model_path = path.joinpath('models', 'germ', 'e_coli_core.xml')
+    reg_path = path.joinpath('models', 'germ', 'e_coli_core_trn.csv')
 
     model = RegulatoryExtension.from_sbml(
         str(model_path),
