@@ -81,6 +81,18 @@ class Regulator(Variable, variable_type="regulator", register=True, constructor=
         if hasattr(self, "name") and self.name and self.name != self.id:
             rows.append(("Name", self.name))
 
+        # Aliases
+        try:
+            if hasattr(self, "aliases") and self.aliases:
+                aliases_list = sorted(list(self.aliases))
+                if len(aliases_list) <= 5:
+                    aliases_str = ", ".join(aliases_list)
+                else:
+                    aliases_str = f"{', '.join(aliases_list[:5])}, ... ({len(aliases_list)} total)"
+                rows.append(("Aliases", aliases_str))
+        except:
+            pass
+
         # Regulator type
         try:
             types = list(self.types)
@@ -114,19 +126,36 @@ class Regulator(Variable, variable_type="regulator", register=True, constructor=
         except:
             pass
 
-        # Interactions count
+        # Environmental stimulus (explicit flag)
         try:
-            inter_count = len(self.interactions)
-            if inter_count > 0:
-                rows.append(("Interactions", str(inter_count)))
+            is_env_stimulus = self.environmental_stimulus
+            rows.append(("Environmental", "Yes" if is_env_stimulus else "No"))
         except:
             pass
 
-        # Targets count
+        # Interactions (detailed list)
         try:
-            targets_count = len(self.targets)
-            if targets_count > 0:
-                rows.append(("Targets", str(targets_count)))
+            interactions = self.interactions
+            if interactions:
+                inter_ids = sorted(list(interactions.keys()))
+                if len(inter_ids) <= 5:
+                    inter_str = ", ".join(inter_ids)
+                else:
+                    inter_str = f"{', '.join(inter_ids[:5])}, ... ({len(inter_ids)} total)"
+                rows.append(("Interactions", inter_str))
+        except:
+            pass
+
+        # Targets (detailed list)
+        try:
+            targets = self.targets
+            if targets:
+                target_ids = sorted(list(targets.keys()))
+                if len(target_ids) <= 5:
+                    target_str = ", ".join(target_ids)
+                else:
+                    target_str = f"{', '.join(target_ids[:5])}, ... ({len(target_ids)} total)"
+                rows.append(("Targets", target_str))
         except:
             pass
 
