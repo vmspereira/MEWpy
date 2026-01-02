@@ -12,7 +12,7 @@ from .integrated_analysis import (
     slim_rfba,
     slim_srfba,
 )
-from .metabolic_analysis import fva, single_gene_deletion, single_reaction_deletion, slim_fba, slim_pfba
+from .metabolic_analysis import fva, single_gene_deletion, single_reaction_deletion
 from .prom import PROM, target_regulator_interaction_probability
 from .regulatory_analysis import regulatory_truth_table
 from .rfba import RFBA

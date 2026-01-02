@@ -298,21 +298,15 @@ class TestGERMModel(unittest.TestCase):
         model.objective = {"Biomass_Ecoli_core": 1}
 
         # fba - use simulator directly
-        from mewpy.germ.analysis import slim_fba
-        from mewpy.simulation import get_simulator
+        from mewpy.simulation import get_simulator, SimulationMethod
 
         simulator = get_simulator(model)
         result = simulator.simulate()
         self.assertGreater(result.objective_value, 0)
-        self.assertGreater(slim_fba(model), 0)
 
         # pfba - use simulator directly
-        from mewpy.germ.analysis import slim_pfba
-        from mewpy.simulation import SimulationMethod
-
         result = simulator.simulate(method=SimulationMethod.pFBA)
         self.assertGreater(result.objective_value, 0)
-        self.assertGreater(slim_pfba(model), 0)
 
         # deletions
         from mewpy.germ.analysis import single_gene_deletion, single_reaction_deletion

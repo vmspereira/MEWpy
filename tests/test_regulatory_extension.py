@@ -146,14 +146,12 @@ class TestRegulatoryExtensionWithAnalysis:
         )
 
     def test_fba_analysis(self, integrated_model):
-        """Test FBA works with RegulatoryExtension via slim_fba."""
-        from mewpy.germ.analysis import slim_fba
+        """Test FBA works with RegulatoryExtension via simulator."""
+        # Use simulator directly which works with RegulatoryExtension
+        result = integrated_model.simulator.simulate()
 
-        # Use slim_fba which works with RegulatoryExtension
-        obj_val = slim_fba(integrated_model)
-
-        assert obj_val is not None
-        assert obj_val > 0
+        assert result.objective_value is not None
+        assert result.objective_value > 0
 
     def test_rfba_analysis(self, integrated_model):
         """Test RFBA works with RegulatoryExtension."""
@@ -184,8 +182,8 @@ class TestBackwardsCompatibility:
 
     def test_analysis_with_legacy_model(self):
         """Test that analysis methods work with legacy read_model()."""
-        from mewpy.germ.analysis import slim_fba
         from mewpy.io import Engines, Reader, read_model
+        from mewpy.simulation import get_simulator
 
         model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
@@ -195,11 +193,12 @@ class TestBackwardsCompatibility:
 
         legacy_model = read_model(metabolic_reader, regulatory_reader, warnings=False)
 
-        # Should work with slim_fba
-        obj_val = slim_fba(legacy_model)
+        # Should work with simulator
+        simulator = get_simulator(legacy_model)
+        result = simulator.simulate()
 
-        assert obj_val is not None
-        assert obj_val > 0
+        assert result.objective_value is not None
+        assert result.objective_value > 0
 
 
 if __name__ == "__main__":
