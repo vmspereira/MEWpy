@@ -121,10 +121,10 @@ def example_2_gene_expression_prediction():
     # Create mock data
     expression, influence, experiments = create_mock_data(model, n_samples=50, n_experiments=5)
 
-    print(f"\nTraining data:")
+    print("\nTraining data:")
     print(f"  Expression: {expression.shape[0]} genes, {expression.shape[1]} samples")
     print(f"  Influence: {influence.shape[0]} regulators, {influence.shape[1]} samples")
-    print(f"\nTest data:")
+    print("\nTest data:")
     print(f"  Experiments: {experiments.shape[0]} regulators, {experiments.shape[1]} conditions")
 
     # Predict gene expression for experiments
@@ -172,7 +172,7 @@ def example_3_reduced_gene_expression():
         print(f"Expression level {level:.1f}: objective = {result.objective_value:.4f}")
 
     # Analyze trend
-    print(f"\nTrend: As gene expression decreases, growth typically decreases")
+    print("\nTrend: As gene expression decreases, growth typically decreases")
     print(f"Reduction from 1.0 to 0.1: {(1 - results[-1]/results[0])*100:.1f}%")
 
 
@@ -199,10 +199,10 @@ def example_4_dynamic_simulation():
     # Time steps
     time_steps = [0.1 * (i + 1) for i in range(n_steps)]
 
-    print(f"Running dynamic simulation:")
+    print("Running dynamic simulation:")
     print(f"  Number of time steps: {n_steps}")
     print(f"  Time points: {time_steps}")
-    print(f"  Gene expression pattern: decreasing from 1.0 to 0.6")
+    print("  Gene expression pattern: decreasing from 1.0 to 0.6")
 
     # Run dynamic simulation
     result = coregflux.optimize(
@@ -210,7 +210,7 @@ def example_4_dynamic_simulation():
         time_steps=time_steps
     )
 
-    print(f"\nDynamic simulation completed!")
+    print("\nDynamic simulation completed!")
     print(f"Number of solutions: {len(result.solutions)}")
 
     # Show results for each time point
@@ -245,7 +245,7 @@ def example_5_metabolites_and_biomass():
     biomass = 0.1
 
     print(f"\nInitial biomass: {biomass:.2f}")
-    print(f"Time step: 0.1")
+    print("Time step: 0.1")
 
     # Run CoRegFlux
     result = coregflux.optimize(
@@ -255,7 +255,7 @@ def example_5_metabolites_and_biomass():
         time_steps=0.1
     )
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Status: {result.status}")
     print(f"  Objective value: {result.objective_value:.4f}")
 

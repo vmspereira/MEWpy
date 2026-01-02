@@ -229,7 +229,7 @@ def example_4_prom_fva_workflow():
     # Run with probabilities
     probabilities = {(t.id, regulator): 0.5 for t in targets}
 
-    print(f"\nRunning PROM with P(target|regulator KO) = 0.5...")
+    print("\nRunning PROM with P(target|regulator KO) = 0.5...")
     result = prom.optimize(initial_state=probabilities, regulators=[regulator])
 
     sol = result.solutions[f"ko_{regulator}"]

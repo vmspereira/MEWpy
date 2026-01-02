@@ -57,13 +57,13 @@ def example_1_regulatory_extension_from_simulator():
 
     # Step 4: Access metabolic data (delegated to simulator)
     rxn_data = extension.get_reaction('ACALD')
-    print(f"\n✓ Access metabolic data (delegated):")
+    print("\n✓ Access metabolic data (delegated):")
     print(f"  - Reaction: {rxn_data.get('id')}")
     print(f"  - Name: {rxn_data.get('name')}")
     print(f"  - GPR: {rxn_data.get('gpr', 'None')}")
 
     # Step 5: Run FBA via simulator (no regulatory network yet)
-    print(f"\n✓ Running FBA via simulator:")
+    print("\n✓ Running FBA via simulator:")
     solution = extension.simulator.simulate()
     print(f"  - Status: {solution.status}")
     if solution.objective_value is not None:
@@ -107,7 +107,7 @@ def example_2_regulatory_extension_with_regulatory_network():
                                header=0)
     regulatory_model = read_model(regulatory_reader)
 
-    print(f"\n✓ Loaded models:")
+    print("\n✓ Loaded models:")
     print(f"  - Metabolic: {cobra_model.id} ({len(cobra_model.reactions)} reactions)")
     print(f"  - Regulatory: {len(regulatory_model.interactions)} interactions")
 
@@ -123,7 +123,7 @@ def example_2_regulatory_extension_with_regulatory_network():
     print(f"  - Has regulatory network: {integrated.has_regulatory_network()}")
 
     # Step 3: Access regulatory data
-    print(f"\n✓ Regulatory network iteration:")
+    print("\n✓ Regulatory network iteration:")
     for i, (int_id, interaction) in enumerate(integrated.yield_interactions()):
         if i < 3:  # Show first 3
             print(f"  - {interaction.target.id}: {len(interaction.regulators)} regulators")
@@ -132,24 +132,24 @@ def example_2_regulatory_extension_with_regulatory_network():
             break
 
     # Step 4: Run RFBA with regulatory constraints
-    print(f"\n✓ Running RFBA with regulatory network:")
+    print("\n✓ Running RFBA with regulatory network:")
     rfba = RFBA(integrated)
     rfba.build()
 
     # Steady-state RFBA
     solution = rfba.optimize()
-    print(f"  - Steady-state:")
+    print("  - Steady-state:")
     print(f"    - Status: {solution.status}")
     print(f"    - Objective: {solution.objective_value:.6f}")
 
     # Dynamic RFBA
     solution_dynamic = rfba.optimize(dynamic=True)
-    print(f"  - Dynamic:")
+    print("  - Dynamic:")
     if hasattr(solution_dynamic, 'solutions'):
         print(f"    - Iterations: {len(solution_dynamic.solutions)}")
 
     # Step 5: Run SRFBA (MILP-based steady-state)
-    print(f"\n✓ Running SRFBA with regulatory network:")
+    print("\n✓ Running SRFBA with regulatory network:")
     srfba = SRFBA(integrated)
     srfba.build()
     solution = srfba.optimize()
@@ -212,8 +212,8 @@ def example_4_delegation_vs_legacy():
 
     print(f"  - Type: {type(extension).__name__}")
     print(f"  - Metabolic data: Delegated to {type(simulator).__name__}")
-    print(f"  - Regulatory data: Stored in RegulatoryExtension")
-    print(f"  - Memory: No duplication (single source of truth)")
+    print("  - Regulatory data: Stored in RegulatoryExtension")
+    print("  - Memory: No duplication (single source of truth)")
 
     # Legacy Architecture: read_model
     print("\n✓ Legacy Architecture (read_model):")
@@ -228,14 +228,14 @@ def example_4_delegation_vs_legacy():
     legacy_model = read_model(metabolic_reader, regulatory_reader)
 
     print(f"  - Type: {type(legacy_model).__name__}")
-    print(f"  - Metabolic data: Stored internally as GERM variables")
-    print(f"  - Regulatory data: Stored internally")
-    print(f"  - Memory: Some duplication")
+    print("  - Metabolic data: Stored internally as GERM variables")
+    print("  - Regulatory data: Stored internally")
+    print("  - Memory: Some duplication")
 
     print("\n✓ Backwards compatibility:")
-    print(f"  - Both work with RFBA, SRFBA, PROM, CoRegFlux")
-    print(f"  - Legacy models still supported")
-    print(f"  - No breaking changes")
+    print("  - Both work with RFBA, SRFBA, PROM, CoRegFlux")
+    print("  - Legacy models still supported")
+    print("  - No breaking changes")
 
 
 def example_5_prom_analysis():
@@ -336,7 +336,7 @@ def example_6_coregflux_analysis():
     initial_state_reduced = {gene: 0.5 for gene in genes}
     result_reduced = coregflux.optimize(initial_state=initial_state_reduced)
 
-    print(f"\n✓ With 50% reduced expression:")
+    print("\n✓ With 50% reduced expression:")
     if result_reduced.objective_value is not None and result.objective_value is not None:
         print(f"  - Objective: {result_reduced.objective_value:.4f}")
         if result.objective_value > 0:
@@ -345,7 +345,7 @@ def example_6_coregflux_analysis():
         print(f"  - Status: {result_reduced.status}")
 
     # Dynamic simulation
-    print(f"\n✓ Dynamic simulation with 3 time steps...")
+    print("\n✓ Dynamic simulation with 3 time steps...")
     initial_states = [
         {gene: 1.0 for gene in genes},
         {gene: 0.8 for gene in genes},
