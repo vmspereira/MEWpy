@@ -298,7 +298,7 @@ class TestGERMModel(unittest.TestCase):
         model.objective = {"Biomass_Ecoli_core": 1}
 
         # fba - use simulator directly
-        from mewpy.simulation import get_simulator, SimulationMethod
+        from mewpy.simulation import SimulationMethod, get_simulator
 
         simulator = get_simulator(model)
         result = simulator.simulate()

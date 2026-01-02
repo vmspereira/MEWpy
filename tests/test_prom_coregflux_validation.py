@@ -125,7 +125,6 @@ class TestPROMValidation:
 
         # Create mock expression data
         genes = list(integrated_model.targets.keys())[:10]
-        regulators = list(integrated_model.regulators.keys())[:5]
 
         # Create random expression matrix (genes x samples)
         n_samples = 20
@@ -198,7 +197,7 @@ class TestCoRegFluxValidation:
         assert result is not None
         assert hasattr(result, "status")
         assert hasattr(result, "objective_value")
-        print(f"CoRegFlux result:")
+        print("CoRegFlux result:")
         print(f"  Status: {result.status}")
         print(f"  Objective: {result.objective_value}")
 
@@ -250,7 +249,7 @@ class TestCoRegFluxValidation:
         n_experiments = 5
         experiments = pd.DataFrame(np.random.randn(len(regulators), n_experiments), index=regulators)
 
-        print(f"Testing gene expression prediction")
+        print("Testing gene expression prediction")
         print(f"  Regulators: {len(regulators)}")
         print(f"  Targets: {len(targets)}")
         print(f"  Training samples: {n_samples}")
@@ -274,10 +273,10 @@ class TestCoRegFluxValidation:
 
         # Create metabolite concentrations using external metabolites that have exchange reactions
         # External metabolites typically end with '_e'
-        external_mets = [m for m in integrated_model.metabolites if m.endswith('_e')][:5]
+        external_mets = [m for m in integrated_model.metabolites if m.endswith("_e")][:5]
         metabolites = {met_id: 1.0 for met_id in external_mets}
 
-        print(f"Testing CoRegFlux with metabolites")
+        print("Testing CoRegFlux with metabolites")
 
         # Run CoRegFlux with metabolites
         result = coregflux.optimize(initial_state=initial_state, metabolites=metabolites)
@@ -304,7 +303,7 @@ class TestPROMvsCoRegFlux:
 
     def test_compare_with_fba(self, integrated_model):
         """Compare PROM and CoRegFlux with pure FBA."""
-        from mewpy.germ.analysis import CoRegFlux, PROM
+        from mewpy.germ.analysis import PROM, CoRegFlux
 
         # Get FBA baseline
         fba_result = integrated_model.simulator.simulate()
