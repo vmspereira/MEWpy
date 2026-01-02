@@ -121,15 +121,24 @@ class SRFBA(_RegulatoryAnalysisBase):
         Add GPR constraint for a reaction using boolean algebra.
 
         :param rxn_id: Reaction identifier
-        :param gpr: Parsed GPR expression (symbolic expression object)
+        :param gpr: Parsed GPR expression (can be Symbolic object or Expression wrapper)
         :param rxn_data: Reaction data dict from simulator
         """
         # Skip if GPR is none/empty
         if hasattr(gpr, "is_none") and gpr.is_none:
             return
 
-        # The GPR object itself is the symbolic expression (Or, And, Symbol, etc.)
-        # No need to check for .symbolic attribute
+        # Extract symbolic expression from Expression wrapper if needed
+        # parse_expression() returns Symbolic objects directly (Or, And, Symbol, etc.)
+        # But fallback cases may return Expression(Symbol("true"), {})
+        from mewpy.germ.algebra import Expression
+
+        if isinstance(gpr, Expression):
+            # Extract the symbolic expression from Expression wrapper
+            symbolic = gpr.symbolic
+        else:
+            # Already a Symbolic object (Or, And, Symbol, etc.)
+            symbolic = gpr
 
         # Create boolean variable for the reaction
         boolean_variable = f"bool_{rxn_id}"
@@ -154,9 +163,9 @@ class SRFBA(_RegulatoryAnalysisBase):
                 f"gpr_lower_{rxn_id}", {rxn_id: 1.0, boolean_variable: -float(lb)}, ">", 0.0, update=False
             )
 
-        # Add constraints for the GPR expression (gpr is already the symbolic expression)
+        # Add constraints for the GPR symbolic expression
         try:
-            self._linearize_expression(boolean_variable, gpr)
+            self._linearize_expression(boolean_variable, symbolic)
         except Exception as e:
             # If linearization fails, skip this constraint but log warning
             # The reaction will still work with just the flux bounds
