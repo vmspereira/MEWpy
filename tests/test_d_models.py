@@ -527,7 +527,11 @@ class TestGERMModel(unittest.TestCase):
 
         # multiple simulators attached
         from mewpy.germ.analysis import RFBA, SRFBA
+        from mewpy.germ.analysis.fba import _FBA
+        from mewpy.germ.analysis.pfba import _pFBA
 
+        fba = _FBA(model, attach=True)
+        pfba = _pFBA(model, attach=True)
         rfba = RFBA(model, attach=True)
         srfba = SRFBA(model, attach=True)
 
@@ -670,10 +674,14 @@ class TestGERMModel(unittest.TestCase):
 
         # multiple simulators attached
         from mewpy.germ.analysis import RFBA, SRFBA
+        from mewpy.germ.analysis.fba import _FBA
+        from mewpy.germ.analysis.pfba import _pFBA
 
+        fba = _FBA(model, attach=True)
+        pfba = _pFBA(model, attach=True)
         rfba = RFBA(model, attach=True)
         srfba = SRFBA(model, attach=True)
-        simulators = [rfba, srfba]
+        simulators = [fba, pfba, rfba, srfba]
 
         # adding new reactions, metabolites, genes, interactions, targets and regulators
         # g37: g39 and not g40
