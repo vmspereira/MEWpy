@@ -215,8 +215,8 @@ def example_4_dynamic_simulation():
 
     # Show results for each time point
     print("\nTime-course results:")
-    for i, (time, sol) in enumerate(zip(time_steps, result.solutions)):
-        print(f"  t={time:.2f}: objective = {sol.objective_value:.4f}, status = {sol.status}")
+    for time_key, sol in result.solutions.items():
+        print(f"  {time_key}: objective = {sol.objective_value:.4f}, status = {sol.status}")
 
 
 def example_5_metabolites_and_biomass():
