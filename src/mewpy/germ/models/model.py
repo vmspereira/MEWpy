@@ -5,7 +5,6 @@ from mewpy.util.history import HistoryManager, recorder
 
 # Preventing circular dependencies that only happen due to type checking
 if TYPE_CHECKING:
-    from mewpy.germ.lp import LinearProblem
     from mewpy.germ.models import MetabolicModel, RegulatoryModel
     from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target, Variable
 
@@ -633,7 +632,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         return self._name
 
     @property
-    def simulators(self) -> List["LinearProblem"]:
+    def simulators(self) -> List[Any]:
         """
         It returns the list of simulation methods associated with the model.
         :return: the list of simulation methods
@@ -795,7 +794,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
     # -----------------------------------------------------------------------------
     # Simulators observer pattern
     # -----------------------------------------------------------------------------
-    def attach(self, simulator: "LinearProblem"):
+    def attach(self, simulator: Any):
         """
         It attaches the given simulation method (simulator) to the model.
         Once a simulator is attached to the model, it will be notified with model changes.

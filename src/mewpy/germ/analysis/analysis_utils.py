@@ -8,7 +8,6 @@ from mewpy.solvers.solution import Status
 from mewpy.util.constants import ModelConstants
 
 if TYPE_CHECKING:
-    from mewpy.germ.lp import LinearProblem
     from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
     from mewpy.solvers import Solution
 
@@ -36,7 +35,7 @@ def decode_solver_solution(solution: "Solution") -> Tuple[float, str]:
 
 
 def run_method_and_decode(
-    method: "LinearProblem",
+    method,
     objective: Union[str, Dict[str, float]] = None,
     constraints: Dict[str, Tuple[float, float]] = None,
     **kwargs,
