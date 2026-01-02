@@ -62,13 +62,16 @@ def example_1_regulatory_extension_from_simulator():
     print(f"  - Name: {rxn_data.get('name')}")
     print(f"  - GPR: {rxn_data.get('gpr', 'None')}")
 
-    # Step 5: Run RFBA (falls back to FBA without regulatory network)
-    print(f"\n✓ Running RFBA (no regulatory network, falls back to FBA):")
-    rfba = RFBA(extension)
-    rfba.build()
-    solution = rfba.optimize()
+    # Step 5: Run FBA (no regulatory network yet)
+    print(f"\n✓ Running FBA:")
+    fba = FBA(extension)
+    fba.build()
+    solution = fba.optimize()
     print(f"  - Status: {solution.status}")
-    print(f"  - Objective: {solution.objective_value:.6f}")
+    if solution.objective_value is not None:
+        print(f"  - Objective: {solution.objective_value:.6f}")
+    else:
+        print(f"  - Objective: N/A (status: {solution.status})")
 
     return extension
 
@@ -276,7 +279,10 @@ def example_5_prom_analysis():
 
         for regulator in regulators:
             sol = result.solutions[f"ko_{regulator}"]
-            print(f"  - {regulator}: objective = {sol.objective_value:.4f}")
+            if sol.objective_value is not None:
+                print(f"  - {regulator}: objective = {sol.objective_value:.4f}")
+            else:
+                print(f"  - {regulator}: status = {sol.status}")
 
     print("\n✓ PROM Features:")
     print("  - Probabilistic regulatory constraints")
@@ -321,15 +327,22 @@ def example_6_coregflux_analysis():
     result = coregflux.optimize(initial_state=initial_state)
 
     print(f"  - Status: {result.status}")
-    print(f"  - Objective: {result.objective_value:.4f}")
+    if result.objective_value is not None:
+        print(f"  - Objective: {result.objective_value:.4f}")
+    else:
+        print(f"  - Objective: N/A (status: {result.status})")
 
     # Test with reduced expression
     initial_state_reduced = {gene: 0.5 for gene in genes}
     result_reduced = coregflux.optimize(initial_state=initial_state_reduced)
 
     print(f"\n✓ With 50% reduced expression:")
-    print(f"  - Objective: {result_reduced.objective_value:.4f}")
-    print(f"  - Growth reduction: {(1 - result_reduced.objective_value/result.objective_value)*100:.1f}%")
+    if result_reduced.objective_value is not None and result.objective_value is not None:
+        print(f"  - Objective: {result_reduced.objective_value:.4f}")
+        if result.objective_value > 0:
+            print(f"  - Growth reduction: {(1 - result_reduced.objective_value/result.objective_value)*100:.1f}%")
+    else:
+        print(f"  - Status: {result_reduced.status}")
 
     # Dynamic simulation
     print(f"\n✓ Dynamic simulation with 3 time steps...")
@@ -346,8 +359,11 @@ def example_6_coregflux_analysis():
     )
 
     print(f"  - Time points simulated: {len(dynamic_result.solutions)}")
-    for i, sol in enumerate(dynamic_result.solutions):
-        print(f"  - t={time_steps[i]}: objective = {sol.objective_value:.4f}")
+    for time_key, sol in dynamic_result.solutions.items():
+        if sol.objective_value is not None:
+            print(f"  - {time_key}: objective = {sol.objective_value:.4f}")
+        else:
+            print(f"  - {time_key}: status = {sol.status}")
 
     print("\n✓ CoRegFlux Features:")
     print("  - Linear regression-based gene expression prediction")
