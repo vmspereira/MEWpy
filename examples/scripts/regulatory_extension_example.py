@@ -237,6 +237,126 @@ def example_4_delegation_vs_legacy():
     print(f"  - No breaking changes")
 
 
+def example_5_prom_analysis():
+    """Example 5: PROM analysis with RegulatoryExtension."""
+    print("\n" + "=" * 80)
+    print("Example 5: PROM Analysis")
+    print("=" * 80)
+
+    from mewpy.germ.analysis import PROM
+
+    # Load model with regulatory network
+    model_path = get_model_path('e_coli_core.xml')
+    reg_path = get_model_path('e_coli_core_trn.csv')
+
+    model = RegulatoryExtension.from_sbml(
+        str(model_path),
+        str(reg_path),
+        regulatory_format='csv',
+        sep=',',
+        flavor='reframed'
+    )
+
+    print("\n✓ PROM (Probabilistic Regulation of Metabolism):")
+    print(f"  - Regulators: {len(model.regulators)}")
+    print(f"  - Targets: {len(model.targets)}")
+
+    # Create PROM instance
+    prom = PROM(model).build()
+    print(f"  - PROM method: {prom.method}")
+    print(f"  - Synchronized: {prom.synchronized}")
+
+    # Test single regulator knockout
+    regulators = list(model.regulators.keys())[:2]
+    if regulators:
+        print(f"\n✓ Testing knockout of {len(regulators)} regulators...")
+
+        # Run with default probabilities
+        result = prom.optimize(regulators=regulators)
+
+        for regulator in regulators:
+            sol = result.solutions[f"ko_{regulator}"]
+            print(f"  - {regulator}: objective = {sol.objective_value:.4f}")
+
+    print("\n✓ PROM Features:")
+    print("  - Probabilistic regulatory constraints")
+    print("  - Predicts transcriptional perturbation effects")
+    print("  - FVA-based maximum rate computation")
+    print("  - Works with RegulatoryExtension API")
+
+
+def example_6_coregflux_analysis():
+    """Example 6: CoRegFlux analysis with RegulatoryExtension."""
+    print("\n" + "=" * 80)
+    print("Example 6: CoRegFlux Analysis")
+    print("=" * 80)
+
+    from mewpy.germ.analysis import CoRegFlux
+
+    # Load model with regulatory network
+    model_path = get_model_path('e_coli_core.xml')
+    reg_path = get_model_path('e_coli_core_trn.csv')
+
+    model = RegulatoryExtension.from_sbml(
+        str(model_path),
+        str(reg_path),
+        regulatory_format='csv',
+        sep=',',
+        flavor='reframed'
+    )
+
+    print("\n✓ CoRegFlux (Co-Regulation and Flux):")
+    print(f"  - Regulators: {len(model.regulators)}")
+    print(f"  - Targets: {len(model.targets)}")
+
+    # Create CoRegFlux instance
+    coregflux = CoRegFlux(model).build()
+    print(f"  - Synchronized: {coregflux.synchronized}")
+
+    # Create gene state (all genes active)
+    genes = list(model.targets.keys())[:10]
+    initial_state = {gene: 1.0 for gene in genes}
+
+    print(f"\n✓ Running steady-state simulation with {len(initial_state)} genes...")
+    result = coregflux.optimize(initial_state=initial_state)
+
+    print(f"  - Status: {result.status}")
+    print(f"  - Objective: {result.objective_value:.4f}")
+
+    # Test with reduced expression
+    initial_state_reduced = {gene: 0.5 for gene in genes}
+    result_reduced = coregflux.optimize(initial_state=initial_state_reduced)
+
+    print(f"\n✓ With 50% reduced expression:")
+    print(f"  - Objective: {result_reduced.objective_value:.4f}")
+    print(f"  - Growth reduction: {(1 - result_reduced.objective_value/result.objective_value)*100:.1f}%")
+
+    # Dynamic simulation
+    print(f"\n✓ Dynamic simulation with 3 time steps...")
+    initial_states = [
+        {gene: 1.0 for gene in genes},
+        {gene: 0.8 for gene in genes},
+        {gene: 0.6 for gene in genes}
+    ]
+    time_steps = [0.1, 0.2, 0.3]
+
+    dynamic_result = coregflux.optimize(
+        initial_state=initial_states,
+        time_steps=time_steps
+    )
+
+    print(f"  - Time points simulated: {len(dynamic_result.solutions)}")
+    for i, sol in enumerate(dynamic_result.solutions):
+        print(f"  - t={time_steps[i]}: objective = {sol.objective_value:.4f}")
+
+    print("\n✓ CoRegFlux Features:")
+    print("  - Linear regression-based gene expression prediction")
+    print("  - Continuous gene state constraints")
+    print("  - Dynamic simulation support")
+    print("  - Metabolite and biomass tracking")
+    print("  - Works with RegulatoryExtension API")
+
+
 def main():
     """Run all examples."""
     print("\n" + "=" * 80)
@@ -250,6 +370,8 @@ def main():
     example_2_regulatory_extension_with_regulatory_network()
     example_3_factory_functions()
     example_4_delegation_vs_legacy()
+    example_5_prom_analysis()
+    example_6_coregflux_analysis()
 
     print("\n" + "=" * 80)
     print("All examples completed successfully!")
@@ -260,6 +382,7 @@ def main():
     print("✓ Works with both COBRApy and reframed")
     print("✓ Clean separation: metabolic (external) vs regulatory (GERM)")
     print("✓ Backwards compatible with legacy models")
+    print("✓ PROM and CoRegFlux fully functional with RegulatoryExtension")
     print("=" * 80 + "\n")
 
 
