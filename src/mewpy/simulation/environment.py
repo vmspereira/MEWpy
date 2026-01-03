@@ -45,8 +45,9 @@ class Environment(OrderedDict):
 
     def _repr_html_(self):
         import pandas as pd
+
         df = pd.DataFrame(self).T
-        df.columns=['lb','ub']
+        df.columns = ["lb", "ub"]
         return df.to_html()
 
     def get_compounds(self, fmt_func=None):
