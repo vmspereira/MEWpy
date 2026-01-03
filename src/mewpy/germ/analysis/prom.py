@@ -336,7 +336,9 @@ class PROM(_RegulatoryAnalysisBase):
 # Probability of Target-Regulator interactions
 # ----------------------------------------------------------------------------------------------------------------------
 def target_regulator_interaction_probability(
-    model: RegulatoryExtension, expression: pd.DataFrame, binary_expression: pd.DataFrame
+    model: Union[RegulatoryExtension, "RegulatoryModel"],
+    expression: pd.DataFrame,
+    binary_expression: pd.DataFrame,
 ) -> Tuple[Dict[Tuple[str, str], float], Dict[Tuple[str, str], float]]:
     """
     Compute the conditional probability of a target gene being active when the regulator is inactive.
@@ -347,7 +349,7 @@ def target_regulator_interaction_probability(
     This probability is computed for each combination of target-regulator.
     This method is used in PROM analysis.
 
-    :param model: A RegulatoryExtension instance
+    :param model: A RegulatoryExtension or legacy GERM RegulatoryModel instance
     :param expression: Quantile preprocessed expression matrix
     :param binary_expression: Quantile preprocessed expression matrix binarized
     :return: Dictionary with the conditional probability of a target gene being active when the regulator is inactive,
@@ -366,7 +368,26 @@ def target_regulator_interaction_probability(
     missed_interactions = {}
     interactions_probabilities = {}
 
-    for _, interaction in model.yield_interactions():
+    # Handle both legacy GERM models (yield Interaction) and RegulatoryExtension (yield tuples)
+    interactions_gen = model.yield_interactions()
+    first_item = next(interactions_gen, None)
+    if first_item is None:
+        return interactions_probabilities, missed_interactions
+
+    # Check if yielded items are tuples (RegulatoryExtension) or objects (legacy)
+    if isinstance(first_item, tuple):
+        # RegulatoryExtension: yields (id, Interaction) tuples
+        def _get_interactions():
+            yield first_item[1]  # Unwrap first item
+            for _, interaction in interactions_gen:
+                yield interaction
+    else:
+        # Legacy GERM: yields Interaction objects directly
+        def _get_interactions():
+            yield first_item
+            yield from interactions_gen
+
+    for interaction in _get_interactions():
         target = interaction.target
 
         if not interaction.regulators or target.id not in expression.index:
