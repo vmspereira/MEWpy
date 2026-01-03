@@ -17,6 +17,7 @@ from mewpy.solvers.solver import Solver
 from mewpy.util.constants import ModelConstants
 
 if TYPE_CHECKING:
+    from mewpy.germ.models import RegulatoryModel
     from mewpy.germ.variables import Gene, Regulator, Target
 
 
@@ -146,10 +147,19 @@ class PROM(_RegulatoryAnalysisBase):
         # If the regulator to be KO is a metabolic gene, the associated reactions are KO too
         # Check if regulator ID exists in model genes list
         if regulator.id in genes:
-            gene_data = self.model.get_gene(regulator.id)
-            # gene_data.reactions is a list of reaction IDs
-            for rxn_id in gene_data.reactions:
-                prom_constraints[rxn_id] = (-ModelConstants.TOLERANCE, ModelConstants.TOLERANCE)
+            # Handle both APIs: RegulatoryExtension has get_gene(), legacy has genes dict
+            if hasattr(self.model, "get_gene"):
+                gene_data = self.model.get_gene(regulator.id)
+                reactions_list = gene_data.reactions
+            else:
+                gene_obj = genes[regulator.id]
+                reactions_list = gene_obj.reactions if hasattr(gene_obj, "reactions") else []
+
+            for rxn_id in reactions_list:
+                prom_constraints[rxn_id] = (
+                    -ModelConstants.TOLERANCE,
+                    ModelConstants.TOLERANCE,
+                )
 
         # Find the target genes of the deleted regulator
         target_reactions = {}
@@ -157,9 +167,16 @@ class PROM(_RegulatoryAnalysisBase):
             # Check if this target corresponds to a metabolic gene
             if target.id in genes:
                 state[target.id] = 0
-                gene_data = self.model.get_gene(target.id)
-                # gene_data.reactions is a list of reaction IDs
-                for rxn_id in gene_data.reactions:
+
+                # Handle both APIs
+                if hasattr(self.model, "get_gene"):
+                    gene_data = self.model.get_gene(target.id)
+                    reactions_list = gene_data.reactions
+                else:
+                    gene_obj = genes[target.id]
+                    reactions_list = gene_obj.reactions if hasattr(gene_obj, "reactions") else []
+
+                for rxn_id in reactions_list:
                     target_reactions[rxn_id] = rxn_id  # Store ID, not object
 
         # GPR evaluation using changed gene state
@@ -189,10 +206,16 @@ class PROM(_RegulatoryAnalysisBase):
 
             interaction_probability = probabilities[target_regulator]
 
-            # Get reactions for this gene
-            gene_data = self.model.get_gene(target.id)
+            # Get reactions for this gene - handle both APIs
+            if hasattr(self.model, "get_gene"):
+                gene_data = self.model.get_gene(target.id)
+                reactions_list = gene_data.reactions
+            else:
+                gene_obj = genes[target.id]
+                reactions_list = gene_obj.reactions if hasattr(gene_obj, "reactions") else []
+
             # For each reaction associated with this single target
-            for rxn_id in gene_data.reactions:
+            for rxn_id in reactions_list:
                 if rxn_id not in inactive_reactions:
                     continue
 
@@ -336,7 +359,9 @@ class PROM(_RegulatoryAnalysisBase):
 # Probability of Target-Regulator interactions
 # ----------------------------------------------------------------------------------------------------------------------
 def target_regulator_interaction_probability(
-    model: RegulatoryExtension, expression: pd.DataFrame, binary_expression: pd.DataFrame
+    model: Union[RegulatoryExtension, "RegulatoryModel"],
+    expression: pd.DataFrame,
+    binary_expression: pd.DataFrame,
 ) -> Tuple[Dict[Tuple[str, str], float], Dict[Tuple[str, str], float]]:
     """
     Compute the conditional probability of a target gene being active when the regulator is inactive.
@@ -347,7 +372,7 @@ def target_regulator_interaction_probability(
     This probability is computed for each combination of target-regulator.
     This method is used in PROM analysis.
 
-    :param model: A RegulatoryExtension instance
+    :param model: A RegulatoryExtension or legacy GERM RegulatoryModel instance
     :param expression: Quantile preprocessed expression matrix
     :param binary_expression: Quantile preprocessed expression matrix binarized
     :return: Dictionary with the conditional probability of a target gene being active when the regulator is inactive,
@@ -366,7 +391,27 @@ def target_regulator_interaction_probability(
     missed_interactions = {}
     interactions_probabilities = {}
 
-    for _, interaction in model.yield_interactions():
+    # Handle both legacy GERM models (yield Interaction) and RegulatoryExtension (yield tuples)
+    interactions_gen = model.yield_interactions()
+    first_item = next(interactions_gen, None)
+    if first_item is None:
+        return interactions_probabilities, missed_interactions
+
+    # Check if yielded items are tuples (RegulatoryExtension) or objects (legacy)
+    if isinstance(first_item, tuple):
+        # RegulatoryExtension: yields (id, Interaction) tuples
+        def _get_interactions():
+            yield first_item[1]  # Unwrap first item
+            for _, interaction in interactions_gen:
+                yield interaction
+
+    else:
+        # Legacy GERM: yields Interaction objects directly
+        def _get_interactions():
+            yield first_item
+            yield from interactions_gen
+
+    for interaction in _get_interactions():
         target = interaction.target
 
         if not interaction.regulators or target.id not in expression.index:
