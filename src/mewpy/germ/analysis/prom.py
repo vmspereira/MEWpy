@@ -381,6 +381,7 @@ def target_regulator_interaction_probability(
             yield first_item[1]  # Unwrap first item
             for _, interaction in interactions_gen:
                 yield interaction
+
     else:
         # Legacy GERM: yields Interaction objects directly
         def _get_interactions():
