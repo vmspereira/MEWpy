@@ -142,7 +142,7 @@ class ExpressionSet:
         return values
 
     @classmethod
-    def from_dataframe(cls, data_frame, duplicates='suffix'):
+    def from_dataframe(cls, data_frame, duplicates="suffix"):
         """Read expression data from a pandas.DataFrame.
 
         Args:
@@ -164,27 +164,24 @@ class ExpressionSet:
         import warnings
 
         # Validate duplicates parameter
-        valid_strategies = {'error', 'first', 'last', 'mean', 'sum', 'suffix'}
+        valid_strategies = {"error", "first", "last", "mean", "sum", "suffix"}
         if duplicates not in valid_strategies:
-            raise ValueError(
-                f"Invalid duplicates parameter: '{duplicates}'. "
-                f"Must be one of: {valid_strategies}"
-            )
+            raise ValueError(f"Invalid duplicates parameter: '{duplicates}'. " f"Must be one of: {valid_strategies}")
 
         # Handle duplicate identifiers based on strategy
         if data_frame.index.duplicated().any():
-            if duplicates == 'error':
+            if duplicates == "error":
                 # Keep original error behavior
                 pass  # Will be caught by ExpressionSet.__init__
-            elif duplicates == 'first':
-                data_frame = data_frame[~data_frame.index.duplicated(keep='first')]
-            elif duplicates == 'last':
-                data_frame = data_frame[~data_frame.index.duplicated(keep='last')]
-            elif duplicates == 'mean':
+            elif duplicates == "first":
+                data_frame = data_frame[~data_frame.index.duplicated(keep="first")]
+            elif duplicates == "last":
+                data_frame = data_frame[~data_frame.index.duplicated(keep="last")]
+            elif duplicates == "mean":
                 data_frame = data_frame.groupby(data_frame.index).mean()
-            elif duplicates == 'sum':
+            elif duplicates == "sum":
                 data_frame = data_frame.groupby(data_frame.index).sum()
-            elif duplicates == 'suffix':
+            elif duplicates == "suffix":
                 # Count duplicate identifiers and warn user
                 duplicate_mask = data_frame.index.duplicated(keep=False)
                 n_duplicates = duplicate_mask.sum()
@@ -195,7 +192,7 @@ class ExpressionSet:
                     f"Renaming with numeric suffixes (_2, _3, etc.). "
                     f"Duplicate identifiers: {list(unique_duplicates[:10])}"
                     + (f" and {len(unique_duplicates)-10} more..." if len(unique_duplicates) > 10 else ""),
-                    UserWarning
+                    UserWarning,
                 )
 
                 # Create new index with suffixes for duplicates
@@ -226,7 +223,7 @@ class ExpressionSet:
         return ExpressionSet(identifiers, conditions, expression, p_values)
 
     @classmethod
-    def from_csv(cls, file_path, duplicates='suffix', **kwargs):
+    def from_csv(cls, file_path, duplicates="suffix", **kwargs):
         """Read expression data from a comma separated values (csv) file.
 
         Args:
