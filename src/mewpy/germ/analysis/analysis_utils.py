@@ -90,10 +90,22 @@ def build_metabolites(
     res = {}
 
     # Build map from metabolite to exchange reaction
-    exchange_reactions = model.get_exchange_reactions()
+    # Handle both APIs: RegulatoryExtension has get_exchange_reactions(), legacy has exchanges dict
+    if hasattr(model, "get_exchange_reactions"):
+        exchange_reactions = model.get_exchange_reactions()
+    elif hasattr(model, "exchanges"):
+        exchange_reactions = model.exchanges
+    else:
+        exchange_reactions = []
+
     met_to_exchange = {}
     for ex_rxn_id in exchange_reactions:
-        rxn = model.get_reaction(ex_rxn_id)
+        # Handle both APIs for getting reactions
+        if hasattr(model, "get_reaction"):
+            rxn = model.get_reaction(ex_rxn_id)
+        else:
+            rxn = model.reactions[ex_rxn_id]
+
         for met_id in rxn.stoichiometry.keys():
             met_to_exchange[met_id] = ex_rxn_id
 
