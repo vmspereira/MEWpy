@@ -12,22 +12,18 @@ print()
 
 # Setup paths
 path = Path("examples/models/germ")
-inj661_gene_expression_path = path.joinpath('iNJ661_gene_expression.csv')
+inj661_gene_expression_path = path.joinpath("iNJ661_gene_expression.csv")
 
 # Step 1: Load expression data
 print("Step 1: Load expression data")
 print("-" * 80)
 try:
-    expression = ExpressionSet.from_csv(
-        file_path=inj661_gene_expression_path,
-        sep=';',
-        index_col=0,
-        header=None
-    )
+    expression = ExpressionSet.from_csv(file_path=inj661_gene_expression_path, sep=";", index_col=0, header=None)
     print(f"✓ Expression data loaded: {expression.shape()}")
 except Exception as e:
     print(f"✗ FAILED: {e}")
     import traceback
+
     traceback.print_exc()
     exit(1)
 print()
@@ -45,6 +41,7 @@ try:
 except Exception as e:
     print(f"✗ FAILED: {e}")
     import traceback
+
     traceback.print_exc()
     exit(1)
 print()
@@ -53,18 +50,18 @@ print()
 print("Step 3: Load iNJ661 model")
 print("-" * 80)
 try:
-    inj661_gem_reader = Reader(Engines.MetabolicSBML, path.joinpath('iNJ661.xml'))
+    inj661_gem_reader = Reader(Engines.MetabolicSBML, path.joinpath("iNJ661.xml"))
     inj661_trn_reader = Reader(
         Engines.TargetRegulatorRegulatoryCSV,
-        path.joinpath('iNJ661_trn.csv'),
-        sep=';',
+        path.joinpath("iNJ661_trn.csv"),
+        sep=";",
         target_col=0,
         regulator_col=1,
-        header=None
+        header=None,
     )
 
     model = read_model(inj661_gem_reader, inj661_trn_reader)
-    BIOMASS_ID = 'biomass_Mtb_9_60atp_test_NOF'
+    BIOMASS_ID = "biomass_Mtb_9_60atp_test_NOF"
     model.objective = {BIOMASS_ID: 1}
 
     print(f"✓ Model loaded: {model.id}")
@@ -75,6 +72,7 @@ try:
 except Exception as e:
     print(f"✗ FAILED: {e}")
     import traceback
+
     traceback.print_exc()
     exit(1)
 print()
@@ -84,9 +82,7 @@ print("Step 4: Compute target-regulator interaction probabilities")
 print("-" * 80)
 try:
     initial_state, _ = target_regulator_interaction_probability(
-        model,
-        expression=quantile_expression,
-        binary_expression=binary_expression
+        model, expression=quantile_expression, binary_expression=binary_expression
     )
 
     print(f"✓ PROM initial state computed")
@@ -100,6 +96,33 @@ try:
 except Exception as e:
     print(f"✗ FAILED: {e}")
     import traceback
+
+    traceback.print_exc()
+    exit(1)
+print()
+
+# Step 5: Run PROM optimization
+print("Step 5: Run PROM optimization")
+print("-" * 80)
+try:
+    from mewpy.germ.analysis import PROM
+
+    prom = PROM(model).build()
+    solution = prom.optimize(initial_state=initial_state)
+
+    print(f"✓ PROM optimization completed")
+    print(f"  Type: {type(solution)}")
+    print(f"  Number of KO solutions: {len(solution.solutions)}")
+
+    # Show first solution
+    if solution.solutions:
+        first_ko = list(solution.solutions.keys())[0]
+        first_sol = solution.solutions[first_ko]
+        print(f"  First KO ({first_ko}): {first_sol.objective_value:.6f}")
+except Exception as e:
+    print(f"✗ FAILED: {e}")
+    import traceback
+
     traceback.print_exc()
     exit(1)
 print()

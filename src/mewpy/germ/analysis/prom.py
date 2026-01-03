@@ -182,7 +182,14 @@ class PROM(_RegulatoryAnalysisBase):
         # GPR evaluation using changed gene state
         inactive_reactions = {}
         for rxn_id in target_reactions.keys():
-            gpr = self.model.get_parsed_gpr(rxn_id)
+            # Handle both APIs for accessing GPR
+            if hasattr(self.model, "get_parsed_gpr"):
+                # RegulatoryExtension: has get_parsed_gpr() method
+                gpr = self.model.get_parsed_gpr(rxn_id)
+            else:
+                # Legacy model: access reaction's gpr attribute directly
+                rxn = self.model.reactions[rxn_id]
+                gpr = rxn.gpr
 
             if gpr.is_none:
                 continue
@@ -231,8 +238,8 @@ class PROM(_RegulatoryAnalysisBase):
                 # Wild-type flux value
                 wt_flux = reference[rxn_id]
 
-                # Get reaction bounds from reaction data
-                rxn_data = self.model.get_reaction(rxn_id)
+                # Get reaction bounds from reaction data (works with both APIs)
+                rxn_data = self._get_reaction(rxn_id)
                 reaction_lower_bound = rxn_data["lb"]
                 reaction_upper_bound = rxn_data["ub"]
 
