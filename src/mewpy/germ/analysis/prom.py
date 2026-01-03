@@ -17,6 +17,7 @@ from mewpy.solvers.solver import Solver
 from mewpy.util.constants import ModelConstants
 
 if TYPE_CHECKING:
+    from mewpy.germ.models import RegulatoryModel
     from mewpy.germ.variables import Gene, Regulator, Target
 
 
