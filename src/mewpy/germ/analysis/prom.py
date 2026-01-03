@@ -223,10 +223,18 @@ class PROM(_RegulatoryAnalysisBase):
 
             # For each reaction associated with this single target
             for rxn_id in reactions_list:
+                # Skip reactions not in prom_constraints (may not be in yield_reactions())
+                if rxn_id not in prom_constraints:
+                    continue
+
                 if rxn_id not in inactive_reactions:
                     continue
 
                 if interaction_probability >= 1:
+                    continue
+
+                # Skip if reaction not in max_rates or reference
+                if rxn_id not in max_rates or rxn_id not in reference:
                     continue
 
                 # Reaction old bounds
@@ -345,8 +353,13 @@ class PROM(_RegulatoryAnalysisBase):
         else:
             if isinstance(regulators, str):
                 regulators = [regulators]
-            # Get regulator objects using get_regulator method
-            regulators = [self.model.get_regulator(regulator) for regulator in regulators]
+            # Get regulator objects - handle both APIs
+            if hasattr(self.model, "get_regulator"):
+                # RegulatoryExtension API
+                regulators = [self.model.get_regulator(regulator) for regulator in regulators]
+            else:
+                # Legacy model API - regulators is a dict
+                regulators = [self.model.regulators[regulator] for regulator in regulators]
 
         if not solver_kwargs:
             solver_kwargs = {}

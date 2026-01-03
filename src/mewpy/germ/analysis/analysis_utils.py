@@ -121,8 +121,18 @@ def build_metabolites(
 
 
 def build_biomass(model: Union["Model", "MetabolicModel", "RegulatoryModel"], biomass: float) -> CoRegBiomass:
-    # model.objective is a dict with reaction IDs as keys
-    variable_id = next(iter(model.objective))
+    # model.objective is a dict with reaction IDs as keys (might be Variable objects or strings)
+    variable = next(iter(model.objective))
+
+    # Extract just the reaction ID string
+    if hasattr(variable, "id"):
+        # Variable object - use its id attribute
+        variable_id = variable.id
+    else:
+        # String - might be full representation like "BIOMASS || equation"
+        # Extract just the ID part before " || " if present
+        variable_id = str(variable).split(" || ")[0].strip()
+
     return CoRegBiomass(id=variable_id, biomass_yield=biomass)
 
 
@@ -195,13 +205,27 @@ def continuous_gpr(
     states = {}
     # Iterate over reaction IDs and get parsed GPR for each
     for rxn_id in model.reactions:
-        gpr = model.get_parsed_gpr(rxn_id)
+        # Handle both APIs for accessing GPR
+        if hasattr(model, "get_parsed_gpr"):
+            # RegulatoryExtension: has get_parsed_gpr() method
+            gpr = model.get_parsed_gpr(rxn_id)
+        else:
+            # Legacy model: access reaction's gpr attribute directly
+            rxn = model.reactions[rxn_id]
+            gpr = rxn.gpr
 
         if gpr.is_none:
             continue
 
-        # Extract gene IDs from GPR variables (Symbol objects)
-        gene_ids = [var.name for var in gpr.variables]
+        # Extract gene IDs from GPR variables
+        # Handle both APIs: RegulatoryExtension has Symbol objects, legacy has dict with string keys
+        if isinstance(gpr.variables, dict):
+            # Legacy model: variables is a dict with gene IDs as keys
+            gene_ids = list(gpr.variables.keys())
+        else:
+            # RegulatoryExtension: variables are Symbol objects with .name attribute
+            gene_ids = [var.name for var in gpr.variables]
+
         if not set(gene_ids).issubset(state):
             continue
 
@@ -231,6 +255,9 @@ def gene_state_constraints(
     # evaluate the soft plus over the bounds computed using the continuous version of the gpr rules
     # gene_state_bounds does not contain reactions without gpr rules
     for reaction, coefficient in reactions_state.items():
+        # Skip reactions not in constraints dict (may not be in model's yield_reactions())
+        if reaction not in constraints:
+            continue
 
         old_lb, old_ub = constraints[reaction]
 
