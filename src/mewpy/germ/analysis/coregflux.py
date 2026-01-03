@@ -416,7 +416,20 @@ def predict_gene_expression(
     """
     # Filter only gene expression and influences data of metabolic genes in the model
     # yield_targets() returns (target_id, target_object) tuples
-    interactions = {target.id: _get_target_regulators(target) for _, target in model.yield_targets()}
+    # Handle both legacy GERM models (yield Target) and RegulatoryExtension (yield tuples)
+    targets_gen = model.yield_targets()
+    first_target = next(targets_gen, None)
+
+    if first_target is None:
+        interactions = {}
+    elif isinstance(first_target, tuple):
+        # RegulatoryExtension: yields (id, Target) tuples
+        interactions = {first_target[1].id: _get_target_regulators(first_target[1])}
+        interactions.update({target.id: _get_target_regulators(target) for _, target in targets_gen})
+    else:
+        # Legacy GERM: yields Target objects directly
+        interactions = {first_target.id: _get_target_regulators(first_target)}
+        interactions.update({target.id: _get_target_regulators(target) for target in targets_gen})
     influence, expression, experiments = _filter_influence_and_expression(
         interactions=interactions, influence=influence, expression=expression, experiments=experiments
     )
