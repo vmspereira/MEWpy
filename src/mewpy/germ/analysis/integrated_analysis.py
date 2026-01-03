@@ -110,10 +110,27 @@ def slim_prom(
 
     prom = PROM(model).build()
 
-    objective_value, _ = run_method_and_decode(
-        method=prom, objective=objective, constraints=constraints, initial_state=initial_state, regulators=regulator
-    )
-    return objective_value
+    # PROM.optimize returns a KOSolution (dict wrapper) with regulator IDs as keys
+    solver_kwargs = {}
+    if objective:
+        if hasattr(objective, "keys"):
+            solver_kwargs["linear"] = objective.copy()
+        else:
+            solver_kwargs["linear"] = {str(objective): 1.0}
+    if constraints:
+        solver_kwargs["constraints"] = constraints
+
+    ko_solution = prom.optimize(initial_state=initial_state, regulators=regulator, solver_kwargs=solver_kwargs)
+
+    # Extract the single solution from the KOSolution (there should be only one)
+    # The key might be the regulator ID string
+    if regulator in ko_solution.solutions:
+        single_solution = ko_solution.solutions[regulator]
+    else:
+        # Get the first (and only) solution regardless of key
+        single_solution = next(iter(ko_solution.solutions.values()))
+
+    return single_solution.objective_value
 
 
 def slim_coregflux(

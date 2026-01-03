@@ -121,8 +121,18 @@ def build_metabolites(
 
 
 def build_biomass(model: Union["Model", "MetabolicModel", "RegulatoryModel"], biomass: float) -> CoRegBiomass:
-    # model.objective is a dict with reaction IDs as keys
-    variable_id = next(iter(model.objective))
+    # model.objective is a dict with reaction IDs as keys (might be Variable objects or strings)
+    variable = next(iter(model.objective))
+
+    # Extract just the reaction ID string
+    if hasattr(variable, "id"):
+        # Variable object - use its id attribute
+        variable_id = variable.id
+    else:
+        # String - might be full representation like "BIOMASS || equation"
+        # Extract just the ID part before " || " if present
+        variable_id = str(variable).split(" || ")[0].strip()
+
     return CoRegBiomass(id=variable_id, biomass_yield=biomass)
 
 
