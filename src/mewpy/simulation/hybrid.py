@@ -37,6 +37,7 @@ from mewpy.model.kinetic import ODEModel
 from mewpy.simulation import Simulator, get_simulator
 from mewpy.simulation.kinetic import KineticSimulation
 from mewpy.solvers import KineticConfigurations, solver_instance
+from mewpy.solvers.solution import Status
 from mewpy.util.utilities import AttrDict
 
 if TYPE_CHECKING:
@@ -73,6 +74,8 @@ def _partial_lMOMA(model, reactions: dict, biomass: str, constraints=None):
     _reactions = {k: v for k, v in reactions.items()}
 
     bio_ref = simul.simulate({biomass: 1}, constraints=constraints, slim=True)
+    if bio_ref is None:
+        raise ValueError("The constraint-based model is infeasible under the given constraints")
 
     for r_id in _reactions.keys():
         d_pos, d_neg = r_id + "_d+", r_id + "_d-"
@@ -105,8 +108,9 @@ def _partial_lMOMA(model, reactions: dict, biomass: str, constraints=None):
     objective[bio_plus] = 1
     objective[bio_minus] = 1
 
-    solution = solver.solve(objective, minimize=True, constraints=constraints)
-
+    solution = solver.solve(objective, minimize=True, constraints=_constraints)
+    if solution.status != Status.OPTIMAL:
+        raise ValueError(f"The partial lMOMA problem is {solution.status.value}")
     return solution
 
 
@@ -118,6 +122,66 @@ def sample(vmaxs: Dict[str, float], sigma: float = 0.1):
     return dict(zip(k, r))
 
 
+def kinetic_to_cb_flux(value: float, gDW: float) -> float:
+    """Converts a kinetic rate (mM/s, per litre of cell volume) into a constraint-based flux (mmol/gDW/h).
+
+    :param value: the kinetic rate (mM/s).
+    :param gDW: the cell density, in gDW per litre of cell volume (564 for E. coli, Chassagnole et al. 2002).
+    """
+    return value * 3600 / gDW
+
+
+def enzyme_usage_constraints(
+    fluxes: Dict[str, float],
+    parameters: Dict[str, float],
+    enzyme_mapping: "Map",
+    protein_prefix: str,
+    gDW: float,
+    apply_lb: bool = True,
+    lb_tolerance: float = 0.05,
+) -> Dict[str, Tuple[float, float]]:
+    """Bounds on the enzyme draw reactions of a GECKO model, from a kinetic steady state.
+
+    In each kinetic reaction, an enzyme with turnover kcat (1/h) is used at most vmax/kcat and at least |v|/kcat
+    (mmol/gDW; rates converted with kinetic_to_cb_flux). An enzyme of several kinetic reactions is drawn once for
+    all of them, so its bounds are the sums over those reactions.
+
+    :param fluxes: the kinetic steady-state rates (mM/s).
+    :param parameters: the kinetic parameter values, including modified vmax values.
+    :param enzyme_mapping: the kinetic to GECKO mapping (an instance of Map).
+    :param protein_prefix: the prefix of the enzyme draw reactions, e.g. 'draw_prot_'.
+    :param gDW: the cell density (gDW/L).
+    :param apply_lb: whether to set lower bounds from the kinetic rates.
+    :param lb_tolerance: the lower bound is (1 - lb_tolerance) times the usage that the kinetic rate requires.
+    :returns: a dictionary {draw reaction: (lb, ub)}.
+    """
+    constraints = dict()
+    for krxn, mapper in enzyme_mapping.items():
+        if krxn not in fluxes:
+            raise ValueError(f"The kinetic simulation has no rate for {krxn}")
+        flux = fluxes[krxn]
+        vmax = parameters.get(mapper.vmax_id)
+        if vmax is None:
+            raise ValueError(f"Unknown vmax parameter {mapper.vmax_id} of {krxn}")
+        # the direction of the kinetic rate selects the kcats (forward or backward)
+        sense = mapper.sense if flux > 0 else -mapper.sense
+        proteins = mapper.forward if sense > 0 else mapper.backward
+        for protein, kcat in proteins.items():
+            ub = kinetic_to_cb_flux(abs(vmax), gDW) / kcat
+            lb = min((1 - lb_tolerance) * kinetic_to_cb_flux(abs(flux), gDW) / kcat, ub) if apply_lb else 0
+            draw = f"{protein_prefix}{protein}"
+            if draw in constraints:
+                prev_lb, prev_ub = constraints[draw]
+                lb, ub = prev_lb + lb, prev_ub + ub
+            constraints[draw] = (lb, ub)
+    return constraints
+
+
+def _check_unused_dilution(D):
+    if D is not None:
+        warn("D is not used: kinetic rates (mM/s) are converted as rate x 3600 / gDW", DeprecationWarning, stacklevel=3)
+
+
 class HybridSimulation:
 
     def __init__(
@@ -125,7 +189,7 @@ class HybridSimulation:
         kmodel: ODEModel,
         cbmodel: Union[Simulator, "Model", "CBModel"],
         gDW: float = 564.0,
-        D: float = 0.278e-4,
+        D: float = None,
         envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
         mapping: Dict[str, Tuple[str, int]] = dict(),
         t_points: List[Union[float, int]] = [0, 1e9],
@@ -137,8 +201,9 @@ class HybridSimulation:
         :type kmodel: ODEModel
         :param cbmodel: The constraint-based model
         :type cbmodel: A COBRApy or REFRAMED model
-        :param gDW: The volume of the organims, defaults to 564.0 to E. coli
+        :param gDW: The cell density (gDW per litre of cell volume), defaults to 564.0 (E. coli)
         :type gDW: float, optional
+        :param D: Deprecated and not used.
         :param envcond: The medium, defaults to dict()
         :type envcond: dict, optional
         :param mapping: a mapping from kinetic to CB reactions, defaults to dict()
@@ -165,6 +230,7 @@ class HybridSimulation:
         self.timeout = timeout
         self.models_verification()
         self.gDW = gDW
+        _check_unused_dilution(D)
         self.D = D
 
     def __getstate__(self):
@@ -197,7 +263,7 @@ class HybridSimulation:
         return True
 
     def unit_conv(self, value):
-        return value * self.D * 3600 / self.gDW
+        return kinetic_to_cb_flux(value, self.gDW)
 
     def mapping_conversion(self, fluxes):
         """
@@ -291,8 +357,7 @@ class HybridSimulation:
         result = ksim.simulate(parameters=parameters, initcon=initcond)
         fluxes = result.fluxes
 
-        if constraints is None:
-            constraints = dict()
+        constraints = dict(constraints) if constraints else dict()
 
         if mapp:
             _fluxes = self.mapping_conversion(fluxes)
@@ -314,7 +379,7 @@ class HybridSimulation:
             else:
                 # assumes growth as model objective
                 biomass = [*self.sim.objective][0]
-                s = _partial_lMOMA(self.sim, _fluxes, biomass)
+                s = _partial_lMOMA(self.sim, _fluxes, biomass, constraints=constraints)
                 c = {k: s.values[k] for k in _fluxes.keys()}
             constraints.update(c)
         else:
@@ -459,7 +524,7 @@ class HybridGeckoSimulation:
         kmodel: ODEModel,
         cbmodel: Union[Simulator, "Model", "CBModel"],
         gDW: float = 564.0,
-        D: float = 0.278e-4,
+        D: float = None,
         envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
         enzyme_mapping: Map = None,
         protein_prefix: str = None,
@@ -471,7 +536,8 @@ class HybridGeckoSimulation:
 
         :param (ODEModel) kmodel: the kinetic model.
         :param (GeckoModel) cbmodel: the GECKO model.
-        :param (float) gDW: the cell volume. Default E. coli from [1].
+        :param (float) gDW: the cell density (gDW per litre of cell volume). Default E. coli from [1].
+        :param (float) D: deprecated and not used.
         :param (dict) envcond: the medium definition.
         :param (Map) enzyme_mapping: An instance of Map.
         :param (str) protein_prefix: the draw protein pseudo reaction prefix,
@@ -496,13 +562,14 @@ class HybridGeckoSimulation:
         self.kmodel = kmodel
         self.t_points = t_points
         self.gDW = gDW
+        _check_unused_dilution(D)
         self.D = D
         self.enzyme_mapping = enzyme_mapping
         self.protein_prefix = protein_prefix if protein_prefix else self.sim.to_native("draw_prot_", "reaction")
         self.timeout = timeout
 
     def unit_conv(self, value):
-        return value * self.D * 3600 / self.gDW
+        return kinetic_to_cb_flux(value, self.gDW)
 
     def simulate(
         self,
@@ -527,13 +594,10 @@ class HybridGeckoSimulation:
         :type constraints: dict, optional
         :param method: the phenotype simulation method
         :type method: str. Default 'pFBA'
-        :param maximize: The optimization direction (True: maximize, False:minimize).
-        :type maximize: bool. Default True.
         :param apply_lb: If the lb of pseudo draw reactions are to be constrained using
             the kinetic flux rate values.
         :type apply_lb: bool. Default True.
-        :param lb_tolerance: A tolerance for the lb, ie, the lb is set to the value obtained
-            from the kinetic flux rate less the tolerance (or 0 if negative).
+        :param lb_tolerance: The lb is (1 - lb_tolerance) times the enzyme usage that the kinetic rate requires.
         :type lb_tolerance: float. Default 0.05.
         :returns: Returns the solution of the hibridization.
         """
@@ -547,48 +611,10 @@ class HybridGeckoSimulation:
         if parameters:
             params.update(parameters)
 
-        enzymatic_constraints = dict()
-        for krxn, mapper in self.enzyme_mapping.items():
-            # identify the sense of the reaction
-            if fluxes[krxn] > 0:
-                sense = mapper.sense
-            else:
-                sense = -1 * mapper.sense
-
-            # A same enzyme may have different kcats
-            # for each sense
-            if sense > 0:
-                proteins = mapper.forward
-            else:
-                proteins = mapper.backward
-
-            vmax_value = params.get(mapper.vmax_id)
-            flux = fluxes[krxn]
-
-            if vmax_value:
-                for protein, kcat in proteins.items():
-                    # Units:
-                    #    vmax:  mM/s
-                    #    kcat:  1/h
-                    #    gDW:   gDW/L
-                    max_enzyme_usage = vmax_value * 3600 * self.D / (kcat * self.gDW)
-                    if apply_lb:
-                        min_enzyme_usage = max(0, abs(flux) * 3600 * self.D / (kcat * self.gDW) - lb_tolerance)
-                    else:
-                        min_enzyme_usage = 0
-                    draw_p = f"{self.protein_prefix}{protein}"
-
-                    # For promiscuous enzymes, the ub of enzyme usage is
-                    # the sum of usages for each reaction, and the lb is
-                    # the minimum usage of all reactions.
-                    if draw_p in enzymatic_constraints:
-                        lb, ub = enzymatic_constraints[draw_p]
-                        enzymatic_constraints[draw_p] = (min(min_enzyme_usage, lb), ub + max_enzyme_usage)
-
-                    else:
-                        enzymatic_constraints[draw_p] = (min_enzyme_usage, max_enzyme_usage)
-        if constraints is None:
-            constraints = dict()
+        enzymatic_constraints = enzyme_usage_constraints(
+            fluxes, params, self.enzyme_mapping, self.protein_prefix, self.gDW, apply_lb, lb_tolerance
+        )
+        constraints = dict(constraints) if constraints else dict()
         constraints.update(enzymatic_constraints)
         if objective:
             solution = self.sim.simulate(objective=objective, method=method, constraints=constraints, **kwargs)

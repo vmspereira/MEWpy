@@ -24,7 +24,7 @@ from re import search
 from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
 from mewpy.problems import GeckoOUProblem, GOUProblem
-from mewpy.simulation.hybrid import Map
+from mewpy.simulation.hybrid import Map, enzyme_usage_constraints
 from mewpy.simulation.kinetic import KineticSimulation
 from mewpy.solvers import KineticConfigurations
 
@@ -118,7 +118,7 @@ class HybridGeckoOUProblem(GeckoOUProblem):
         :param list fevaluation: A list of callable EvaluationFunctions.
 
         Optional:
-        :param float gDW: the organims MW in gDW. Default 564.0
+        :param float gDW: the cell density (gDW per litre of cell volume). Default 564.0 (E. coli)
         :param list t_points: Time point or span. Default [0, 1e9].
         :param int timeout: ODE solver timeout. Default KineticConfigurations.SOLVER_TIMEOUT.
 
@@ -214,52 +214,11 @@ class HybridGeckoOUProblem(GeckoOUProblem):
         # kinetic modifications
         factors = {k: v for k, v in candidate.items() if k in self.vmaxs}
         result = self.ksim.simulate(factors=factors, initcon=self.initcond)
-        fluxes = result.fluxes
+        # the candidate's vmax values: the factors scale the kinetic parameters, as in the ODE
         params = self.kmodel.merge_constants()
-
-        enzymatic_constraints = dict()
-        for krxn, mapper in self.enzyme_mapping.items():
-            # identify the sense of the reaction
-            if fluxes[krxn] > 0:
-                sense = mapper.sense
-            else:
-                sense = -1 * mapper.sense
-
-            # A same enzyme may have different kcats
-            # for each sense
-            if sense > 0:
-                proteins = mapper.forward
-            else:
-                proteins = mapper.backward
-
-            vmax_value = params.get(mapper.vmax_id)
-            flux = fluxes[krxn]
-
-            if vmax_value:
-                for protein, kcat in proteins.items():
-                    # Units:
-                    #    vmax:  mM/s
-                    #    kcat:  1/h
-                    #    gDW:   gDW/L
-
-                    # TODO: Include dilution rate in enzyme usage calculation
-                    # The max_enzyme_usage formula may need adjustment to account for dilution rate
-                    max_enzyme_usage = vmax_value * 3600 / (kcat * self.gDW)
-                    if self.apply_lb:
-                        min_enzyme_usage = max(0, abs(flux) * 3600 / (kcat * self.gDW) - self.lb_tolerance)
-                    else:
-                        min_enzyme_usage = 0
-                    draw_p = f"{self.prot_prefix}{protein}"
-
-                    # For promiscuous enzymes, the ub of enzyme usage is
-                    # the sum of usages for each reaction, and the lb is
-                    # the minimum usage of all reactions.
-                    if draw_p in enzymatic_constraints:
-                        lb, ub = enzymatic_constraints[draw_p]
-                        enzymatic_constraints[draw_p] = (min(min_enzyme_usage, lb), ub + max_enzyme_usage)
-
-                    else:
-                        enzymatic_constraints[draw_p] = (min_enzyme_usage, max_enzyme_usage)
-
+        params.update({k: v * params[k] for k, v in factors.items() if k in params})
+        enzymatic_constraints = enzyme_usage_constraints(
+            result.fluxes, params, self.enzyme_mapping, self.prot_prefix, self.gDW, self.apply_lb, self.lb_tolerance
+        )
         constraints.update(enzymatic_constraints)
         return constraints
