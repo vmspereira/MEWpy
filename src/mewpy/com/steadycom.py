@@ -91,7 +91,7 @@ def SteadyCom(community, constraints=None, solver=None):
     """
     # set the proper community building configuration
     community.add_compartments = False
-    community.merged_biomasses = False
+    community.merge_biomasses = False
     community.balance_exchanges = False
 
     if solver is None:
@@ -116,7 +116,7 @@ def SteadyComVA(community, obj_frac=1.0, constraints=None, solver=None):
         dict: species abundance variability
     """
 
-    community.merged_biomasses = False
+    community.merge_biomasses = False
 
     if solver is None:
         solver = build_problem(community)
@@ -197,6 +197,7 @@ def build_problem(community, growth=1, bigM=None):
 
     solver = solver_instance()
     community.add_compartments = False
+    community.merge_biomasses = False
     sim = community.get_community_model()
 
     # create biomass variables
@@ -424,30 +425,21 @@ class CommunitySolution(object):
     # calculate overall exchanges (organism x metabolite) -> rate
 
     def compute_exchanges(self):
+        # Work on merged-model ids: organism ids may use another prefix than the community
+        # (e.g. COBRA organisms in a REFRAMED community) and would never match shared metabolites.
         sim = self.community.merged_model
-        reaction_map = self.community.reaction_map
+        ext_mets = set(self.community.ext_mets)
         exchanges = {}
 
-        for m_id in sim.get_external_metabolites():
+        for (org_id, _), new_id in self.community.reaction_map.items():
+            flux = self.values[new_id]
+            if flux == 0:
+                continue
+            for m_id, coeff in sim.get_reaction(new_id).stoichiometry.items():
+                if m_id in ext_mets:
+                    exchanges[(org_id, m_id)] = exchanges.get((org_id, m_id), 0) + coeff * flux
 
-            for org_id, organism in self.community.organisms.items():
-                rate = 0
-                if m_id not in organism.metabolites:
-                    continue
-                for r_id in organism.get_metabolite_reactions(m_id):
-                    if (org_id, r_id) not in reaction_map:
-                        continue
-
-                    flux = self.values[reaction_map[(org_id, r_id)]]
-
-                    if flux != 0:
-                        coeff = organism.get_reaction(r_id).stoichiometry[m_id]
-                        rate += coeff * flux
-
-                if rate != 0:
-                    exchanges[(org_id, m_id)] = rate
-
-        return exchanges
+        return {key: rate for key, rate in exchanges.items() if rate != 0}
 
     def cross_feeding(self, as_df=True, abstol=1e-6):
         exchanges = self.compute_exchanges()
@@ -478,8 +470,12 @@ class CommunitySolution(object):
 
     def mass_flow(self, element=None, as_df=False, abstol=1e-6):
 
-        def get_mass(x):
-            formula = x.formula
+        model = self.community.merged_model
+
+        def get_mass(m_id):
+            formula = model.get_metabolite(m_id).formula
+            if not formula:
+                return 0
             mw = molecular_weight(formula, element=element)
             return 0.001 * mw
 

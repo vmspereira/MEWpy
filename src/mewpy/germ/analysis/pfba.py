@@ -43,12 +43,14 @@ class _pFBA(_FBA):
         super().__init__(model=model, solver=solver, build=build, attach=attach)
         self.method = "pFBA"
 
-    def build(self, fraction: float = None, constraints: Dict = None):
+    def build(self, fraction: float = None, constraints: Dict = None, objective: Dict = None, minimize: bool = False):
         """
         Build the pFBA problem using pure simulator approach.
 
         :param fraction: Fraction of optimal objective value to maintain. Default: None (exact optimal)
         :param constraints: Optional constraints to apply when finding optimal objective value
+        :param objective: Objective of the first (FBA) step. Default: None (the model objective)
+        :param minimize: Whether the first (FBA) step minimizes the objective. Default: False
         """
         # Get simulator - support both RegulatoryExtension and legacy models
         if hasattr(self.model, "simulator"):
@@ -63,19 +65,32 @@ class _pFBA(_FBA):
 
         # Step 1: Create a temporary solver to find optimal objective value
         temp_solver = solver_instance(simulator)
+        self._close_reactions(temp_solver)
 
-        # Set up the biomass objective
-        biomass_objective = {var.id: value for var, value in self.model.objective.items()}
+        # Set up the FBA objective: the requested one, otherwise the model objective
+        # legacy GERM objectives are keyed by Reaction objects, RegulatoryExtension objectives by reaction ids
+        if isinstance(objective, str):
+            objective = {objective: 1.0}
+        requested_objective = objective or None
+        if not objective:
+            objective = self.model.objective
+        biomass_objective = {getattr(var, "id", var): value for var, value in objective.items()}
 
         # Solve FBA to get optimal objective value (with constraints if provided)
-        fba_solution = temp_solver.solve(linear=biomass_objective, minimize=False, constraints=constraints)
+        fba_solution = temp_solver.solve(linear=biomass_objective, minimize=bool(minimize), constraints=constraints)
 
-        if fba_solution.status != Status.OPTIMAL:
-            raise RuntimeError(f"FBA failed with status: {fba_solution.status}")
+        # No optimal growth (e.g. infeasible constraints): optimize returns this solution and its status
+        self._fba_failure = fba_solution if fba_solution.status != Status.OPTIMAL else None
+        self._build_constraints = constraints
+        self._build_objective = (requested_objective, bool(minimize))
+        if self._fba_failure is not None:
+            self._synchronized = True
+            return self
 
         # Step 2: Create a fresh solver for pFBA optimization
         # (SCIP doesn't allow adding constraints after solving)
         self._solver = solver_instance(simulator)
+        self._close_reactions(self._solver)
 
         # Add constraint to maintain objective at optimal level (or fraction thereof)
         if fraction is None:
@@ -141,6 +156,13 @@ class _pFBA(_FBA):
         # Check if constraints are provided
         current_constraints = solver_kwargs.get("constraints") if "constraints" in solver_kwargs else None
 
+        # Objective and direction of the first (FBA) step: 'linear'/'minimize' in solver_kwargs, else the model's
+        current_objective = solver_kwargs.get("linear") or None
+        if isinstance(current_objective, str):
+            current_objective = {current_objective: 1.0}
+        current_minimize = bool(solver_kwargs.get("minimize") or False)
+        objective_changed = (current_objective, current_minimize) != getattr(self, "_build_objective", (None, False))
+
         # Get the constraints used during the last build (if any)
         previous_constraints = getattr(self, "_build_constraints", None)
 
@@ -148,11 +170,21 @@ class _pFBA(_FBA):
         # 1. fraction is provided
         # 2. not synchronized
         # 3. constraints changed (either added, removed, or modified)
+        # 4. the FBA objective or its direction changed
         constraints_changed = current_constraints != previous_constraints
 
-        if fraction is not None or not self.synchronized or constraints_changed:
-            # Rebuild pFBA with the current constraints
-            self.build(fraction=fraction, constraints=current_constraints)
+        if fraction is not None or not self.synchronized or constraints_changed or objective_changed:
+            # Rebuild pFBA with the current constraints and objective
+            self.build(
+                fraction=fraction,
+                constraints=current_constraints,
+                objective=current_objective,
+                minimize=current_minimize,
+            )
+
+        # The first (FBA) step had no optimum: report its status like the other methods instead of raising
+        if getattr(self, "_fba_failure", None) is not None:
+            return self._fba_failure
 
         # Make a copy to avoid modifying the original
         solver_kwargs_copy = solver_kwargs.copy()

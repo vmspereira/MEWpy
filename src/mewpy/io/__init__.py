@@ -140,7 +140,7 @@ def read_sbml(
 
 def read_csv(
     io: Union[str, Path, "TextIOWrapper"],
-    boolean: bool = True,
+    boolean: bool = None,
     co_expression: bool = False,
     target_regulator: bool = False,
     warnings: bool = True,
@@ -157,7 +157,8 @@ def read_csv(
     The CSV file is closed upon reading or failure
 
     :param io: A valid string path or IO.
-    :param boolean: Whether the file is a Boolean-based regulatory CSV file
+    :param boolean: Whether the file is a Boolean-based regulatory CSV file.
+    Defaults to True unless co_expression or target_regulator is set
     :param co_expression: Whether the file is a CoExpression (co-activating and co-repressing) regulatory CSV file
     :param target_regulator: Whether the file is a Target-Regulator interaction-based regulatory CSV file
     :param warnings: Whether to launch warnings found during reading
@@ -165,6 +166,9 @@ def read_csv(
     """
 
     readers = []
+
+    if boolean is None:
+        boolean = not (co_expression or target_regulator)
 
     if boolean:
         boolean_reader = Reader(engine=BooleanRegulatoryCSV, io=io, **kwargs)
@@ -191,7 +195,7 @@ def read_csv(
 
 
 def read_cbmodel(
-    io: Union["Cobra_Model", "Reframed_Model"], cobrapy: bool = True, reframed: bool = False, warnings: bool = True
+    io: Union["Cobra_Model", "Reframed_Model"], cobrapy: bool = None, reframed: bool = False, warnings: bool = True
 ) -> Union["Model", "MetabolicModel"]:
     """
     Reading a mewpy metabolic model encoded into a Constraint-Based metabolic model from Cobrapy or Reframed.
@@ -201,13 +205,16 @@ def read_cbmodel(
     Consult the Engines enumerator in mewpy.io.engines for further detail on this cobra model types.
 
     :param io: A valid cobra model.
-    :param cobrapy: Whether the cobra model is a cobrapy model
+    :param cobrapy: Whether the cobra model is a cobrapy model. Defaults to True unless reframed is set
     :param reframed: Whether the cobra model is a reframed model
     :param warnings: Whether to launch warnings found during reading
     :return: mewpy metabolic model
     """
 
     readers = []
+
+    if cobrapy is None:
+        cobrapy = not reframed
 
     if cobrapy:
         boolean_reader = Reader(engine=CobraModel, io=io)

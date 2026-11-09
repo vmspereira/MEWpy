@@ -14,9 +14,8 @@
 from .logger import configure_logging
 from .simulation import get_simulator
 
-# Configure logging on import (INFO level by default)
-# Users can reconfigure with: mewpy.configure_logging('DEBUG')
-configure_logging()
+# MEWpy does not configure logging on import (the logger only has a NullHandler).
+# Console logging is opt-in: mewpy.configure_logging('INFO')
 
 __author__ = "Vitor Pereira (2019-) and CEB University of Minho (2019-2023)"
 __email__ = "vpereira@ceb.uminho.pt"

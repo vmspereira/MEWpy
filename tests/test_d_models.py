@@ -285,7 +285,6 @@ class TestGERMModel(unittest.TestCase):
         write_model(model_writer)
         os.remove(MODELS_PATH.joinpath("e_coli_core_write.json"))
 
-    @pytest.mark.xfail
     def test_analysis(self):
         """
         Tests model analysis
@@ -319,8 +318,19 @@ class TestGERMModel(unittest.TestCase):
 
         from mewpy.germ.analysis import fva
 
-        fva_sol = fva(model=model, fraction=0.9, reactions=list(model.reactions.keys())[0:10])
+        fva_reactions = list(model.reactions.keys())[0:10]
+        fva_sol = fva(model=model, fraction=0.9, reactions=fva_reactions)
         self.assertGreater(len(fva_sol), 0)
+
+        # FVA ranges must match COBRApy's (each reaction is minimized/maximized, not the biomass)
+        cobra = pytest.importorskip("cobra")
+        from cobra.flux_analysis import flux_variability_analysis
+
+        cobra_model = cobra.io.read_sbml_model(str(EC_CORE_MODEL))
+        cobra_fva = flux_variability_analysis(cobra_model, reaction_list=fva_reactions, fraction_of_optimum=0.9)
+        for rxn in fva_reactions:
+            self.assertAlmostEqual(fva_sol.loc[rxn, "minimum"], cobra_fva.loc[rxn, "minimum"], places=4)
+            self.assertAlmostEqual(fva_sol.loc[rxn, "maximum"], cobra_fva.loc[rxn, "maximum"], places=4)
 
         # regulatory analysis
         model = read_model(self.regulatory_reader)
@@ -347,15 +357,19 @@ class TestGERMModel(unittest.TestCase):
         model.objective = {_BIOMASS_ID: 1}
         model.get("pH").coefficients = (0, 14)
 
-        from mewpy.germ.analysis import slim_srfba
+        from mewpy.germ.analysis import SRFBA, slim_srfba
 
-        self.assertGreater(slim_srfba(model), 0)
+        # regulators are free in SRFBA, so the optimum is the FBA optimum of SampleNet (333.33)
+        self.assertAlmostEqual(slim_srfba(model), 1000 / 3, places=4)
+        # pH (pH > 5) controls g20, which belongs to the r11 (biomass) GPR
+        srfba_ph0 = SRFBA(model).build().optimize(initial_state={"pH": 0}, to_solver=True)
+        self.assertAlmostEqual(srfba_ph0.fobj, 0.0, places=6)
 
-        from mewpy.germ.analysis import slim_rfba
+        from mewpy.germ.analysis import RFBA, slim_rfba
 
         self.assertIsNotNone(slim_rfba(model))
 
-        sol = simulator.optimize(dynamic=True)
+        sol = RFBA(model).build().optimize(dynamic=True)
         self.assertIsNotNone(sol)
 
         # ifva
@@ -363,21 +377,33 @@ class TestGERMModel(unittest.TestCase):
 
         sol = ifva(model, reactions=list(model.reactions.keys())[0:10])
         self.assertGreater(len(sol), 0)
+        # r1 carries the biomass precursor flux: fixed at the optimum; r3 is a free alternative route
+        self.assertAlmostEqual(sol.loc["r1", "minimum"], 1000 / 3, places=4)
+        self.assertAlmostEqual(sol.loc["r1", "maximum"], 1000 / 3, places=4)
+        self.assertAlmostEqual(sol.loc["r3", "minimum"], 0.0, places=4)
+        self.assertAlmostEqual(sol.loc["r3", "maximum"], 2000 / 3, places=4)
 
         from mewpy.germ.analysis import isingle_reaction_deletion
 
         sol = isingle_reaction_deletion(model, reactions=list(model.reactions.keys())[0:10])
         self.assertGreater(len(sol), 0)
+        self.assertAlmostEqual(sol.loc["r0", "growth"], 0.0, places=6)
+        self.assertAlmostEqual(sol.loc["r3", "growth"], 1000 / 3, places=4)
 
         from mewpy.germ.analysis import isingle_gene_deletion
 
         sol = isingle_gene_deletion(model, genes=list(model.genes.keys())[0:10])
         self.assertGreater(len(sol), 0)
+        self.assertAlmostEqual(sol.loc["g1", "growth"], 0.0, places=6)
+        self.assertAlmostEqual(sol.loc["g4", "growth"], 1000 / 3, places=4)
 
         from mewpy.germ.analysis import isingle_regulator_deletion
 
         sol = isingle_regulator_deletion(model, regulators=list(model.regulators.keys())[0:10])
         self.assertGreater(len(sol), 0)
+        # g1 = g21 (KO is lethal); g2 = not g22 (KO keeps g2 active)
+        self.assertAlmostEqual(sol.loc["g21", "growth"], 0.0, places=6)
+        self.assertAlmostEqual(sol.loc["g22", "growth"], 1000 / 3, places=4)
 
     # @pytest.mark.xfail
     @pytest.mark.skip(reason="PROM and CoRegFlux only work with RegulatoryExtension, not legacy models")
@@ -510,7 +536,6 @@ class TestGERMModel(unittest.TestCase):
         self.assertGreater(rfba_sol.objective_value, 0.0)
         self.assertGreater(srfba_sol.objective_value, 0.0)
 
-    @pytest.mark.xfail
     def test_bounds_coefficients(self):
         """
         Tests model bounds and coefficients workflow
@@ -539,7 +564,12 @@ class TestGERMModel(unittest.TestCase):
         model.get("r16").ko()
         self.assertEqual(model.get("r16").bounds, (0, 0))
 
-        rfba_sol = rfba.optimize()
+        # RFBA needs an explicit regulatory state here. Regulators default to their maximum coefficient (1), which
+        # represses the genes this route needs (SRFBA picks the regulator states itself):
+        # - g2 = not g22: g22 = 1 switches off r1 (g1 & g2), a lethal knockout
+        # - g10-g12 = g27 & (g28 | g29) & not g30: g30 = 1 switches off r6 (g10 & g11 & g12)
+        # - g14 = not g31: g31 = 1 switches off r8 itself
+        rfba_sol = rfba.optimize(initial_state={"g22": 0, "g30": 0, "g31": 0})
         srfba_sol = srfba.optimize()
 
         # if r16 is knocked-out, only r8 can have flux, and vice-versa
@@ -634,7 +664,6 @@ class TestGERMModel(unittest.TestCase):
         self.assertGreater(pfba_sol.x.get("r8"), 333)
         self.assertGreater(srfba_sol.x.get("r8"), 333)
 
-    @pytest.mark.xfail
     def test_manipulation(self):
         """
         Tests model manipulation workflow

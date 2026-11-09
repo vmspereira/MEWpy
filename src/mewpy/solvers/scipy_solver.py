@@ -47,6 +47,8 @@ class ScipySolver(ODESolver):
     def solve(self, y0, t_points, **kwargs):
         t_span = [t_points[0], t_points[-1]]
         sol = solve_ivp(self.func, t_span, y0, method=methods[self.method], t_eval=t_points, **kwargs)
+        if not sol.success:
+            raise RuntimeError(f"ODE integration failed: {sol.message}")
         C = [c[-1] for c in sol.y]
         t = sol.t
         y = sol.y

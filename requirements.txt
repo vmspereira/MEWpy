@@ -10,4 +10,5 @@ joblib
 httpx
 pandas
 numexpr
+ray>=2.0.0
 

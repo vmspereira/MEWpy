@@ -17,13 +17,14 @@
 Load ODE model
 """
 import os
+import warnings
 from collections import OrderedDict
 from math import isinf, isnan
 
-from libsbml import AssignmentRule, SBMLReader
+from libsbml import AssignmentRule, SBMLReader, formulaToString
 
 from mewpy.model.kinetic import Compartment, KineticReaction, Metabolite, ODEModel, Rule
-from mewpy.util.parsing import EMPTY_LEAF, Node
+from mewpy.util.parsing import EMPTY_LEAF, Arithmetic, Node, build_tree
 
 
 def load_sbml(filename):
@@ -133,7 +134,16 @@ def _load_metabolite(species):
 
 def _load_concentrations(sbml_model, odemodel):
     for species in sbml_model.getListOfSpecies():
-        odemodel.set_concentration(species.getId(), species.getInitialConcentration())
+        concentration = species.getInitialConcentration()
+        if not species.isSetInitialConcentration() and species.isSetInitialAmount():
+            # the ODE system is written in concentrations: amount / compartment size
+            size = odemodel.compartments[species.getCompartment()].size
+            if size:
+                concentration = species.getInitialAmount() / size
+            else:
+                concentration = species.getInitialAmount()
+                warnings.warn(f"Compartment of {species.getId()} has size 0. Using its initial amount.")
+        odemodel.set_concentration(species.getId(), concentration)
 
 
 def _load_global_parameters(sbml_model, odemodel):
@@ -143,7 +153,11 @@ def _load_global_parameters(sbml_model, odemodel):
 
 def _load_ratelaws(sbml_model, odemodel):
     for reaction in sbml_model.getListOfReactions():
-        formula = reaction.getKineticLaw().getFormula()
+        kinetic_law = reaction.getKineticLaw()
+        if kinetic_law is None or not kinetic_law.isSetMath():
+            warnings.warn(f"Reaction {reaction.getId()} has no kinetic law and is ignored.")
+            continue
+        formula = kinetic_law.getFormula()
         parameters = OrderedDict()
         modifiers = []
         stoichiometry = OrderedDict()
@@ -190,7 +204,7 @@ def _load_assignment_rules(sbml_model, odemodel):
     for rule in sbml_model.getListOfRules():
         if isinstance(rule, AssignmentRule):
             r_id = rule.getVariable()
-            odemodel.set_assignment_rule(r_id, Rule(r_id, rule.getFormula()))
+            odemodel.set_assignment_rule(r_id, Rule(r_id, rule.getFormula(), functions=odemodel.function_definition))
 
 
 def travel(node):
@@ -215,13 +229,14 @@ def _load_functions(sbml_model, odemodel):
     if not fd:
         return
     for function in fd:
-        fname = function.getName()
+        # functions are referenced by their identifier in the math of the model
+        fname = function.getId()
         args = []
         for i in range(function.getNumArguments()):
             arg = function.getArgument(i).getName()
             args.append(arg)
         body = function.getBody()
-        tree = travel(body)
+        tree = build_tree(formulaToString(body), Arithmetic)
         functions[fname] = (args, tree)
 
     odemodel.set_functions(functions)

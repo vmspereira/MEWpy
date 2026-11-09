@@ -468,7 +468,7 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
         :return:
         """
 
-        if not value:
+        if value is None:
             value = ModelConstants.REACTION_LOWER_BOUND
 
         value = (value, self.upper_bound)
@@ -490,7 +490,7 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
         :return:
         """
 
-        if not value:
+        if value is None:
             value = ModelConstants.REACTION_UPPER_BOUND
 
         self._bounds = (self.lower_bound, value)
@@ -846,9 +846,16 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
             )
 
         if history:
+            previous = self._gpr
+            if previous.is_none:
+                undo_func, undo_kwargs = self.remove_gpr, {"remove_orphans": True, "history": False}
+            else:
+                # undoing a replacement restores the previous GPR
+                undo_func, undo_kwargs = self.add_gpr, {"gpr": previous, "history": False}
+
             self.history.queue_command(
-                undo_func=self.remove_gpr,
-                undo_kwargs={"remove_orphans": True, "history": False},
+                undo_func=undo_func,
+                undo_kwargs=undo_kwargs,
                 func=self.add_gpr,
                 kwargs={"gpr": gpr, "history": history},
             )

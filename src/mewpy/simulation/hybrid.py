@@ -159,7 +159,8 @@ class HybridSimulation:
             self.sim = cbmodel
 
         self.kmodel = kmodel
-        self.mapping = mapping
+        # constraint-based ids may be given with or without the SBML prefix
+        self.mapping = {k: (self.sim.resolve(v[0], "reaction"), *v[1:]) for k, v in mapping.items()}
         self.t_points = t_points
         self.timeout = timeout
         self.models_verification()
@@ -215,7 +216,7 @@ class HybridSimulation:
         if len(flxs) != 0:
             return flxs
         else:
-            raise warn("Mapping not done properly, please redo mapping")
+            raise ValueError("Mapping not done properly, please redo mapping")
 
     def mapping_bounds(self, lbs, ubs):
         """
@@ -238,7 +239,7 @@ class HybridSimulation:
         if len(flxs) != 0:
             return flxs
         else:
-            raise warn("Mapping not done properly, please redo mapping")
+            raise ValueError("Mapping not done properly, please redo mapping")
 
     def nsamples(self, vmaxs, n=1, sigma=0.1):
         """
@@ -256,10 +257,10 @@ class HybridSimulation:
                 if res.fluxes:
                     ksample.append(res.fluxes)
             except Exception as e:
-                warn.warning(str(e))
+                warn(str(e))
         df = pd.DataFrame(ksample)
         # drop any NaN if exist
-        df.dropna()
+        df = df.dropna()
         return df
 
     def simulate(
@@ -461,7 +462,7 @@ class HybridGeckoSimulation:
         D: float = 0.278e-4,
         envcond: Dict[str, Union[float, Tuple[float, float]]] = dict(),
         enzyme_mapping: Map = None,
-        protein_prefix: str = "R_draw_prot_",
+        protein_prefix: str = None,
         t_points: List[Union[float, int]] = [0, 1e9],
         timeout: int = KineticConfigurations.SOLVER_TIMEOUT,
     ):
@@ -474,7 +475,8 @@ class HybridGeckoSimulation:
         :param (dict) envcond: the medium definition.
         :param (Map) enzyme_mapping: An instance of Map.
         :param (str) protein_prefix: the draw protein pseudo reaction prefix,
-               e.g. for protein XXXXX 'R_draw_prot_XXXXX'.
+               e.g. for protein XXXXX 'R_draw_prot_XXXXX'. Default: 'draw_prot_' with the
+               simulator's reaction prefix ('R_draw_prot_' for REFRAMED models).
         :param (array like) t_points: the integrative time points or span. Default [0, 1e9].
         :param (int) timeout: The integration timeout. If timeout=0, no timeout is applied.
 
@@ -496,7 +498,7 @@ class HybridGeckoSimulation:
         self.gDW = gDW
         self.D = D
         self.enzyme_mapping = enzyme_mapping
-        self.protein_prefix = protein_prefix
+        self.protein_prefix = protein_prefix if protein_prefix else self.sim.to_native("draw_prot_", "reaction")
         self.timeout = timeout
 
     def unit_conv(self, value):

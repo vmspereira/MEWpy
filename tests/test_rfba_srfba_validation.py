@@ -112,6 +112,15 @@ class TestRFBAValidation:
         else:
             pytest.skip("No regulators found in model")
 
+    def test_rfba_gene_knockout_is_lethal(self, integrated_model):
+        """An explicit gene state in initial_state is applied: G_b1779 is the only gene of the essential GAPD."""
+        from mewpy.germ.analysis import RFBA
+
+        rfba = RFBA(integrated_model).build()
+        assert rfba.optimize().objective_value > 0.1
+        knockout = rfba.optimize(initial_state={"G_b1779": 0.0})
+        assert (knockout.objective_value or 0.0) == pytest.approx(0.0, abs=1e-6)
+
     def test_rfba_decode_methods(self, integrated_model):
         """Test RFBA decode methods work correctly."""
         from mewpy.germ.analysis import RFBA
@@ -228,6 +237,16 @@ class TestSRFBAValidation:
             )
         else:
             pytest.skip("No regulators found in model")
+
+    def test_srfba_essential_gene_knockout_is_lethal(self, integrated_model):
+        """The SRFBA MILP reaches the solver: wild type equals FBA, the GAPD gene knockout is lethal."""
+        from mewpy.germ.analysis import SRFBA
+
+        fba = integrated_model.simulator.simulate().objective_value
+        wild_type = SRFBA(integrated_model).build().optimize()
+        assert wild_type.objective_value == pytest.approx(fba, abs=1e-6)
+        knockout = SRFBA(integrated_model).build().optimize(initial_state={"G_b1779": 0.0})
+        assert (knockout.objective_value or 0.0) == pytest.approx(0.0, abs=1e-6)
 
     def test_srfba_integer_variables(self, integrated_model):
         """Test that SRFBA creates integer variables for Boolean logic."""

@@ -134,6 +134,8 @@ def EA(
     Additional optional arguments:
 
     :param int population_size: EA population size.
+    :param int seed: Seed for the EA random number generators, for reproducible runs. \
+        Default None. The jMetalPy engine seeds the global `random` and `numpy.random` generators.
 
     :returns: An instance of an EA optimizer.
 

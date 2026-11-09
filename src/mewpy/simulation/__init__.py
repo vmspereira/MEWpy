@@ -72,7 +72,8 @@ def set_default_solver(solvername):
             import mewpy.solvers as msolvers
 
             msolvers.set_default_solver(solvername)
-        except (ImportError, AttributeError) as e:
+        except (ImportError, AttributeError, RuntimeError) as e:
+            # e.g. 'glpk' is a simulation solver but not a mewpy.solvers LP interface
             import warnings
 
             warnings.warn(f"Failed to set default solver '{solvername}': {e}")

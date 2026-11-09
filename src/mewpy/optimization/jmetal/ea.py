@@ -21,6 +21,7 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import logging
+import random
 
 import numpy as np
 from jmetal.algorithm.multiobjective import NSGAII, SPEA2
@@ -95,8 +96,16 @@ class EA(AbstractEA):
     def get_population_size(self):
         return self.population_size
 
+    def _seed_rngs(self):
+        """Seeds the generators used by jMetalPy and by the MEWpy jMetal operators,
+        that is, the global `random` and `numpy.random` generators."""
+        if self.seed is not None:
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+
     def _run_so(self):
         """Runs a single objective EA optimization ()"""
+        self._seed_rngs()
         self.ea_problem.reset_initial_population_counter()
         if self.algorithm_name == "SA":
             logger.info("Running SA")
@@ -133,11 +142,12 @@ class EA(AbstractEA):
 
     def _run_mo(self):
         """Runs a multi objective EA optimization"""
+        self._seed_rngs()
         self.ea_problem.reset_initial_population_counter()
         if self.algorithm_name in moea_map.keys():
             f = moea_map[self.algorithm_name]
         else:
-            if self.ea_problem.number_of_objectives > 2:
+            if self.ea_problem.number_of_objectives() > 2:
                 self.algorithm_name = "NSGAIII"
                 f = moea_map["NSGAIII"]
             else:
@@ -195,6 +205,8 @@ class EA(AbstractEA):
             values = self.problem.decode(val)
             const = self.problem.solution_to_constraints(values)
             solution = Solution(values, obj, const)
+            # the EA representation: decode is not always invertible (see AbstractProblem.simplify)
+            solution.encoded = val
             p.append(solution)
         return p
 

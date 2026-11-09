@@ -24,10 +24,16 @@ Author: Vitor Pereira
 import logging
 import logging.config
 
+# Library default: emit nothing unless the host application configures logging.
+logging.getLogger("mewpy").addHandler(logging.NullHandler())
+
 
 def configure_logging(level="INFO"):
     """
-    Configure logging for MEWpy.
+    Enable console logging for MEWpy (opt-in; not called on import).
+
+    Replaces the handlers of the 'mewpy' logger with a stderr handler and stops
+    propagation to the root logger.
 
     Parameters
     ----------

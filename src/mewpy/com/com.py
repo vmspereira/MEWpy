@@ -330,7 +330,9 @@ class CommunityModel:
         if value:
             self._update_exchanges()
         else:
-            self._update_exchanges({k: 1 for k in self.model_ids})
+            # _update_exchanges is a no-op once the flag is off and cannot recover coefficients it
+            # overwrote, so rebuild the merged model with its original stoichiometry
+            self.clear()
 
     @property
     def merge_biomasses(self):
@@ -484,37 +486,31 @@ class CommunityModel:
         organism_iter = tqdm(self.organisms.items(), "Organism") if self._verbose else self.organisms.items()
         for org_id, model in organism_iter:
 
-            # Cache prefix information to avoid repeated string operations
-            g_prefix_match = model._g_prefix == self._comm_model._g_prefix
-            m_prefix_match = model._m_prefix == self._comm_model._m_prefix
-            r_prefix_match = model._r_prefix == self._comm_model._r_prefix
-
-            g_prefix_len = len(model._g_prefix) if not g_prefix_match else 0
-            m_prefix_len = len(model._m_prefix) if not m_prefix_match else 0
-            r_prefix_len = len(model._r_prefix) if not r_prefix_match else 0
+            comm = self._comm_model
+            # id kinds whose backend prefix differs between this organism and the community; other
+            # ids are reused verbatim, so same-backend communities keep their ids unchanged
+            translated = {
+                kind for kind in ("gene", "metabolite", "reaction") if model.prefix(kind) != comm.prefix(kind)
+            }
 
             def rename(old_id):
                 return f"{old_id}_{org_id}"
 
+            def to_community(old_id, kind):
+                if kind not in translated:
+                    return old_id
+                return comm.to_native(model.to_canonical(old_id, kind), kind)
+
             def r_gene(old_id, organism=True):
-                if g_prefix_match:
-                    _id = old_id
-                else:
-                    _id = self._comm_model._g_prefix + old_id[g_prefix_len:]
+                _id = to_community(old_id, "gene")
                 return rename(_id) if organism else _id
 
             def r_met(old_id, organism=True):
-                if m_prefix_match:
-                    _id = old_id
-                else:
-                    _id = self._comm_model._m_prefix + old_id[m_prefix_len:]
+                _id = to_community(old_id, "metabolite")
                 return rename(_id) if organism else _id
 
             def r_rxn(old_id, organism=True):
-                if r_prefix_match:
-                    _id = old_id
-                else:
-                    _id = self._comm_model._r_prefix + old_id[r_prefix_len:]
+                _id = to_community(old_id, "reaction")
                 return rename(_id) if organism else _id
 
             # add internal compartments
@@ -606,7 +602,8 @@ class CommunityModel:
                     # assumes that the models' objective is the biomass
                     if r_id in [x for x, v in model.objective.items() if v > 0]:
                         if self._merge_biomasses:
-                            met_id = r_met("Biomass")
+                            # new community ids: native to the community, whatever the organism's backend
+                            met_id = rename(comm.to_native("Biomass", "metabolite"))
                             self._comm_model.add_metabolite(
                                 met_id,
                                 name=f"Biomass {org_id}",
@@ -618,7 +615,7 @@ class CommunityModel:
 
                             # add biomass sink reaction
                             self._comm_model.add_reaction(
-                                r_rxn("Sink_biomass"),
+                                rename(comm.to_native("Sink_biomass", "reaction")),
                                 name=f"Sink Biomass {org_id}",
                                 stoichiometry={met_id: -1},
                                 lb=0,
@@ -652,8 +649,8 @@ class CommunityModel:
 
         # Add exchange reactions
         for m_id in self.ext_mets:
-            m = m_id[len(self._comm_model._m_prefix) :] if m_id.startswith(self._comm_model._m_prefix) else m_id
-            r_id = f"{self._comm_model._r_prefix}EX_{m}"
+            m = self._comm_model.to_canonical(m_id, "metabolite")
+            r_id = self._comm_model.to_native(f"EX_{m}", "reaction")
             self._comm_model.add_reaction(
                 r_id,
                 name=r_id,

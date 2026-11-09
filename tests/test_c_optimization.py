@@ -40,7 +40,7 @@ class TestOptInspyred(unittest.TestCase):
         f2 = WYIELD(BIOMASS_ID, SUCC_ID)
         from mewpy.problems import RKOProblem
 
-        problem = RKOProblem(self.model, [f1, f2], max_candidate_size=6)
+        problem = RKOProblem(self.model, [f1, f2], candidate_max_size=6)
         from mewpy.optimization import EA
 
         ea = EA(problem, max_generations=2)
@@ -56,7 +56,7 @@ class TestOptInspyred(unittest.TestCase):
         f3 = ModificationType()
         from mewpy.problems import ROUProblem
 
-        problem = ROUProblem(self.model, [f1, f2, f3], max_candidate_size=6)
+        problem = ROUProblem(self.model, [f1, f2, f3], candidate_max_size=6)
         from mewpy.optimization import EA
 
         ea = EA(problem, max_generations=1)
@@ -117,7 +117,7 @@ class TestGERMOptInspyred(unittest.TestCase):
         f2 = WYIELD(BIOMASS_ID, SUCC_ID, method="fba")
         from mewpy.problems import RKOProblem
 
-        problem = RKOProblem(self.model, [f1, f2], max_candidate_size=6)
+        problem = RKOProblem(self.model, [f1, f2], candidate_max_size=6)
         from mewpy.optimization import EA
 
         ea = EA(problem, max_generations=2)
@@ -134,7 +134,7 @@ class TestGERMOptInspyred(unittest.TestCase):
         f3 = ModificationType()
         from mewpy.problems import ROUProblem
 
-        problem = ROUProblem(self.model, [f1, f2, f3], max_candidate_size=6)
+        problem = ROUProblem(self.model, [f1, f2, f3], candidate_max_size=6)
         from mewpy.optimization import EA
 
         ea = EA(problem, max_generations=1)

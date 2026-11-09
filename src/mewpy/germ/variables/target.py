@@ -217,7 +217,8 @@ class Target(Variable, variable_type="target", register=True, constructor=True, 
         if not value:
             value = None
 
-        value.add_target(self, history=False)
+        if value is not None:
+            value.add_target(self, history=False)
 
         self._interaction = value
 

@@ -22,6 +22,7 @@ Author: Vitor Pereira
 ##############################################################################
 """
 import copy
+import logging
 import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -38,6 +39,23 @@ if TYPE_CHECKING:
     from reframed.core.cbmodel import CBModel
 
     from mewpy.optimization.evaluation import EvaluationFunction
+
+logger = logging.getLogger(__name__)
+
+
+def _candidate_size_kwarg(kwargs, name):
+    """Reads candidate_{min,max}_size, also accepting the deprecated {min,max}_candidate_size."""
+    alias = name.split("_")[1] + "_candidate_size"  # candidate_max_size -> max_candidate_size
+    if alias not in kwargs:
+        default = {
+            "candidate_min_size": EAConstants.MIN_SOLUTION_SIZE,
+            "candidate_max_size": EAConstants.MAX_SOLUTION_SIZE,
+        }[name]
+        return kwargs.get(name, default)
+    warnings.warn(f"'{alias}' is deprecated, use '{name}'.", DeprecationWarning, stacklevel=4)
+    if name in kwargs and kwargs[name] != kwargs[alias]:
+        raise ValueError(f"Conflicting values for '{name}' and '{alias}'.")
+    return kwargs[alias]
 
 
 class Strategy(Enum):
@@ -107,6 +125,11 @@ class OUBounder(object):
 
 class AbstractProblem(ABC):
 
+    # Simulator id kind ('reaction' or 'gene') of the modification targets. User ids of that kind
+    # (targets, non targets, partial solutions, seeds) may be given with or without the SBML prefix
+    # and are resolved against the simulator. None: problem-specific targets (proteins, organisms).
+    _target_kind = None
+
     def __init__(
         self, model: Union["Model", "CBModel", Simulator], fevaluation: List["EvaluationFunction"] = None, **kwargs
     ):
@@ -148,8 +171,8 @@ class AbstractProblem(ABC):
         # Reference reaction fluxes
         self._reference = None
         # solution size
-        self.candidate_min_size = kwargs.get("candidate_min_size", EAConstants.MIN_SOLUTION_SIZE)
-        self.candidate_max_size = kwargs.get("candidate_max_size", EAConstants.MAX_SOLUTION_SIZE)
+        self.candidate_min_size = _candidate_size_kwarg(kwargs, "candidate_min_size")
+        self.candidate_max_size = _candidate_size_kwarg(kwargs, "candidate_max_size")
         # non target
         self.non_target = kwargs.get("non_target", None)
         # targets
@@ -168,6 +191,7 @@ class AbstractProblem(ABC):
         # problem specific EA operators
         self.operators = None
         self.operators_param = None
+        self._ids_resolved = False
 
     @abstractmethod
     def generator(self, random, **kwargs):
@@ -225,7 +249,8 @@ class AbstractProblem(ABC):
         """
         solution = kwargs.pop("solution", {})
         constraints = self.solution_to_constraints(solution)
-        const = kwargs.get("constraints", dict())
+        # a copy: the caller's constraints dictionary is left unchanged
+        const = dict(kwargs.get("constraints") or {})
         const.update(constraints)
         kwargs["constraints"] = const
         return self.simulator.simulate(*args, **kwargs)
@@ -233,7 +258,7 @@ class AbstractProblem(ABC):
     def FVA(self, *args, **kwargs):
         solution = kwargs.pop("solution", {})
         constraints = self.solution_to_constraints(solution)
-        const = kwargs.get("constraints", dict())
+        const = dict(kwargs.get("constraints") or {})
         const.update(constraints)
         kwargs["constraints"] = const
         return self.simulator.FVA(*args, **kwargs)
@@ -393,9 +418,45 @@ class AbstractProblem(ABC):
 
         return render_html_table(f"Problem: {self.__class__.__name__}", rows)
 
+    def _resolve_user_ids(self):
+        """Resolves, once, the user's ids to the simulator's native ids (e.g. 'PFL' to 'R_PFL')."""
+        if self.__dict__.get("_ids_resolved", True):
+            return
+        self._ids_resolved = True
+        reactions = self.environmental_conditions or self.persistent_constraints or self._reference
+        if self._target_kind is None and not reactions:
+            return  # nothing to resolve: do not build a simulator for problem-specific ids
+        sim = self.simulator
+        if not hasattr(sim, "resolve_keys"):
+            return
+        self.environmental_conditions = sim.resolve_keys(self.environmental_conditions, "reaction")
+        self.persistent_constraints = sim.resolve_keys(self.persistent_constraints, "reaction")
+        self._reference = sim.resolve_keys(self._reference, "reaction")
+        kind = self._target_kind
+        if kind is not None:
+            if self.non_target is not None:
+                self.non_target = sim.resolve_many(self.non_target, kind)
+            if self._trg_list is not None:
+                self._trg_list = sim.resolve_many(self._trg_list, kind)
+            if getattr(self, "_partial_solution", None):
+                self._partial_solution = sim.resolve_keys(self._partial_solution, kind)
+
+    def _native_target(self, identifier):
+        """A target id (e.g. of a seed) in the simulator's native form."""
+        if self._target_kind is None or identifier in self.target_list:
+            return identifier
+        return self.simulator.resolve(identifier, self._target_kind)
+
+    def _native_keys(self, candidate):
+        """A decoded candidate with its target ids in the simulator's native form."""
+        if self._target_kind is None or not candidate:
+            return candidate
+        return self.simulator.resolve_keys(candidate, self._target_kind)
+
     @property
     def target_list(self):
         "list of modification targets"
+        self._resolve_user_ids()
         if self._trg_list is None:
             self._build_target_list()
             if not self._trg_list:
@@ -452,6 +513,7 @@ class AbstractProblem(ABC):
             p = []
             for f in self.fevaluation:
                 p.append(f.worst_fitness)
+            self._report_evaluation_failure(e)
             if EAConstants.DEBUG:
                 warnings.warn(f"Solution couldn't be evaluated [{e}]\n {constraints}")
         except Exception as e:
@@ -460,10 +522,24 @@ class AbstractProblem(ABC):
             p = []
             for f in self.fevaluation:
                 p.append(f.worst_fitness)
+            self._report_evaluation_failure(e)
             if EAConstants.DEBUG:
                 warnings.warn(f"Solution evaluation failed [{type(e).__name__}: {e}]\n {constraints}")
         del simulation_results
         return p
+
+    def _report_evaluation_failure(self, error):
+        """Logs each distinct evaluation error once, so that configuration errors (e.g. an unknown
+        reaction identifier) do not silently turn every solution into a worst-fitness solution."""
+        key = (type(error).__name__, str(error))
+        reported = self.__dict__.setdefault("_reported_failures", set())
+        if key not in reported:
+            reported.add(key)
+            logger.warning(
+                "Solution evaluation failed, worst fitness assigned (reported once): %s: %s",
+                key[0],
+                key[1],
+            )
 
     @property
     def is_maximization(self):
@@ -483,6 +559,9 @@ class AbstractProblem(ABC):
         """
         if isinstance(solution, (list, dict)):
             enc_values = self.encode(solution)
+        elif getattr(solution, "encoded", None) is not None:
+            # the EA representation: decode is not invertible for every problem (e.g. OptRAM)
+            enc_values = set(solution.encoded)
         elif hasattr(solution, "values"):
             enc_values = self.encode(solution.values)
         else:
@@ -510,6 +589,7 @@ class AbstractProblem(ABC):
         v = self.decode(simp)
         c = self.solution_to_constraints(v)
         simplification = Solution(v, fitness, c)
+        simplification.encoded = simp
         return [simplification]
 
     def simplify_population(self, population, n_cpu=1, tolerance=1e-6):
@@ -527,8 +607,9 @@ class AbstractProblem(ABC):
                 res = self.simplify(solution, tolerance=tolerance)
                 if len(res) > 0:
                     pop.extend(res)
-            except (KeyError, AttributeError, ValueError, TypeError):
+            except Exception as e:
                 # If simplification fails, keep original solution
+                logger.warning("Could not simplify %s, keeping it unchanged: %s", solution, e)
                 pop.append(solution)
         return filter_duplicates(pop)
 
@@ -572,7 +653,7 @@ class AbstractKOProblem(AbstractProblem):
 
         :param candidate: The candidate representation.
         """
-        return set([self.target_list.index(k) for k in candidate])
+        return set([self.target_list.index(self._native_target(k)) for k in candidate])
 
     def solution_to_constraints(self, decoded_candidate):
         """
@@ -600,6 +681,9 @@ class AbstractKOProblem(AbstractProblem):
             solution_size = self.candidate_min_size
         else:
             solution_size = random.randint(self.candidate_min_size, self.candidate_max_size)
+
+        if solution_size > len(self.target_list):
+            solution_size = len(self.target_list)
 
         solution = set(random.sample(range(len(self.target_list)), solution_size))
         return solution
@@ -654,7 +738,8 @@ class AbstractOUProblem(AbstractProblem):
                   problem dependent.
         """
 
-        return set([(self.target_list.index(k), self.levels.index(lv)) for k, lv in candidate.items()])
+        pairs = [(self._native_target(k), lv) for k, lv in candidate.items()]
+        return set([(self.target_list.index(k), self.levels.index(lv)) for k, lv in pairs])
 
     def solution_to_constraints(self, decoded_candidate):
         """
@@ -703,6 +788,7 @@ class AbstractOUProblem(AbstractProblem):
         """
         :returns: A dictionary of reference flux values.
         """
+        self._resolve_user_ids()
         if not self._reference:
             self._reference = self.simulator.reference
         return self._reference

@@ -135,7 +135,8 @@ def plot_flux_envelope(
     xvals, ymins, ymaxs = flux_envelope(model, r_x, r_y, steps, constraints, x_range=x_range)
 
     if flip_x:
-        xvals, ymins, ymaxs = -xvals, ymins[::-1], ymaxs[::-1]
+        # negate x only: each y range stays paired with its own x value
+        xvals = -xvals
 
     if flip_y:
         ymins, ymaxs = -ymaxs, -ymins

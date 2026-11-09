@@ -5,7 +5,7 @@ from mewpy.omics import ExpressionSet
 
 from mewpy.io import read_model, Engines, Reader
 from mewpy.germ import *
-from mewpy.simulation import get_simulator
+from mewpy.simulation import SimulationMethod, get_simulator
 
 
 def read_ecoli_core():
@@ -90,13 +90,9 @@ def ecoli_core_integrated_analysis():
     # pFBA (default method of the simulator)
     simulator.simulate(method='pFBA')
 
-    # FBA
-    simulator = FBA(model)
-    simulator.optimize()
-
-    # pFBA
-    simulator = pFBA(model)
-    simulator.optimize()
+    # FBA and pFBA with an explicit method (GERM has no public FBA/pFBA classes)
+    simulator.simulate(method=SimulationMethod.FBA)
+    simulator.simulate(method=SimulationMethod.pFBA)
 
     # simulating reaction deletions using pFBA
     single_reaction_deletion(model=model,
@@ -215,14 +211,11 @@ def iMC1010_integrated_analysis():
     # pFBA (default method of the simulator)
     simulator.simulate(method='pFBA')
 
-    # FBA
-    simulator = FBA(model)
-    sol = simulator.optimize()
+    # FBA and pFBA with an explicit method (GERM has no public FBA/pFBA classes)
+    sol = simulator.simulate(method=SimulationMethod.FBA)
     print(sol.objective_value)
 
-    # pFBA
-    simulator = pFBA(model)
-    sol = simulator.optimize()
+    sol = simulator.simulate(method=SimulationMethod.pFBA)
     print(sol.objective_value)
 
     # simulating reaction deletions using pFBA

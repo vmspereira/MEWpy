@@ -1,5 +1,5 @@
 from io import TextIOWrapper
-from typing import TYPE_CHECKING, Dict, Iterable, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Sequence, Tuple, Union
 
 from cobra import Model as Cobra_Model
 from reframed import CBModel as Reframed_Model
@@ -92,6 +92,9 @@ def load_optorf(
 
 class OptORFProblem(AbstractKOProblem):
 
+    # regulators that are not genes are left unchanged by the gene resolution
+    _target_kind = "gene"
+
     def __init__(
         self,
         model: Union["Model", "MetabolicModel", "RegulatoryModel"],
@@ -143,7 +146,8 @@ class OptORFProblem(AbstractKOProblem):
         ]
         genes = [gene.id for gene in self.model.yield_genes() if not gene.is_reaction() and not gene.is_metabolite()]
 
-        self._trg_list = list(set.union(set(regulators), set(targets), set(genes)))
+        # sorted: set order depends on the interpreter hash seed, which breaks seeded runs
+        self._trg_list = sorted(set.union(set(regulators), set(targets), set(genes)))
 
     def _decode_initial_state(self, state: Dict[str, float] = None) -> Dict[str, float]:
         """
@@ -263,19 +267,22 @@ class OptORFProblem(AbstractKOProblem):
 
         return constraints
 
-    def decode(self, candidate: Iterable[int]) -> Dict[str, Tuple[float, float]]:
+    def solution_to_constraints(
+        self,
+        decoded_candidate: Dict[str, float],
+    ) -> Dict[str, Tuple[float, float]]:
         """
-        OptORF candidate decode.
-        From a candidate aka a set of regulators to be knocked out, it runs a synchronous boolean simulation of the
-        regulatory layer. The regulatory state is used to infer the metabolic state, namely metabolic reactions affected
-        by the KOs. A second synchronous boolean simulation of the GPRs is performed with the regulatory state.
+        Converts a decoded candidate, the regulators/genes knocked out ({id: 0}), into constraints.
+        It runs a synchronous boolean simulation of the regulatory layer. The regulatory state is
+        used to infer the metabolic state, namely metabolic reactions affected by the KOs.
+        A second synchronous boolean simulation of the GPRs is performed with the regulatory state.
         Finally, the metabolic state aka constraints are decoded from the inactive reactions.
 
-        :param candidate: a candidate (a set of regulators to be knocked out)
+        :param decoded_candidate: the regulators/genes to be knocked out, as returned by decode
         :return: a metabolic state (a set of constraints)
         """
         # the perturbation state to be used to decode the initial state for simulation
-        candidate_state = {self.target_list[idx]: 0 for idx in candidate}
+        candidate_state = {k: 0 for k in decoded_candidate}
 
         # the initial state of the model
         initial_state = {**self._initial_state, **candidate_state}

@@ -22,6 +22,7 @@ Contributors: Paulo Carvalhais
 ##############################################################################
 """
 from copy import deepcopy
+from math import isnan
 
 from mewpy.simulation import get_simulator
 
@@ -57,8 +58,12 @@ def eFlux(
     :param parsimonious (bool): compute a parsimonious solution (default: False)
     :param max_exp (float): maximum expression value for normalization.\
             If None, uses max from expression data (optional)
-    :param build_model (bool): if True, returns a tissue-specific model with lowly\
-            expressed reactions removed. if False, returns only flux predictions (default: False)
+    :param build_model (bool): if True, also returns a tissue-specific model (a copy) that carries\
+            the bounds used in the simulation (expression-scaled bounds and user constraints;\
+            bounds of environmental conditions are left unchanged, as in Simulator.simulate),\
+            with lowly expressed reactions removed. Simulating it reproduces the E-Flux objective\
+            (fluxes rescaled by scale_rxn are not reflected in its bounds).\
+            If False, returns only flux predictions (default: False)
     :param flux_threshold (float): threshold for removing reactions when build_model=True.\
             Reactions with scaled bounds below this threshold are removed (default: 1e-6)
 
@@ -75,7 +80,14 @@ def eFlux(
         pp = Preprocessing(sim, expr)
         rxn_exp = pp.reactions_expression(condition)
     else:
-        rxn_exp = expr
+        rxn_exp = {r_id: val for r_id, val in expr.items() if not isnan(val)}
+
+    negative = [r_id for r_id, val in rxn_exp.items() if val < 0]
+    if negative:
+        raise ValueError(
+            f"E-Flux requires non-negative expression values; {len(negative)} reactions are negative "
+            f"(e.g. {negative[:3]}). Use linear-scale data rather than log-transformed values."
+        )
 
     if max_exp is None:
         max_exp = max(rxn_exp.values())
@@ -129,6 +141,14 @@ def eFlux(
                     rx_to_delete.append(r_id)
 
         sim.remove_reactions(rx_to_delete)
+
+        # Carry the simulation bounds into the model. Like Simulator.simulate, leave the
+        # environmental conditions alone unless the simulator allows changing them.
+        removed = set(rx_to_delete)
+        env = {} if getattr(sim, "_allow_env_changes", False) else sim.environmental_conditions
+        for r_id, (lb, ub) in bounds.items():
+            if r_id not in removed and r_id not in env:
+                sim.set_reaction_bounds(r_id, lb, ub, False)
 
     if build_model:
         return sol, sim

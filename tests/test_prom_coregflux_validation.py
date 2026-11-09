@@ -119,6 +119,33 @@ class TestPROMValidation:
         else:
             pytest.skip("Not enough regulators in model")
 
+    def test_prom_knockout_lowers_growth(self):
+        """A regulator knockout with interaction probability 0 restricts its targets' reactions."""
+        from mewpy.germ.analysis import PROM
+        from mewpy.germ.models import RegulatoryExtension
+
+        data = Path(__file__).parent / "data"
+        model = RegulatoryExtension.from_sbml(
+            str(data / "e_coli_core.xml"),
+            str(data / "e_coli_core_trn.csv"),
+            regulatory_format="csv",
+            sep=",",
+            id_col=0,
+            rule_col=2,
+            aliases_cols=[1],
+            header=0,
+        )
+        probabilities = {}
+        for _, interaction in model.yield_interactions():
+            for regulator in interaction.yield_regulators():
+                probabilities[(interaction.target.id, regulator.id)] = 0.0
+
+        arca = next(regulator for regulator in model.regulators if regulator.endswith("b4401"))
+        wild_type = model.simulator.simulate().objective_value
+        result = PROM(model).build().optimize(initial_state=probabilities, regulators=[arca])
+        growth = next(iter(result.solutions.values())).objective_value
+        assert growth < wild_type - 1e-3
+
     def test_prom_probability_calculation(self, integrated_model):
         """Test PROM probability calculation function."""
         pytest.importorskip("scipy", reason="scipy is required for PROM probability calculation")
@@ -201,6 +228,15 @@ class TestCoRegFluxValidation:
         print("CoRegFlux result:")
         print(f"  Status: {result.status}")
         print(f"  Objective: {result.objective_value}")
+
+    def test_coregflux_gene_state_lowers_growth(self, integrated_model):
+        """Gene expression bounds the reactions: low predicted expression must lower growth below FBA."""
+        from mewpy.germ.analysis import CoRegFlux
+
+        fba = integrated_model.simulator.simulate().objective_value
+        state = {gene: 10.0 for gene in integrated_model.genes}
+        result = CoRegFlux(integrated_model).build().optimize(initial_state=state)
+        assert 0 < result.objective_value < fba - 1e-3
 
     def test_coregflux_dynamic_simulation(self, integrated_model):
         """Test CoRegFlux dynamic simulation with multiple time steps."""

@@ -29,11 +29,35 @@ from mewpy.simulation.simulation import Simulator
 from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import to_simulation_result
 from mewpy.solvers.solver import VarType
+from mewpy.util.constants import ModelConstants
 
 from .. import ExpressionSet, Preprocessing
 
 
-def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1, build_model=False):
+def _big_m(lb, ub, epsilon):
+    """Big-M value larger than any feasible |flux| of a reaction.
+
+    Bounds beyond ModelConstants.REACTION_UPPER_BOUND, including infinite ones and placeholders
+    such as +-999999, are capped at that value: a larger M lets the solver's integrality tolerance
+    leak flux through the indicator constraints, and REFRAMED reads such placeholders as +-inf
+    while COBRApy keeps them, so capping also gives both backends the same MILP.
+    """
+    cap = ModelConstants.REACTION_UPPER_BOUND
+    bound = max(min(abs(b), cap) for b in (lb, ub))
+    return bound + abs(epsilon) + 100
+
+
+def iMAT(
+    model,
+    expr,
+    constraints=None,
+    cutoff=(25, 75),
+    condition=0,
+    epsilon=1,
+    build_model=False,
+    biomass=None,
+    growth_frac=None,
+):
     """
     iMAT (Integrative Metabolic Analysis Tool) algorithm [1]_.
 
@@ -54,12 +78,21 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1,
     :param condition: condition index to use from ExpressionSet
     :param epsilon: threshold for considering a reaction "active" (default: 1).
                    A reaction is active if |flux| >= epsilon
-    :param build_model: if True, returns a tissue-specific model with inactive reactions removed.
-                        if False, returns only flux predictions (default: False)
-    :return: Solution (or tuple of (solution, model) if build_model=True)
+    :param build_model: if True, also returns a tissue-specific model that keeps the objective
+                        reactions and every reaction carrying flux in the iMAT solution, so the
+                        solution remains feasible in it. If False, returns only flux predictions
+                        (default: False)
+    :param biomass: biomass reaction used by growth_frac (default: the model's biomass reaction)
+    :param growth_frac: minimum growth as a fraction of the wild-type growth. Defaults to 0 (no
+                        requirement, as in the original iMAT) when build_model is False, and to 0.9
+                        (as in GIMME) when build_model is True, so that the built model can grow.
+    :return: Solution (or tuple of (solution, model) if build_model=True). The solution's
+             objective_value is the MILP objective: the number of highly expressed reactions
+             found active plus lowly expressed reactions found inactive.
 
     Notes:
-        - Uses big-M method with M = max(|lb|, |ub|) + 100 for each reaction
+        - Uses big-M method with M = max(|lb|, |ub|) + epsilon + 100 for each reaction,
+          where bounds beyond ModelConstants.REACTION_UPPER_BOUND (e.g. infinite) are capped at it
         - Handles reversible and irreversible reactions differently
         - Binary variables: y_* for highly expressed (activity), x_* for lowly expressed (inactivity)
         - MILP can be computationally expensive for large models
@@ -73,7 +106,7 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1,
           * Reversible: y_fwd=1 forces flux >= ε, y_rev=1 forces flux <= -ε
           * Irreversible: y=1 forces |flux| >= ε
         - For lowly expressed reactions:
-          * x=1 forces -ε < flux < ε (near zero)
+          * x=1 forces -ε <= flux <= ε (near zero)
 
     References
     ----------
@@ -104,10 +137,17 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1,
     else:
         low_coeffs, high_coeffs = expr
 
-    solver = solver_instance(sim)
+    constraints = dict(constraints) if constraints else {}
 
-    if not constraints:
-        constraints = {}
+    if growth_frac is None:
+        growth_frac = 0.9 if build_model else 0
+    if growth_frac > 0:
+        if biomass is None:
+            biomass = sim.biomass_reaction
+        wt_solution = sim.simulate(constraints=constraints)
+        constraints[biomass] = (growth_frac * wt_solution.fluxes[biomass], inf)
+
+    solver = solver_instance(sim)
 
     for r_id in sim.reactions:
         lb, _ = sim.get_reaction_bounds(r_id)
@@ -141,9 +181,7 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1,
     # Goal: Maximize number of highly expressed reactions with |flux| >= epsilon
     for r_id, val in high_coeffs.items():
         lb, ub = sim.get_reaction_bounds(r_id)
-
-        # Compute big-M: larger than maximum possible flux
-        M = max(abs(lb), abs(ub)) + 100
+        M = _big_m(lb, ub, epsilon)
 
         # Reversible reaction: can carry flux in either direction
         if lb < 0 and ub > 0:
@@ -151,77 +189,51 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1,
             y_fwd = "y_" + r_id + "_fwd"
             objective.append(y_fwd)
             solver.add_variable(y_fwd, 0, 1, vartype=VarType.BINARY, update=True)
-            # Constraint: flux >= epsilon - M*(1 - y_fwd)
-            # When y_fwd = 1: flux >= epsilon (forces forward activity)
-            # When y_fwd = 0: flux >= epsilon - M (always satisfied)
-            # Using ">" instead of ">=" (equivalent for MILP)
-            solver.add_constraint("c" + y_fwd, {r_id: 1, y_fwd: M}, ">", epsilon + M - 0.001, update=False)
+            # flux >= epsilon - M*(1 - y_fwd)  <=>  flux - M*y_fwd >= epsilon - M
+            # y_fwd = 1: flux >= epsilon; y_fwd = 0: flux >= epsilon - M (always satisfied)
+            solver.add_constraint("c" + y_fwd, {r_id: 1, y_fwd: -M}, ">", epsilon - M, update=False)
 
             # y_reverse = 1 indicates reverse flux <= -epsilon
             y_rev = "y_" + r_id + "_rev"
             objective.append(y_rev)
             solver.add_variable(y_rev, 0, 1, vartype=VarType.BINARY, update=True)
-            # Constraint: flux <= -epsilon + M*(1 - y_rev)
-            # When y_rev = 1: flux <= -epsilon (forces reverse activity)
-            # When y_rev = 0: flux <= -epsilon + M (always satisfied)
-            # Using "<" instead of "<=" (equivalent for MILP)
-            solver.add_constraint("c" + y_rev, {r_id: 1, y_rev: -M}, "<", -epsilon - M + 0.001, update=False)
+            # flux <= -epsilon + M*(1 - y_rev)  <=>  flux + M*y_rev <= M - epsilon
+            # y_rev = 1: flux <= -epsilon; y_rev = 0: flux <= M - epsilon (always satisfied)
+            solver.add_constraint("c" + y_rev, {r_id: 1, y_rev: M}, "<", M - epsilon, update=False)
 
         # Irreversible forward reaction (lb >= 0)
         elif lb >= 0:
             y = "y_" + r_id
             objective.append(y)
             solver.add_variable(y, 0, 1, vartype=VarType.BINARY, update=True)
-            # Constraint: flux >= epsilon - M*(1 - y)
-            # When y = 1: flux >= epsilon (forces activity)
-            # When y = 0: flux >= epsilon - M (always satisfied)
-            # Using ">" instead of ">=" (equivalent for MILP)
-            solver.add_constraint("c" + y, {r_id: 1, y: M}, ">", epsilon + M - 0.001, update=False)
+            # flux >= epsilon - M*(1 - y)  <=>  flux - M*y >= epsilon - M
+            solver.add_constraint("c" + y, {r_id: 1, y: -M}, ">", epsilon - M, update=False)
 
         # Irreversible reverse reaction (ub <= 0)
         else:  # ub <= 0
             y = "y_" + r_id
             objective.append(y)
             solver.add_variable(y, 0, 1, vartype=VarType.BINARY, update=True)
-            # Constraint: flux <= -epsilon + M*(1 - y)
-            # When y = 1: flux <= -epsilon (forces activity)
-            # When y = 0: flux <= -epsilon + M (always satisfied)
-            # Using "<" instead of "<=" (equivalent for MILP)
-            solver.add_constraint("c" + y, {r_id: 1, y: -M}, "<", -epsilon - M + 0.001, update=False)
+            # flux <= -epsilon + M*(1 - y)  <=>  flux + M*y <= M - epsilon
+            solver.add_constraint("c" + y, {r_id: 1, y: M}, "<", M - epsilon, update=False)
 
     solver.update()
 
     # For lowly expressed reactions, add binary variables to reward inactivity
-    # Goal: Maximize number of lowly expressed reactions with |flux| < epsilon
+    # Goal: Maximize number of lowly expressed reactions with |flux| <= epsilon
     for r_id, val in low_coeffs.items():
         lb, ub = sim.get_reaction_bounds(r_id)
-
-        # Compute big-M: larger than maximum possible flux
-        M = max(abs(lb), abs(ub)) + 100
+        M = _big_m(lb, ub, epsilon)
 
         x_var = "x_" + r_id
         objective.append(x_var)
         solver.add_variable(x_var, 0, 1, vartype=VarType.BINARY, update=True)
 
-        # x = 1 should enforce: -epsilon < flux < epsilon (inactive)
-        # Using big-M method:
-
-        # Constraint 1: flux <= epsilon - epsilon*(1 - x) + M*(1 - x)
-        # Simplifies to: flux <= M - (M - epsilon)*(1 - x)
-        # When x = 1: flux <= epsilon (upper bound for inactivity)
-        # When x = 0: flux <= M (always satisfied)
-        # Rearranged: flux - M*x <= epsilon - M + M*x => flux <= epsilon + M*(1-x)
-        # In solver form: flux + M*x <= epsilon + M
-        # Using "<" instead of "<=" (equivalent for MILP)
-        solver.add_constraint("c" + x_var + "_upper", {r_id: 1, x_var: -M}, "<", epsilon - M + 0.001, update=False)
-
-        # Constraint 2: flux >= -epsilon + epsilon*(1 - x) - M*(1 - x)
-        # Simplifies to: flux >= -M + (M - epsilon)*(1 - x)
-        # When x = 1: flux >= -epsilon (lower bound for inactivity)
-        # When x = 0: flux >= -M (always satisfied)
-        # Rearranged: flux + M*x >= -epsilon + M
-        # Using ">" instead of ">=" (equivalent for MILP)
-        solver.add_constraint("c" + x_var + "_lower", {r_id: 1, x_var: M}, ">", -epsilon + M - 0.001, update=False)
+        # x = 1 enforces -epsilon <= flux <= epsilon (inactive); x = 0 leaves the flux free
+        # flux <= epsilon + M*(1 - x)  <=>  flux + M*x <= epsilon + M
+        solver.add_constraint("c" + x_var + "_upper", {r_id: 1, x_var: M}, "<", epsilon + M, update=False)
+        # flux >= -epsilon - M*(1 - x)  <=>  flux - M*x >= -epsilon - M
+        solver.add_constraint("c" + x_var + "_lower", {r_id: 1, x_var: -M}, ">", -epsilon - M, update=False)
 
     solver.update()
 
@@ -231,17 +243,18 @@ def iMAT(model, expr, constraints=None, cutoff=(25, 75), condition=0, epsilon=1,
 
     # Build tissue-specific model if requested
     if build_model:
-        # Remove reactions with near-zero flux (inactive reactions)
-        # A reaction is considered active if |flux| >= epsilon
-        rx_to_delete = []
-        for r_id in sim.reactions:
-            flux = solution.values.get(r_id, 0)
-            if abs(flux) < epsilon:
-                rx_to_delete.append(r_id)
-
+        # Remove only reactions without flux: removing reactions that carry flux (e.g. |flux| < epsilon)
+        # makes the solution infeasible in the built model. The objective reactions are always kept:
+        # removing them leaves COBRApy with a stale objective that breaks every later simulation.
+        keep = set(sim.objective)
+        rx_to_delete = [
+            r_id
+            for r_id in sim.reactions
+            if r_id not in keep and abs(solution.values.get(r_id, 0)) <= ModelConstants.TOLERANCE
+        ]
         sim.remove_reactions(rx_to_delete)
 
-    res = to_simulation_result(model, None, constraints, sim, solution)
+    res = to_simulation_result(model, solution.fobj, constraints, sim, solution)
 
     if build_model:
         return res, sim

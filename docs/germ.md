@@ -69,6 +69,12 @@ model = RegulatoryExtension.from_sbml(
 model = RegulatoryExtension.from_sbml('ecoli_core.xml', flavor='cobra')
 ```
 
+**TRN ids are matched to the metabolic model.** reframed keeps SBML prefixes (`G_b0351`, `R_PFK`, `M_glc__D_e`), but
+TRN files usually don't (`b0351`). When a regulatory network is loaded or extended (`add_regulator`, `add_target`,
+`add_interaction`), each TRN id with no exact match is renamed to the prefixed simulator id if that id exists. The
+renames are listed in `model.id_map` (original id → simulator id), and a warning is logged if no target matches a
+model gene.
+
 **Option B: From COBRApy/reframed model**
 ```python
 import cobra
@@ -807,7 +813,7 @@ with model:
 print('KO growth rate', solution.objective_value)
 ```
     Wild-type growth rate 0.8739215069684303
-    KO growth rate 1e-10
+    KO growth rate 0.0
 
 ```python
 # second workflow build and optimize
@@ -821,68 +827,58 @@ with model:
     solution = srfba.optimize()
 print('KO growth rate', solution.objective_value)
 ```
-    Wild-type growth rate 0.8739215069684986
-    KO growth rate 1e-10
+    Wild-type growth rate 0.8739215069684303
+    KO growth rate 0.0
 
 In addition, one can attach as many simulation methods as needed to a single model instance. 
 This behavior eases the comparison between simulation methods.
     
 ```python
-# many simulation methods attached
-fba = FBA(model, attach=True).build()
-pfba = pFBA(model, attach=True).build()
+# many simulation methods attached (srfba from the previous example is still attached)
 rfba = RFBA(model, attach=True).build()
 
 # applying the knockout
 model.regulators['b3261'].ko()
 
-print('FBA KO growth rate:', fba.optimize().objective_value)
-print('pFBA KO sum of fluxes:', pfba.optimize().objective_value)
 print('RFBA KO growth rate:', rfba.optimize().objective_value)
 print('SRFBA KO growth rate:', srfba.optimize().objective_value)
 print()
 
 # restore the model
 model.undo()
-print('FBA WT growth rate:', fba.optimize().objective_value)
-print('pFBA WT sum of fluxes:', pfba.optimize().objective_value)
 print('RFBA WT growth rate:', rfba.optimize().objective_value)
 print('SRFBA WT growth rate:', srfba.optimize().objective_value)
 ```
-    FBA KO growth rate: 0.8739215069684303
-    pFBA KO sum of fluxes: 93768.8478640836
-    RFBA KO growth rate: 0.8513885233462081
-    SRFBA KO growth rate: 1e-10
+    RFBA KO growth rate: 0.8513885233462086
+    SRFBA KO growth rate: 0.0
     
-    FBA WT growth rate: 0.8739215069684303
-    pFBA WT sum of fluxes: 93768.8478640836
-    RFBA WT growth rate: 0.8513885233462081
-    SRFBA WT growth rate: 0.8739215069684986
+    RFBA WT growth rate: 0.8513885233462086
+    SRFBA WT growth rate: 0.8739215069684303
+
+FBA and pFBA have no attachable analysis class; see the FBA and pFBA section below.
 
 ## FBA and pFBA
-**`FBA`** and **`pFBA`** are both available in the **`mewpy.germ.analysis`** package. 
-Alternatively, one can use the simple and optimized versions **`slim_fba`** and **`slim_pfba`**.
+FBA and pFBA run through the model's simulator:
 
 ```python
 from mewpy.io import Reader, Engines, read_model
-from mewpy.germ.analysis import FBA
+from mewpy.simulation import get_simulator, SimulationMethod
 
 # reading the E. coli core model
 core_gem_reader = Reader(Engines.MetabolicSBML, 'e_coli_core.xml')
 model = read_model(core_gem_reader)
+simulator = get_simulator(model)
 
-# using FBA analysis
-FBA(model).build().optimize()
+# FBA
+simulator.simulate(method=SimulationMethod.FBA).objective_value
 ```
-<table>
-<tr><td>Method</td><td>FBA</td></tr><tr><td>Model</td><td>Model e_coli_core - E. coli core model - Orth et al 2010</td></tr><tr><th>Objective</th><td>Biomass_Ecoli_core</td></tr><tr><th>Objective value</th><td>0.8739215069684303</td></tr><tr><th>Status</th><td>optimal</td></tr>
-</table>
+    0.8739215069684305
 
 ```python
-# using pFBA analysis
-pFBA(model).build().optimize().objective_value
+# pFBA (objective value = total absolute flux)
+simulator.simulate(method=SimulationMethod.pFBA).objective_value
 ```
-    93768.8478640836
+    518.4220855176065
 
 ## FVA and deletions
 The **`mewpy.germ.analysis`** module includes **`FVA`** method to inspect the solution space of a GEM model.
@@ -1048,6 +1044,9 @@ The resulting linear problem also includes a boolean variable and constraint for
 of the interactions and GPR constraints to the mass balance constraints.
 
 **`SRFBA`** only supports steady-state simulations.
+
+A target fixed in `initial_state` overrides its regulatory rule. GPR-controlled reactions with infinite bounds are capped
+at ±10000 in the MILP.
 
 **`SRFBA`** is available in the **`mewpy.germ.analysis`** package. 
 Alternatively, one can use the simple and optimized version **`slim_srfba`**.
@@ -1243,8 +1242,6 @@ All compatibility issues have been resolved, and the implementation now properly
 - Gene data access via `model.get_gene()` for retrieving gene-reaction associations
 - Metabolite-to-exchange reaction mapping via stoichiometry lookup
 - Proper DynamicSolution construction with positional arguments
-
-The method has been validated with comprehensive tests including dynamic simulation support, and is production-ready.
 
 In this example we will be using the following models and data:
 - _S. cerevisae_ iMM904 model available at _examples/models/germ/iMM904.xml_,

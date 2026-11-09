@@ -46,7 +46,7 @@ def ec_gecko_ko(compound, display=False, filename=None):
 
     import os
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    PATH = os.path.join(dir_path, '../../../examples/models/gecko')
+    PATH = os.path.join(dir_path, '../models/ec')
     DATA_FILE = os.path.join(PATH, 'eciML1515_batch.xml')
     from reframed.io.sbml import load_cbmodel
     m = load_cbmodel(DATA_FILE)

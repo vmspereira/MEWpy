@@ -30,31 +30,16 @@ logger = logging.getLogger(__name__)
 
 MP_Evaluators = []
 
-# Set multiprocessing start method to 'fork' BEFORE any multiprocessing imports
-# This is needed for Python 3.8+ on macOS where 'spawn' became the default
-# 'spawn' requires pickling all objects which fails with CPLEX/REFRAMED
-# 'fork' copies process memory and works with unpicklable objects
 import multiprocessing
-
-try:
-    if "fork" in multiprocessing.get_all_start_methods():
-        # Only set if not already configured
-        current_method = multiprocessing.get_start_method(allow_none=True)
-        if current_method is None:
-            multiprocessing.set_start_method("fork", force=False)
-            logger.debug("Set multiprocessing start method to 'fork'")
-        elif current_method != "fork":
-            logger.warning(
-                f"Multiprocessing start method is '{current_method}'. "
-                "For best compatibility with CPLEX/REFRAMED, use 'fork'. "
-                "Call multiprocessing.set_start_method('fork', force=True) before importing mewpy."
-            )
-except RuntimeError:
-    # start method already set, that's fine
-    pass
-
 from multiprocessing import Process
 from multiprocessing.pool import Pool as MPPool
+
+# MEWpy pools use a local 'fork' context: 'spawn' (the default on macOS since Python 3.8) requires
+# pickling all objects, which fails with CPLEX/REFRAMED, while 'fork' copies the process memory.
+# The user's global start method is left untouched.
+_FORK_CONTEXT = None
+if "fork" in multiprocessing.get_all_start_methods():
+    _FORK_CONTEXT = multiprocessing.get_context("fork")
 
 MP_Evaluators.append("nodaemon")
 
@@ -98,8 +83,30 @@ class NoDaemonProcess(Process):
     daemon = property(_get_daemon, _set_daemon)
 
 
+if _FORK_CONTEXT is not None:
+
+    class NoDaemonForkProcess(_FORK_CONTEXT.Process):
+        daemon = property(NoDaemonProcess._get_daemon, NoDaemonProcess._set_daemon)
+
+
 class NoDaemonProcessPool(MPPool):
-    Process = NoDaemonProcess
+    """A pool whose workers are not daemonic, so that they can start their own processes."""
+
+    @staticmethod
+    def Process(ctx, *args, **kwds):
+        # Pool creates its workers with Process(ctx, ...) since Python 3.8
+        if _FORK_CONTEXT is not None and ctx is _FORK_CONTEXT:
+            return NoDaemonForkProcess(*args, **kwds)
+        return NoDaemonProcess(*args, **kwds)
+
+
+def _new_pool(n_processes, pool_class=None):
+    """A process pool using the local 'fork' context when the standard library pool is used."""
+    if pool_class is None:
+        pool_class = Pool
+    if isinstance(pool_class, type) and issubclass(pool_class, MPPool):
+        return pool_class(n_processes, context=_FORK_CONTEXT)
+    return pool_class(n_processes)
 
 
 def cpu_count():
@@ -111,7 +118,7 @@ def cpu_count():
         return EAConstants.NUM_CPUS
     else:
         try:
-            return multiprocessing.cpu_count() // 2
+            return max(1, multiprocessing.cpu_count() // 2)
         except (ImportError, NotImplementedError):
             return 1
 
@@ -157,10 +164,13 @@ class MultiProcessorEvaluator(Evaluator):
         """
         Values in args will be ignored and not passed to the evaluator to avoid unnecessary pickling in inspyred.
         """
-        pool = Pool(self.mp_num_cpus)
-        results = pool.map(self.evaluator, candidates)
-        pool.close()
-        return results
+        pool = _new_pool(self.mp_num_cpus)
+        try:
+            return pool.map(self.evaluator, candidates)
+        finally:
+            # close, not terminate: terminate sends SIGTERM to workers, which may carry signal
+            # handlers inherited from the parent (e.g. Ray's)
+            pool.close()
 
     def __call__(self, candidates, args):
         return self.evaluate(candidates, args)
@@ -185,10 +195,11 @@ class NoDaemonMultiProcessorEvaluator(Evaluator):
         Values in args will be ignored and not passed to the evaluator
         to avoid unnecessary pickling in inspyred.
         """
-        pool = NoDaemonProcessPool(self.mp_num_cpus)
-        results = pool.map(self.evaluator, candidates)
-        pool.close()
-        return results
+        pool = _new_pool(self.mp_num_cpus, NoDaemonProcessPool)
+        try:
+            return pool.map(self.evaluator, candidates)
+        finally:
+            pool.close()
 
     def __call__(self, candidates, args):
         return self.evaluate(candidates, args)
@@ -333,22 +344,24 @@ def get_mp_evaluators():
     return MP_Evaluators
 
 
-def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR):
+def get_evaluator(problem, n_mp=None, evaluator=None):
     """Returns a multiprocessing evaluator
 
     Args:
         problem: a class implementing an evaluate(candidate) function
         n_mp (int, optional): The number of cpus. Defaults to cpu_count().
         evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.
-            Defaults to ModelConstants.MP_EVALUATOR.
+            Defaults to ModelConstants.MP_EVALUATOR, read when the function is called.
 
     Returns:
         Evaluator: A multiprocessing evaluator instance based on the specified evaluator type
     """
+    n_mp = cpu_count() if n_mp is None else n_mp
+    evaluator = ModelConstants.MP_EVALUATOR if evaluator is None else evaluator
     if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(problem, n_mp)
     elif evaluator == "nodaemon" and "nodaemon" in MP_Evaluators:
-        return NoDaemonMultiProcessorEvaluator(problem, n_mp)
+        return NoDaemonMultiProcessorEvaluator(problem.evaluate, n_mp)
     elif evaluator == "dask" and "dask" in MP_Evaluators:
         return DaskEvaluator(problem.evaluate, n_mp)
     elif evaluator == "spark" and "spark" in MP_Evaluators:
@@ -357,18 +370,20 @@ def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUAT
         return MultiProcessorEvaluator(problem.evaluate, n_mp)
 
 
-def get_fevaluator(func, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR):
+def get_fevaluator(func, n_mp=None, evaluator=None):
     """Returns a multiprocessing evaluator
 
     Args:
         func: an evaluation function
         n_mp (int, optional): The number of cpus. Defaults to cpu_count().
         evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.
-            Defaults to ModelConstants.MP_EVALUATOR.
+            Defaults to ModelConstants.MP_EVALUATOR, read when the function is called.
 
     Returns:
         Evaluator: A multiprocessing evaluator instance based on the specified evaluator type
     """
+    n_mp = cpu_count() if n_mp is None else n_mp
+    evaluator = ModelConstants.MP_EVALUATOR if evaluator is None else evaluator
     if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(func, n_mp, isfunc=True)
     elif evaluator == "nodaemon" and "nodaemon" in MP_Evaluators:

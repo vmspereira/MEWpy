@@ -29,6 +29,13 @@ from warnings import warn
 from . import get_simulator
 
 
+def _as_simulator(model):
+    """The Simulator itself, or a simulator for a REFRAMED/COBRApy/GERM model."""
+    from .simulation import Simulator
+
+    return model if isinstance(model, Simulator) else get_simulator(model)
+
+
 class Environment(OrderedDict):
     """This class represents the exchange of compounds between an organism and the environment."""
 
@@ -50,11 +57,13 @@ class Environment(OrderedDict):
         df.columns = ["lb", "ub"]
         return df.to_html()
 
-    def get_compounds(self, fmt_func=None):
+    def get_compounds(self, fmt_func=None, model=None):
         """
         Return the list of compounds in the growth medium for this environment.
         Args:
             fmt_func (str or function): python format string (see Notes)
+            model (REFRAMED or COBRAPY model or Simulator): optional; its reaction id prefix is stripped
+                (default: None, in which case an 'R_' prefix is stripped when present)
         Returns:
             list: compounds in the medium
         Notes:
@@ -62,7 +71,14 @@ class Environment(OrderedDict):
             By default assumes BiGG notation ('R_EX_h2o_e' is transformed to 'h2o').
         """
 
-        if fmt_func is None:
+        if fmt_func is None and model is not None:
+            sim = _as_simulator(model)
+
+            def fmt_func(x):
+                # canonical exchange id, e.g. 'EX_h2o_e' for both 'R_EX_h2o_e' and 'EX_h2o_e'
+                return sim.to_canonical(sim.resolve(x, "reaction"), "reaction")[3:-2]
+
+        elif fmt_func is None:
 
             def fmt_func(x):
                 if x[:2] == "R_":
@@ -91,7 +107,10 @@ class Environment(OrderedDict):
             inplace (bool): apply to model, otherwise return a constraints dict (default: True)
         """
 
-        sim = get_simulator(model)
+        from .simulation import Simulator
+
+        # get_simulator() copies a Simulator, so in-place changes must go to the instance itself
+        sim = model if isinstance(model, Simulator) else get_simulator(model)
 
         if prefix:
             e = {f"{prefix}{rxn_id}": (lb, ub) for rxn_id, (lb, ub) in self.items()}
@@ -108,6 +127,7 @@ class Environment(OrderedDict):
             constraints = {}
 
         for r_id, (lb, ub) in env.items():
+            r_id = sim.resolve(r_id, "reaction")
             if r_id in sim.reactions:
                 if inplace:
                     sim.set_reaction_bounds(r_id, lb, ub, False)
@@ -161,19 +181,26 @@ class Environment(OrderedDict):
         return env
 
     @staticmethod
-    def from_compounds(compounds, fmt_func=None, max_uptake=10.0, prefix=""):
+    def from_compounds(compounds, fmt_func=None, max_uptake=10.0, prefix=None, model=None):
         """
         Initialize environment from list of medium compounds
         Arguments:
             compounds (list): List of compounds present in the medium
             fmt_func (str or function): python format string (see Notes)
             max_uptake (float): maximum uptake rate for given compounds (default: 10.0)
+            prefix (str): reaction id prefix for the default format (default: None, the prefix of `model`,
+                or no prefix when no model is given)
+            model (REFRAMED or COBRAPY model or Simulator): optional; gives the reaction id prefix
         Returns:
             Environment
         Notes:
             Please provide a formatting string or function to convert compound identifiers to exchange reactions.
-            Default format uses BiGG notation: "R_EX_{}_e" (for example "h2o" becomes "R_EX_h2o_e").
+            Default format uses BiGG notation: "{prefix}EX_{}_e" (for example "h2o" becomes "R_EX_h2o_e"
+            for a REFRAMED model and "EX_h2o_e" for a COBRApy model).
         """
+
+        if prefix is None:
+            prefix = _as_simulator(model).prefix("reaction") if model is not None else ""
 
         if fmt_func is None:
 

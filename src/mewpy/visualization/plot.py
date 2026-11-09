@@ -334,10 +334,21 @@ class StreamingPlot:
         self.ax.grid(color="#f0f0f5", linestyle="-", linewidth=0.5, alpha=0.5)
 
 
+def _interactive_backends():
+    """Lower-cased names of matplotlib's interactive backends (a registry since matplotlib 3.9)."""
+    try:
+        from matplotlib.backends import BackendFilter, backend_registry
+
+        names = backend_registry.list_builtin(BackendFilter.INTERACTIVE)
+    except ImportError:
+        names = matplotlib.rcsetup.interactive_bk
+    return {name.lower() for name in names}
+
+
 def pause(interval):
     backend = plt.rcParams["backend"]
 
-    if backend in matplotlib.rcsetup.interactive_bk:
+    if backend.lower() in _interactive_backends():
         figManager = matplotlib._pylab_helpers.Gcf.get_active()
         if figManager is not None:
             canvas = figManager.canvas

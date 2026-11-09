@@ -79,11 +79,16 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
 
         super().__init__(identifier, **kwargs)
 
-        # the setters will handle adding and removing variables to the correct containers
-        self.compartments = compartments
-        self.interactions = interactions
-        self.regulators = regulators
-        self.targets = targets
+        # containers are empty, so variables are added (not replaced). Calling the regulators/targets setters
+        # after the interactions setter would remove the regulators and targets of the interactions
+        if compartments:
+            self.compartments = compartments
+        for container in (regulators, targets, interactions):
+            if container:
+                self.add(*container.values(), history=False)
+
+        # building the model is not an undoable change
+        self.clean_history()
 
     # -----------------------------------------------------------------------------
     # Model type manager
@@ -162,7 +167,10 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
 
         compartments.update(self.__compartments)
 
-        compartments.update(super(RegulatoryModel, self).compartments)
+        # names are stored by one of the model types only: inferred empty names must not overwrite them
+        for compartment, name in super(RegulatoryModel, self).compartments.items():
+            if name or compartment not in compartments:
+                compartments[compartment] = name
 
         return compartments
 
@@ -331,7 +339,11 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
             return super(RegulatoryModel, self).get(identifier=identifier, default=default)
 
     def add(
-        self, *variables: Union["Interaction", "Regulator", "Target"], comprehensive: bool = True, history: bool = True
+        self,
+        *variables: Union["Interaction", "Regulator", "Target"],
+        comprehensive: bool = True,
+        history: bool = True,
+        _members_before=None,
     ):
         """
         It adds the given variables to the model.
@@ -351,6 +363,9 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
         :param history: if True, the changes will be recorded in the history
         :return:
         """
+        if history and _members_before is None:
+            _members_before = self._members(variables)
+
         if self.is_a("regulatory"):
 
             for variable in variables:
@@ -372,13 +387,16 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
 
                     self._add_variable_to_container(variable, "_interactions")
 
-        return super(RegulatoryModel, self).add(*variables, comprehensive=comprehensive, history=history)
+        return super(RegulatoryModel, self).add(
+            *variables, comprehensive=comprehensive, history=history, _members_before=_members_before
+        )
 
     def remove(
         self,
         *variables: Union["Interaction", "Regulator", "Target"],
         remove_orphans: bool = False,
         history: bool = True,
+        _members_before=None,
     ):
         """
         It removes the given variables from the model.
@@ -399,6 +417,9 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
         :param history: if True, the changes will be recorded in the history
         :return:
         """
+        if history and _members_before is None:
+            _members_before = self._members(variables)
+
         if self.is_a("regulatory"):
 
             interactions = set()
@@ -427,7 +448,9 @@ class RegulatoryModel(Model, model_type="regulatory", register=True, constructor
                 for regulator in orphan_regulators:
                     self._remove_variable_from_container(regulator, "_regulators")
 
-        return super(RegulatoryModel, self).remove(*variables, remove_orphans=remove_orphans, history=history)
+        return super(RegulatoryModel, self).remove(
+            *variables, remove_orphans=remove_orphans, history=history, _members_before=_members_before
+        )
 
     def update(
         self,

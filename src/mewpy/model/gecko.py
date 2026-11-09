@@ -31,9 +31,8 @@ from math import isinf
 import numpy as np
 import pandas as pd
 from reframed.core.cbmodel import CBModel, CBReaction
-from reframed.core.model import AttrOrderedDict
+from reframed.core.model import AttrOrderedDict, Metabolite
 from reframed.io.sbml import load_cbmodel
-from six import iteritems, string_types
 
 from mewpy.util.constants import ModelConstants
 
@@ -150,7 +149,7 @@ class GeckoModel(CBModel):
 
         # load predifined models
         model_list = ModelList()
-        if isinstance(model, string_types):
+        if isinstance(model, str):
             model = model_list.__getitem__(model)
         elif isinstance(model, CBModel):
             model_list.simplify_model(model)
@@ -189,17 +188,21 @@ class GeckoModel(CBModel):
             logging.warning(f"Carbohydrate reaction {carbohydrate_reaction_id} is not in the model")
 
         # protein properties DataFrame
-        if protein_properties:
+        if protein_properties is not None:
             self.protein_properties = protein_properties
         else:
             model_list = ModelList()
             self.protein_properties = model_list.protein_properties()
 
         # Metabolite of common protein pool
-        try:
-            self.common_protein_pool = self.metabolites[common_protein_pool_id]
-        except KeyError:
-            logging.warning(f"Could not find the common protein pool {common_protein_pool_id}")
+        # Models with individual protein pools (multi-pool) have no common pool. As in the original GECKO
+        # implementation, the pool and its exchange reaction are created: limit_proteins moves the proteins
+        # without measurements to the common pool.
+        if common_protein_pool_id not in self.metabolites:
+            logging.warning("Could not find the common protein pool %s. It was created.", common_protein_pool_id)
+            compartment = "c" if "c" in self.compartments else next(iter(self.compartments), None)
+            self.add_metabolite(Metabolite(common_protein_pool_id, "prot_pool", compartment))
+        self.common_protein_pool = self.metabolites[common_protein_pool_id]
 
         # Reaction identified as protein pool exchange
         if protein_pool_exchange_id in self.reactions.keys():
@@ -207,8 +210,16 @@ class GeckoModel(CBModel):
         elif reaction_prefix + protein_pool_exchange_id in self.reactions.keys():
             self.protein_pool_exchange = self.reactions[reaction_prefix + protein_pool_exchange_id]
         else:
-            self.protein_pool_exchange = None
-            logging.warning(f"Could not find protein pool exchange reaction {protein_pool_exchange_id}")
+            pool_exchange_id = reaction_prefix + protein_pool_exchange_id
+            logging.warning("Could not find protein pool exchange reaction %s. It was created.", pool_exchange_id)
+            self.protein_pool_exchange = CBReaction(
+                pool_exchange_id,
+                reversible=False,
+                stoichiometry={common_protein_pool_id: 1.0},
+                lb=0,
+                ub=ModelConstants.REACTION_UPPER_BOUND,
+            )
+            self.add_reaction(self.protein_pool_exchange)
 
         # multi-pool
         s_protein_exchange = "^" + reaction_prefix + "prot_(.*)_exchange$"
@@ -285,7 +296,7 @@ class GeckoModel(CBModel):
         # * section 2.5
         # 1. define mmmol_gdw as ub for measured proteins (multi-pool)
 
-        for protein_id, value in iteritems(self.measured_ggdw):
+        for protein_id, value in self.measured_ggdw.items():
             try:
                 mmol_gdw = value / (self.protein_properties.loc[protein_id, "mw"] / 1000)
                 rxn = self.reactions["prot_{}_exchange".format(protein_id)]
@@ -408,15 +419,38 @@ class GeckoModel(CBModel):
             and the optimized 'addition'.
 
         """
-        from reframed.solvers import solver_instance
+        from math import inf
 
+        from reframed.solvers import solver_instance
+        from reframed.solvers.solution import Status
+
+        pools = sorted(self.individual_protein_exchanges)
         solver = solver_instance(self)
-        solver.add_constraint("constraint_objective", self.get_objective, sense=">", rhs=min_objective, update=False)
-        for pool in self.individual_protein_exchanges:
-            solver.add_variable("pool_diff_" + pool.id, lb=0, update=False)
-            solver.add_variable("measured_bound_" + pool.id, lb=pool.upper_bound, ub=pool.upper_bound, update=False)
+        solver.add_constraint("constraint_objective", self.get_objective(), sense=">", rhs=min_objective)
+        for pool_id in pools:
+            solver.add_variable("pool_diff_" + pool_id, 0, inf)
         solver.update()
-        solver.solve()
+        # the flux through each pool may exceed its measured bound by pool_diff, whose sum is minimized
+        for pool_id in pools:
+            lhs = {pool_id: 1, "pool_diff_" + pool_id: -1}
+            solver.add_constraint("pool_ub_" + pool_id, lhs, sense="<", rhs=self.reactions[pool_id].ub)
+        solver.update()
+        relaxed = {pool_id: (0, 1000.0) for pool_id in pools}
+        solution = solver.solve({"pool_diff_" + pool_id: 1 for pool_id in pools}, minimize=True, constraints=relaxed)
+        if solution.status != Status.OPTIMAL:
+            raise RuntimeError(f"Could not adjust the protein pool bounds: {solution.status}")
+
+        adjustments = [
+            (pool_id, solution.values["pool_diff_" + pool_id], self.reactions[pool_id].ub)
+            for pool_id in pools
+            if solution.values["pool_diff_" + pool_id] > tolerance
+        ]
+        result = pd.DataFrame(adjustments, columns=["reaction", "addition", "original"])
+        result["adjusted"] = result["addition"] + result["original"]
+        if inplace:
+            for adj in result.itertuples():
+                self.reactions[adj.reaction].ub = adj.adjusted
+        return result
         # with self.model as model:
         #    problem = model.problem
         #    constraint_objective = problem.Constraint(model.objective.expression, name='constraint_objective',

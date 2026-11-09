@@ -173,19 +173,35 @@ class TargetRegulatorRegulatoryCSV(Engine):
 
         processed_regulators = set()
 
-        for interaction_id, interaction_record in self.dto.interactions.items():
+        # variables built during this read. A target is only added to the model with its interaction, so a
+        # self-regulated target (e.g. g1 regulated by g1) must reuse the object built for the target
+        built = {}
 
-            target_record = interaction_record.target
+        def build(record, default_types):
+            variable = built.get(record.id)
 
-            target, warning = target_record.to_variable(
+            if variable is not None:
+                variable.update(name=record.name, aliases=record.aliases)
+                return variable
+
+            variable, warning = record.to_variable(
                 model=model,
-                types=variables.get(target_record.id, {"target"}),
-                name=target_record.name,
-                aliases=target_record.aliases,
+                types=variables.get(record.id, default_types),
+                name=record.name,
+                aliases=record.aliases,
             )
 
             if warning:
                 self.warnings.append(partial(csv_warning, warning))
+
+            built[record.id] = variable
+            return variable
+
+        for interaction_id, interaction_record in self.dto.interactions.items():
+
+            target_record = interaction_record.target
+
+            target = build(target_record, {"target"})
 
             regulators_records = interaction_record.regulators
 
@@ -193,15 +209,7 @@ class TargetRegulatorRegulatoryCSV(Engine):
 
             for regulator_id, regulator_record in regulators_records.items():
 
-                regulator, warning = regulator_record.to_variable(
-                    model=model,
-                    types=variables.get(regulator_id, {"regulator"}),
-                    name=regulator_record.name,
-                    aliases=regulator_record.aliases,
-                )
-
-                if warning:
-                    self.warnings.append(partial(csv_warning, warning))
+                regulator = build(regulator_record, {"regulator"})
 
                 regulators[regulator_id] = regulator
 
@@ -238,15 +246,7 @@ class TargetRegulatorRegulatoryCSV(Engine):
 
                 if regulator_id not in processed_regulators:
 
-                    regulator, warning = regulator_record.to_variable(
-                        model=model,
-                        types=variables.get(regulator_id, {"regulator"}),
-                        name=regulator_record.name,
-                        aliases=regulator_record.aliases,
-                    )
-
-                    if warning:
-                        self.warnings.append(partial(csv_warning, warning))
+                    regulator = build(regulator_record, {"regulator"})
 
                     model.add(regulator)
 

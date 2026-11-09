@@ -390,7 +390,8 @@ class And(Boolean):
         if operator is not None:
             return operator(left, right)
 
-        return solution_decode(int(left) & int(right))
+        # logical (not bitwise) semantics: non-zero is active, so 2 AND 1 is 1 (2 & 1 = 0)
+        return int(bool(left) and bool(right))
 
     def __and__(self, *args):
         self.variables.extend(args)
@@ -420,7 +421,8 @@ class Or(Boolean):
         if operator is not None:
             return operator(left, right)
 
-        return solution_decode(int(left) | int(right))
+        # logical (not bitwise) semantics: 0.5 OR 0 is 1, not int(0.5) | 0 = 0
+        return int(bool(left) or bool(right))
 
     def __or__(self, *args):
         self.variables.extend(args)
@@ -450,7 +452,8 @@ class Not(Boolean):
         if operator is not None:
             return operator(left)
 
-        return solution_decode(~int(left))
+        # logical (not bitwise) semantics: NOT 2 is 0, not ~2 = -3 (truthy)
+        return int(not bool(left))
 
 
 class Relational(Boolean):

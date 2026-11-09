@@ -34,21 +34,28 @@ if TYPE_CHECKING:
 
 
 def _run_and_decode(lp, additional_constraints=None, solver_kwargs=None):
-    """Run solver and decode results."""
-    if not solver_kwargs:
-        solver_kwargs = {}
+    """
+    Run solver and decode results.
+
+    :return: the flux values (zeros if the problem has no optimal solution), the objective value (None if
+    not optimal) and the solver status
+    """
+    # a copy: the caller's solver_kwargs (and its constraints) must not be mutated
+    solver_kwargs = dict(solver_kwargs) if solver_kwargs else {}
+    linear, minimize = lp._objective_from(solver_kwargs)
+
+    # the Euler update needs the fluxes, so values are always retrieved
+    solver_kwargs["get_values"] = True
 
     if additional_constraints:
-        solver_kwargs["constraints"] = {**solver_kwargs.get("constraints", {}), **additional_constraints}
+        solver_kwargs["constraints"] = {**(solver_kwargs.get("constraints") or {}), **additional_constraints}
 
-    solution = lp.solver.solve(linear=lp._linear_objective, minimize=lp._minimize, **solver_kwargs)
+    solution = lp.solver.solve(linear=linear, minimize=minimize, **solver_kwargs)
 
-    reactions = lp.model.reactions
+    if solution.status != Status.OPTIMAL:
+        return {rxn: 0 for rxn in lp.model.reactions}, None, solution.status
 
-    if not solution.values:
-        return {rxn: 0 for rxn in reactions}, 0
-
-    return solution.values, solution.fobj
+    return solution.values, solution.fobj, solution.status
 
 
 def result_to_solution(result: CoRegResult, model: RegulatoryExtension, to_solver: bool = False) -> Solution:
@@ -61,12 +68,12 @@ def result_to_solution(result: CoRegResult, model: RegulatoryExtension, to_solve
     :return: the Solution object
     """
     if to_solver:
-        return Solution(status=Status.OPTIMAL, fobj=result.objective_value, values=result.values)
+        return Solution(status=result.status, fobj=result.objective_value, values=result.values)
 
     solution = Solution(
         objective_value=result.objective_value,
         values=result.values,
-        status=Status.OPTIMAL,
+        status=result.status,
         method="CoRegFlux",
         model=model,
     )
@@ -129,15 +136,18 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         """
         result = CoRegResult()
 
-        # Get reaction constraints from simulator
-        # yield_reactions() returns reaction IDs (strings), not objects
+        # Reaction bounds: model bounds overridden by the caller's constraints. Legacy GERM models yield
+        # Reaction objects and RegulatoryExtension yields ids; constraints are always keyed by reaction id.
         constraints = {}
-        for rxn_id in self.model.yield_reactions():
+        for rxn in self.model.yield_reactions():
+            rxn_id = getattr(rxn, "id", rxn)
             rxn_data = self._get_reaction(rxn_id)
             constraints[rxn_id] = (
                 rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
                 rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND),
             )
+        for key, bounds in ((solver_kwargs or {}).get("constraints") or {}).items():
+            constraints[key] = tuple(bounds) if isinstance(bounds, (tuple, list)) else (bounds, bounds)
 
         if metabolites:
             # Update coregflux constraints using metabolite concentrations
@@ -157,9 +167,12 @@ class CoRegFlux(_RegulatoryAnalysisBase):
             )
 
         # Retrieve the FBA simulation from the inferred constraints
-        values, objective_value = _run_and_decode(self, additional_constraints=constraints, solver_kwargs=solver_kwargs)
+        values, objective_value, status = _run_and_decode(
+            self, additional_constraints=constraints, solver_kwargs=solver_kwargs
+        )
         result.values = values
         result.objective_value = objective_value
+        result.status = status
 
         # Update the system state by solving an Euler step for metabolites and biomass
         next_biomass, next_metabolites = system_state_update(
@@ -257,9 +270,13 @@ class CoRegFlux(_RegulatoryAnalysisBase):
 
         if biomass is None:
             # Calculate initial growth rate if not provided
-            _, growth_rate = _run_and_decode(self, solver_kwargs=solver_kwargs)
-            biomass = growth_rate
+            _, growth_rate, _ = _run_and_decode(self, solver_kwargs=solver_kwargs)
+            biomass = growth_rate or 0.0
         biomass = build_biomass(model=self.model, biomass=biomass)
+
+        # No gene state: a single steady-state step constrained by the metabolites only
+        if initial_state is None:
+            initial_state = {}
 
         # Handle single vs dynamic simulation
         if isinstance(initial_state, dict):

@@ -5,7 +5,7 @@ import pandas as pd
 
 from mewpy.util.constants import ModelConstants
 
-from .analysis_utils import run_method_and_decode
+from .analysis_utils import gene_defaults, gpr_gene_ids, reaction_gpr, regulators_initial_state, run_method_and_decode
 from .coregflux import CoRegFlux
 from .prom import PROM
 from .rfba import RFBA
@@ -197,7 +197,7 @@ def ifva(
     :return: a DataFrame with the results of the simulation
     """
     if not reactions:
-        reactions = model.reactions.keys()
+        reactions = list(model.reactions)
 
     if objective:
         if hasattr(objective, "keys"):
@@ -206,10 +206,11 @@ def ifva(
             obj = str(objective)
 
     else:
-        obj = next(iter(model.objective)).id
+        obj = next(iter(model.objective))
+        obj = getattr(obj, "id", obj)
 
-    if not constraints:
-        constraints = {}
+    # a copy: the objective bound added below must not leak into the caller's dict
+    constraints = dict(constraints) if constraints else {}
 
     LP = INTEGRATED_ANALYSIS_METHODS[method]
 
@@ -223,10 +224,14 @@ def ifva(
 
     result = defaultdict(list)
     for rxn in reactions:
-        min_val, _ = run_method_and_decode(method=lp, objective={rxn: 1.0}, constraints=constraints, minimize=True)
+        min_val, _ = run_method_and_decode(
+            method=lp, objective={rxn: 1.0}, constraints=constraints, initial_state=initial_state, minimize=True
+        )
         result[rxn].append(min_val)
 
-        max_val, _ = run_method_and_decode(method=lp, objective={rxn: 1.0}, constraints=constraints, minimize=False)
+        max_val, _ = run_method_and_decode(
+            method=lp, objective={rxn: 1.0}, constraints=constraints, initial_state=initial_state, minimize=False
+        )
         result[rxn].append(max_val)
 
     return pd.DataFrame.from_dict(data=result, orient="index", columns=["minimum", "maximum"])
@@ -259,7 +264,7 @@ def isingle_gene_deletion(
         initial_state = {}
 
     if not genes:
-        genes = model.genes.keys()
+        genes = list(model.genes)
 
     LP = INTEGRATED_ANALYSIS_METHODS[method]
     lp = LP(model).build()
@@ -308,7 +313,7 @@ def isingle_reaction_deletion(
         constraints = {}
 
     if not reactions:
-        reactions = model.reactions.keys()
+        reactions = list(model.reactions)
 
     LP = INTEGRATED_ANALYSIS_METHODS[method]
     lp = LP(model).build()
@@ -360,7 +365,7 @@ def isingle_regulator_deletion(
         initial_state = {}
 
     if not regulators:
-        regulators = model.regulators.keys()
+        regulators = list(model.regulators)
 
     LP = INTEGRATED_ANALYSIS_METHODS[method]
     lp = LP(model).build()
@@ -393,25 +398,7 @@ def _decode_initial_state(
     :param state: the initial state of the model
     :return: dict of regulatory/metabolic variable keys (regulators) and a value of 0 or 1
     """
-    if not state:
-        state = {}
-
-    initial_state = {}
-    for regulator in model.yield_regulators():
-        if regulator.id in state:
-            initial_state[regulator.id] = state[regulator.id]
-
-        elif regulator.is_metabolite() and regulator.exchange_reaction:
-            if regulator.exchange_reaction.id in state:
-                initial_state[regulator.id] = state[regulator.exchange_reaction.id]
-
-            else:
-                initial_state[regulator.id] = abs(regulator.exchange_reaction.lower_bound)
-
-        else:
-            initial_state[regulator.id] = max(regulator.coefficients)
-
-    return initial_state
+    return regulators_initial_state(model, state)
 
 
 def _decode_interactions(
@@ -454,17 +441,21 @@ def _decode_gprs(
     :param state: the state of the model
     :return: a dictionary with the state of each gene
     """
+    # genes absent from the state are not regulated: they keep their default activity
+    values = {**gene_defaults(model), **state}
+
     reaction_state = {}
-    for reaction in model.yield_reactions():
-        if reaction.gpr.is_none:
+    for rxn_id in model.reactions:
+        gpr = reaction_gpr(model, rxn_id)
+        if gpr.is_none:
             continue
 
-        result = reaction.gpr.evaluate(state)
+        result = gpr.evaluate(values=values)
         if result:
-            reaction_state[reaction.id] = 1.0
+            reaction_state[rxn_id] = 1.0
 
         else:
-            reaction_state[reaction.id] = 0.0
+            reaction_state[rxn_id] = 0.0
 
     return reaction_state
 
@@ -543,7 +534,8 @@ def find_conflicts(
     regulatory_state = _decode_interactions(model, state)
 
     if strategy == "two-step":
-        regulatory_state = {gene: value for gene, value in regulatory_state.items() if model.get(gene).is_regulator()}
+        regulators = model.regulators
+        regulatory_state = {gene: value for gene, value in regulatory_state.items() if gene in regulators}
         regulatory_state = {**state, **regulatory_state}
         # noinspection PyTypeChecker
         metabolic_state = _decode_interactions(model, regulatory_state)
@@ -558,19 +550,23 @@ def find_conflicts(
     deleted_reactions = set(reaction for reaction, val in reaction_state.items() if val < ModelConstants.TOLERANCE)
     reaction_conflicts = set.intersection(deleted_reactions, set(essential_reactions.index))
 
+    # regulators that are not targets (e.g. environmental stimuli) keep their initial state
+    regulators_state = {**state, **regulatory_state}
+    targets = getattr(model, "targets", {})
+
     repressed_genes = []
     for gene in gene_conflicts:
-        gene = model.genes[gene]
+        target = targets.get(gene)
 
-        if gene.is_target():
+        if target is not None:
             # noinspection PyUnresolvedReferences
-            repressed_gene = {regulator: regulatory_state[regulator] for regulator in gene.regulators}
+            repressed_gene = {regulator: regulators_state.get(regulator) for regulator in target.regulators}
             # noinspection PyUnresolvedReferences
-            repressed_gene["interaction"] = str(gene.interaction)
+            repressed_gene["interaction"] = str(target.interaction)
         else:
             repressed_gene = {}
 
-        df = pd.DataFrame(repressed_gene, index=[gene.id])
+        df = pd.DataFrame(repressed_gene, index=[gene])
         repressed_genes.append(df)
 
     if repressed_genes:
@@ -580,14 +576,19 @@ def find_conflicts(
     else:
         repressed_genes = pd.DataFrame()
 
+    genes_state = {**gene_defaults(model), **metabolic_state}
+
     repressed_reactions = []
     for reaction in reaction_conflicts:
-        reaction = model.reactions[reaction]
+        gpr = reaction_gpr(model, reaction)
 
-        repressed_reaction = {gene: metabolic_state[gene] for gene in reaction.genes}
-        repressed_reaction["gpr"] = reaction.gene_protein_reaction_rule
+        repressed_reaction = {gene: genes_state.get(gene) for gene in gpr_gene_ids(gpr)}
+        if isinstance(model.reactions, dict):
+            repressed_reaction["gpr"] = model.reactions[reaction].gene_protein_reaction_rule
+        else:
+            repressed_reaction["gpr"] = model.get_gpr(reaction)
 
-        df = pd.DataFrame(repressed_reaction, index=[reaction.id])
+        df = pd.DataFrame(repressed_reaction, index=[reaction])
         repressed_reactions.append(df)
 
     if repressed_reactions:

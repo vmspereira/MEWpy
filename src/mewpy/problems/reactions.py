@@ -58,6 +58,8 @@ class RKOProblem(AbstractKOProblem):
 
     """
 
+    _target_kind = "reaction"
+
     def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
         super(RKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
@@ -73,7 +75,8 @@ class RKOProblem(AbstractKOProblem):
         target = reactions - essential - drains - transport
         if self.non_target is not None:
             target = target - set(self.non_target)
-        target = list(target)
+        # sorted: set order depends on the interpreter hash seed, which breaks seeded runs
+        target = sorted(target)
         self._trg_list = target
 
 
@@ -98,6 +101,8 @@ class ROUProblem(AbstractOUProblem):
     :param boolean twostep: If deletions should be applied before identifiying reference flux values.
     """
 
+    _target_kind = "reaction"
+
     def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
         super(ROUProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
 
@@ -108,7 +113,7 @@ class ROUProblem(AbstractOUProblem):
         target = reactions  # - drains
         if self.non_target is not None:
             target = target - set(self.non_target)
-        target = list(target)
+        target = sorted(target)
         self._trg_list = target
 
     def solution_to_constraints(self, candidate):
@@ -116,6 +121,7 @@ class ROUProblem(AbstractOUProblem):
         Decodes a candidate, an dict {idx:lv} into a dictionary of constraints
         Supposes that reversible reactions have been treated and bounded with positive flux values
         """
+        candidate = self._native_keys(candidate)
         constraints = dict()
         # computes reference fluxes based on deletions
         reference = self.reference
@@ -163,17 +169,21 @@ class MediumProblem(AbstractOUProblem):
 
     """
 
+    _target_kind = "reaction"
+
     def __init__(self, model: Union["Model", "CBModel"], fevaluation: List["EvaluationFunction"] = None, **kwargs):
         super(MediumProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
-        self.levels = kwargs.get("levels", np.linspace(0, 10, 101))
-        self.candidate_max_size = kwargs.get("candidate_max_size", len(self.target_list))
+        # a list: encode looks levels up with list.index
+        self.levels = list(kwargs.get("levels", np.linspace(0, 10, 101)))
+        if "candidate_max_size" not in kwargs and "max_candidate_size" not in kwargs:
+            self.candidate_max_size = len(self.target_list)
         self.simulator._allow_env_changes = True
 
     def _build_target_list(self):
         target = set(self.simulator.get_uptake_reactions())
         if self.non_target is not None:
             target = target - set(self.non_target)
-        target = list(target)
+        target = sorted(target)
         self._trg_list = target
 
     def solution_to_constraints(self, candidate):
@@ -181,6 +191,7 @@ class MediumProblem(AbstractOUProblem):
         Decodes a candidate, a dict {idx:lv} into a dictionary of constraints
         Supposes that reversible reactions have been treated and bounded with positive flux values
         """
+        candidate = self._native_keys(candidate)
         constraints = dict()
         from mewpy.util.constants import ModelConstants
 

@@ -102,7 +102,7 @@ problem = GKOProblem(
     model=model,
     fevaluation=['BPCY'],  # Biomass-Product Coupled Yield
     product='EX_succ_e',    # Target product (e.g., succinate)
-    max_candidate_size=10   # Maximum number of gene knockouts
+    candidate_max_size=10   # Maximum number of gene knockouts
 )
 
 # Run evolutionary algorithm

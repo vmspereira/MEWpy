@@ -93,40 +93,35 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
         except Exception:
             raise RuntimeError("Could not create simulator for the ETFL model")
     else:
-        # Try COBRA models first
+        # Only a missing cobra/reframed package is tolerated; errors while building a simulator propagate.
         try:
-            from cobra.core.model import Model
+            from cobra.core.model import Model as CobraModel
+        except ImportError:
+            CobraModel = None
+        try:
+            from reframed.core.cbmodel import CBModel
+        except ImportError:
+            CBModel = None
 
-            if isinstance(model, Model):
-                from .cobra import Simulation
+        if CobraModel is not None and isinstance(model, CobraModel):
+            from .cobra import Simulation
 
+            try:
                 model.solver.configuration.timeout = ModelConstants.SOLVER_TIMEOUT
                 instance = Simulation(
                     model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
                 )
-        except ImportError:
-            # COBRA not installed, try other simulators
-            pass
-        except Exception:
-            # COBRA simulator creation failed, try other simulators
-            pass
-
-        # Try REFRAMED models if COBRA failed
-        if not instance:
-            try:
-                from reframed.core.cbmodel import CBModel
-
-                if isinstance(model, CBModel):
-                    from .reframed import Simulation
-
-                    instance = Simulation(
-                        model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
-                    )
-            except ImportError:
-                # REFRAMED not installed
-                pass
             except Exception as e:
-                # Re-raise with context to help debugging
+                raise RuntimeError(f"Failed to create simulator for COBRA model: {e}") from e
+
+        elif CBModel is not None and isinstance(model, CBModel):
+            from .reframed import Simulation
+
+            try:
+                instance = Simulation(
+                    model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
+                )
+            except Exception as e:
                 raise RuntimeError(f"Failed to create simulator for REFRAMED model: {e}") from e
 
     if not instance:
@@ -174,4 +169,4 @@ def get_container(model):
         # COBRA not installed
         pass
 
-    raise ValueError(f"Unrecognized model class: {model.__class__.name}")
+    raise ValueError(f"Unrecognized model class: {model.__class__.__name__}")

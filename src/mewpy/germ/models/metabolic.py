@@ -113,12 +113,18 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
 
         super().__init__(identifier, **kwargs)
 
-        # the setters will handle adding and removing variables to the correct containers
-        self.compartments = compartments
-        self.genes = genes
-        self.metabolites = metabolites
-        self.objective = objective
-        self.reactions = reactions
+        # containers are empty, so variables are added (not replaced): in integrated models, the other model type
+        # may have added variables already. The objective is set last, so identifiers resolve to reactions.
+        if compartments:
+            self.compartments = compartments
+        for container in (genes, metabolites, reactions):
+            if container:
+                self.add(*container.values(), history=False)
+        if objective:
+            self.objective = objective
+
+        # building the model is not an undoable change
+        self.clean_history()
 
     # -----------------------------------------------------------------------------
     # Model type manager
@@ -206,7 +212,10 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
 
         compartments.update(self.__compartments)
 
-        compartments.update(super(MetabolicModel, self).compartments)
+        # names are stored by one of the model types only: inferred empty names must not overwrite them
+        for compartment, name in super(MetabolicModel, self).compartments.items():
+            if name or compartment not in compartments:
+                compartments[compartment] = name
 
         return compartments
 
@@ -489,7 +498,11 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
             return super(MetabolicModel, self).get(identifier=identifier, default=default)
 
     def add(
-        self, *variables: Union["Gene", "Metabolite", "Reaction"], comprehensive: bool = True, history: bool = True
+        self,
+        *variables: Union["Gene", "Metabolite", "Reaction"],
+        comprehensive: bool = True,
+        history: bool = True,
+        _members_before=None,
     ):
         """
         It adds the given variables to the model.
@@ -510,6 +523,9 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
         :param history: if True, the changes will be recorded in the history
         :return:
         """
+        if history and _members_before is None:
+            _members_before = self._members(variables)
+
         if self.is_a("metabolic"):
 
             for variable in variables:
@@ -531,10 +547,16 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
 
                     self._add_variable_to_container(variable, "_reactions")
 
-        return super(MetabolicModel, self).add(*variables, comprehensive=comprehensive, history=history)
+        return super(MetabolicModel, self).add(
+            *variables, comprehensive=comprehensive, history=history, _members_before=_members_before
+        )
 
     def remove(
-        self, *variables: Union["Gene", "Metabolite", "Reaction"], remove_orphans: bool = False, history: bool = True
+        self,
+        *variables: Union["Gene", "Metabolite", "Reaction"],
+        remove_orphans: bool = False,
+        history: bool = True,
+        _members_before=None,
     ):
         """
         It removes the given variables from the model.
@@ -556,6 +578,9 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
         :param history: if True, the changes will be recorded in the history
         :return:
         """
+        if history and _members_before is None:
+            _members_before = self._members(variables)
+
         if self.is_a("metabolic"):
 
             reactions = set()
@@ -587,7 +612,9 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
                 for gene in orphan_genes:
                     self._remove_variable_from_container(gene, "_genes")
 
-        return super(MetabolicModel, self).remove(*variables, remove_orphans=remove_orphans, history=history)
+        return super(MetabolicModel, self).remove(
+            *variables, remove_orphans=remove_orphans, history=history, _members_before=_members_before
+        )
 
     def update(
         self,

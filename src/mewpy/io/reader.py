@@ -104,6 +104,7 @@ class Reader(Builder):
             sep=sep,
             id_col=id_col,
             target_col=target_col,
+            regulator_col=regulator_col,
             rule_col=rule_col,
             co_activating_col=co_activating_col,
             co_repressing_col=co_repressing_col,

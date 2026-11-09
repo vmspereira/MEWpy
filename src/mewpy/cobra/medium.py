@@ -284,5 +284,6 @@ def validate_solution(model, medium, exchange_reactions, direction, min_growth, 
 
     sol = sim.simulate(constraints=constraints)
 
-    if sol.objective_value < min_growth:
+    # an infeasible validation has no objective value
+    if sol.objective_value is None or sol.objective_value < min_growth:
         warn("Solution appears to be invalid.")

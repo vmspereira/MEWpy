@@ -80,7 +80,8 @@ class CommunityKOProblem(AbstractKOProblem):
         target = set(self.model_ids)
         if self.non_target is not None:
             target = target - set(self.non_target)
-        self._trg_list = list(target)
+        # sorted: set order depends on the interpreter hash seed, which breaks seeded runs
+        self._trg_list = sorted(target)
 
     def ext_reactions(self, organism):
         org_mets = set([v for k, v in self.cmodel.metabolite_map.items() if k[0] == organism])

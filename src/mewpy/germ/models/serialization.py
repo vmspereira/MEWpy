@@ -10,6 +10,14 @@ if TYPE_CHECKING:
 sys.setrecursionlimit(50000)
 
 
+def _is_compartments_attribute(name: str) -> bool:
+    """
+    Compartments are stored in name-mangled attributes (e.g. _MetabolicModel__compartments), one per model type.
+    They are not registered containers, so they are copied explicitly by the pickle and deepcopy helpers.
+    """
+    return name.endswith("__compartments")
+
+
 def serialize(serialization_name, deserialization_name=None, pickle_name=None):
     def wrapper(attr):
         attr.fget.serialize = serialization_name
@@ -149,6 +157,11 @@ class Serializer:
 
             model[attr] = serializer(container)
 
+        # compartment names are not a registered container. They are written in the full format (variables=True)
+        # used by the json writer and deepcopy; the reference format keeps one key per container
+        if variables and getattr(self, "compartments", None):
+            model["compartments"] = dict(self.compartments)
+
         return model
 
     # -----------------------------------------------------------------------------
@@ -184,7 +197,13 @@ class Serializer:
                 else:
                     update_attributes[deserialize_name] = container
 
+        if obj.get("compartments"):
+            update_attributes["compartments"] = dict(obj["compartments"])
+
         model.update(**update_attributes)
+
+        # rebuilding the model is not an undoable change
+        model.clean_history()
 
         return model
 
@@ -334,6 +353,9 @@ class Serializer:
 
         variable.update(**variable_attributes)
 
+        # rebuilding the variable is not an undoable change
+        variable.clean_history()
+
         return variable
 
     @classmethod
@@ -420,8 +442,11 @@ class Serializer:
     @staticmethod
     def _regulatory_events_deserializer(obj, children=None, children_types=None):
 
+        # json stores the numeric coefficients of the regulatory events as strings
         return {
-            state: Serializer._expression_deserializer(expression, children, children_types)
+            (float(state) if isinstance(state, str) else state): Serializer._expression_deserializer(
+                expression, children, children_types
+            )
             for state, expression in obj.items()
         }
 
@@ -438,6 +463,9 @@ class Serializer:
 
     @staticmethod
     def _variable_attribute_deserializer(obj, children=None, children_types=None):
+        if obj is None:
+            return None
+
         if children is None:
 
             from mewpy.germ.variables import Variable
@@ -504,7 +532,14 @@ class Serializer:
                 if to_state:
                     containers[pickle_name] = container_obj
                 else:
+                    # a copy must not share the containers of this model, only the variables
+                    if isinstance(container_obj, dict):
+                        container_obj = dict(container_obj)
                     containers[container] = container_obj
+
+        for attribute, value in self.__dict__.items():
+            if _is_compartments_attribute(attribute):
+                containers[attribute] = dict(value)
 
         return containers
 
@@ -548,6 +583,10 @@ class Serializer:
 
             if pickle_name is not None:
                 new_dict[pickle_name] = obj.get(container)
+
+        for attribute, value in obj.items():
+            if _is_compartments_attribute(attribute):
+                new_dict[attribute] = dict(value)
 
         model.__dict__.update(new_dict)
 
@@ -652,8 +691,9 @@ class Serializer:
         "Gene", "Interaction", "Metabolite", "Reaction", "Regulator", "Target", "MetabolicModel", "RegulatoryModel"
     ]:
         """
-        It creates a copy of the variable or model. This is a shallow copy, meaning that the attributes and containers
-        are copied by reference. If you want to create a deep copy, use the deepcopy method.
+        It creates a copy of the variable or model. This is a shallow copy: a model copy has its own containers,
+        but the variables in them are shared with (and still belong to) the original model.
+        If you want to create a deep copy, use the deepcopy method.
         :return: a new variable or model
         """
         return self.__copy__()
@@ -665,7 +705,21 @@ class Serializer:
     ]:
         obj_dict = self.to_dict(variables=True)
         memo[id(self)] = obj_dict
-        return self.from_dict(obj_dict, variables=True)
+        new = self.from_dict(obj_dict, variables=True)
+
+        # json serialization of a variable keeps only the identifiers of its metabolites
+        if not hasattr(self, "containers") and hasattr(self, "_stoichiometry"):
+            originals = {metabolite.id: metabolite for metabolite in self._stoichiometry}
+            for metabolite in new._stoichiometry:
+                source = originals.get(metabolite.id)
+                if source is not None:
+                    metabolite._name = source._name
+                    metabolite._aliases = set(source._aliases)
+                    metabolite._charge = source._charge
+                    metabolite._compartment = source._compartment
+                    metabolite._formula = source._formula
+
+        return new
 
     def deepcopy(
         self,

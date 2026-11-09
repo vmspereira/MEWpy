@@ -76,7 +76,7 @@ class HybridGOUProblem(GOUProblem):
         # Finds the intersection ranges of the kinetic and steady-state
         # constraints genetic modifications space.
         # If not overlapping, the genetic modifications are not applied.
-        for r, v in self.hconstraints.items():
+        for r, v in self.simulator.resolve_keys(self.hconstraints, "reaction").items():
             if r in constraints.keys():
                 x = constraints[r]
                 if isinstance(x, tuple):
@@ -185,7 +185,7 @@ class HybridGeckoOUProblem(GeckoOUProblem):
         self.vmaxs = vmaxs[:]
         vmaxs = set(vmaxs)
         enz = self.enzyme_mapping.proteins
-        proteins = [x for x in self.simulator.proteins if x not in enz]
+        proteins = set(x for x in self.simulator.proteins if x not in enz)
 
         # remove IDs defined as non modification targets
         if self.non_target:
@@ -197,8 +197,8 @@ class HybridGeckoOUProblem(GeckoOUProblem):
             vmaxs = vmaxs - set(self._partial_solution.keys())
             proteins = proteins - set(self._partial_solution.keys())
 
-        # the target list
-        self._trg_list = list(vmaxs) + list(proteins)
+        # the target list, sorted as set order depends on the interpreter hash seed
+        self._trg_list = sorted(vmaxs) + sorted(proteins)
 
     def solution_to_constraints(self, candidate: Dict[str, float]) -> Dict[str, Union[float, Tuple[float, float]]]:
         """Converts a dictionary of modifications to metabolic constraints.
@@ -261,5 +261,5 @@ class HybridGeckoOUProblem(GeckoOUProblem):
                     else:
                         enzymatic_constraints[draw_p] = (min_enzyme_usage, max_enzyme_usage)
 
-            constraints.update(enzymatic_constraints)
-            return constraints
+        constraints.update(enzymatic_constraints)
+        return constraints

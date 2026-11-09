@@ -22,6 +22,10 @@ from math import inf
 from warnings import warn
 
 from pyscipopt import Model as SCIPModel
+from pyscipopt import quicksum
+
+# SCIP accepts changes to the model only in the problem stage (SCIP_STAGE_PROBLEM)
+_SCIP_STAGE_PROBLEM = 1
 
 from .solution import Solution, Status
 from .solver import Parameter, Solver, VarType, default_parameters
@@ -83,6 +87,11 @@ class PySCIPOptSolver(Solver):
         if model:
             self.build_problem(model)
 
+    def _to_problem_stage(self):
+        """Free the transformed problem left by a previous solve so the model can be modified."""
+        if self.problem.getStage() > _SCIP_STAGE_PROBLEM:
+            self.problem.freeTransform()
+
     def add_variable(self, var_id, lb=-inf, ub=inf, vartype=VarType.CONTINUOUS, update=True):
         """Add a variable to the current problem.
 
@@ -109,6 +118,7 @@ class PySCIPOptSolver(Solver):
             vartypes (list): variable types
         """
 
+        self._to_problem_stage()
         for var_id, lb, ub, vartype in zip(var_ids, lbs, ubs, vartypes):
             # Handle infinities
             lb = None if lb == -inf else lb
@@ -181,12 +191,10 @@ class PySCIPOptSolver(Solver):
             rhs (list): right-hand side of equations
         """
 
+        self._to_problem_stage()
         for constr_id, lh, sense, rh in zip(constr_ids, lhs, senses, rhs):
-            # Cache constraint data for potential reconstruction
-            self._constr_data[constr_id] = (lh.copy(), sense, rh)
-
-            # Build the linear expression
-            expr = sum(coeff * self._vars[var_id] for var_id, coeff in lh.items() if var_id in self._vars)
+            # Build the linear expression (quicksum keeps an empty left-hand side a SCIP expression)
+            expr = quicksum(coeff * self._vars[var_id] for var_id, coeff in lh.items() if var_id in self._vars)
 
             # Add constraint based on sense
             if sense == "=":
@@ -198,6 +206,8 @@ class PySCIPOptSolver(Solver):
             else:
                 raise ValueError(f"Invalid constraint sense: {sense}")
 
+            # Cache constraint data for potential reconstruction
+            self._constr_data[constr_id] = (lh.copy(), sense, rh)
             self._constrs[constr_id] = constr
             self.constr_ids.append(constr_id)
 
@@ -216,6 +226,7 @@ class PySCIPOptSolver(Solver):
             var_ids (list): variable identifiers
         """
 
+        self._to_problem_stage()
         for var_id in var_ids:
             if var_id in self._vars:
                 var = self._vars[var_id]
@@ -242,6 +253,7 @@ class PySCIPOptSolver(Solver):
             constr_ids (list): constraint identifiers
         """
 
+        self._to_problem_stage()
         for constr_id in constr_ids:
             if constr_id in self._constrs:
                 constr = self._constrs[constr_id]
@@ -296,7 +308,7 @@ class PySCIPOptSolver(Solver):
                 pass  # Might not be transformed yet
 
             # Build objective expression
-            obj_expr = sum(coeff * self._vars[var_id] for var_id, coeff in linear.items() if var_id in self._vars)
+            obj_expr = quicksum(coeff * self._vars[var_id] for var_id, coeff in linear.items() if var_id in self._vars)
 
             # Set objective
             sense = "minimize" if minimize else "maximize"
@@ -344,6 +356,10 @@ class PySCIPOptSolver(Solver):
         if model:
             self.build_problem(model)
 
+        # rows added with update=False must reach SCIP before solving
+        if self._cached_vars or self._cached_constrs:
+            self.update()
+
         if constraints:
             temp_constrs = self._apply_temporary_constraints(constraints)
 
@@ -358,7 +374,10 @@ class PySCIPOptSolver(Solver):
         status = self.status_mapping.get(status_str, Status.UNKNOWN)
         message = status_str
 
-        if status == Status.OPTIMAL:
+        if pool_size > 1:
+            # callers of a pool expect a list, as with CPLEX and Gurobi (which also treat pool_size <= 1 as one solve)
+            solution = self._get_solution_pool(status, get_values, pool_size, pool_gap)
+        elif status == Status.OPTIMAL:
             fobj = self.problem.getObjVal()
             values, s_prices, r_costs = None, None, None
 
@@ -401,6 +420,29 @@ class PySCIPOptSolver(Solver):
             self._remove_temporary_constraints(temp_constrs)
 
         return solution
+
+    def _get_solution_pool(self, status, get_values, pool_size, pool_gap):
+        """Solutions SCIP stored during the search, best first, at most pool_size of them.
+
+        With pool_gap, only solutions within that relative gap of the optimum are kept.
+        """
+        if status != Status.OPTIMAL:
+            return []
+        if isinstance(get_values, list):
+            var_ids = [var_id for var_id in get_values if var_id in self._vars]
+        else:
+            var_ids = list(self._vars) if get_values else []
+        best = self.problem.getObjVal()
+        solutions = []
+        for sol in self.problem.getSols():
+            fobj = self.problem.getSolObjVal(sol)
+            if pool_gap is not None and abs(fobj - best) > pool_gap * max(abs(best), 1e-9):
+                continue
+            values = {var_id: self.problem.getSolVal(sol, self._vars[var_id]) for var_id in var_ids}
+            solutions.append(Solution(status, None, fobj, values if get_values else None))
+            if len(solutions) >= pool_size:
+                break
+        return solutions
 
     def _apply_temporary_constraints(self, constraints):
         """Apply temporary constraints and return them for later removal."""
@@ -512,7 +554,7 @@ class PySCIPOptSolver(Solver):
             self._constr_data[constr_id] = (new_lhs, sense, rhs)
 
             # Build new expression
-            expr = sum(coeff * self._vars[var_id] for var_id, coeff in new_lhs.items() if var_id in self._vars)
+            expr = quicksum(coeff * self._vars[var_id] for var_id, coeff in new_lhs.items() if var_id in self._vars)
 
             # Recreate constraint
             if sense == "=":

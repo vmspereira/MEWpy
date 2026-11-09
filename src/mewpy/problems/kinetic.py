@@ -53,7 +53,8 @@ class KineticKOProblem(AbstractKOProblem):
                 target.append(k)
         if self.non_target is not None:
             target = set(target) - set(self.non_target)
-        self._trg_list = list(target)
+        # sorted: set order depends on the interpreter hash seed, which breaks seeded runs
+        self._trg_list = sorted(target)
 
     def decode(self, candidate):
         factors = {self.target_list[idx]: 0 for idx in candidate}
@@ -93,7 +94,7 @@ class KineticOUProblem(AbstractOUProblem):
                 target.append(k)
         if self.non_target is not None:
             target = set(target) - set(self.non_target)
-        self._trg_list = list(target)
+        self._trg_list = sorted(target)
 
     def decode(self, candidate):
         factors = {self.target_list[idx]: self.levels[lv_idx] for idx, lv_idx in candidate}

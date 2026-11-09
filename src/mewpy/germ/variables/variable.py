@@ -650,7 +650,8 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         It cleans the context of the variable.
         :return:
         """
-        self.contexts[:-1] = HistoryManager()
+        if self.contexts:
+            self.contexts[-1] = HistoryManager()
 
     def reset(self):
         """
@@ -945,19 +946,18 @@ def variables_from_symbolic(
         if symbol.name in variables:
             continue
 
-        if model:
+        variable = model.get(symbol.name) if model else None
 
-            variable = model.get(symbol.name)
+        if variable:
 
-            if variable:
+            for variable_type in types:
 
-                for variable_type in types:
-
-                    if not variable.is_a(variable_type):
-                        raise TypeError(f"{symbol.name} is not a {variable_type} in model {model.id}")
+                if not variable.is_a(variable_type):
+                    raise TypeError(f"{symbol.name} is not a {variable_type} in model {model.id}")
 
         else:
-            variable = Variable.from_types(identifier=symbol.name, types=types, model=model)
+            # variables missing from the model are created; the reaction/interaction adds them to the model
+            variable = Variable.from_types(identifier=symbol.name, types=types)
 
         variables[variable.id] = variable
 

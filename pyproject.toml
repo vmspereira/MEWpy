@@ -28,14 +28,13 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"  # numpy>=1.26 needs 3.9
 dependencies = [
     "numpy>=1.26.0",
     "cobra",
@@ -63,10 +62,11 @@ germ = [
     "scikit-learn>=1.0.0",
     "scipy>=1.7.0",
 ]
+# No "cplex" in test/dev: the PyPI build is the Community Edition (max 1000 variables/constraints),
+# and mewpy/cobra pick CPLEX first when it is installed, so genome-scale tests would fail on it.
 test = [
     "pytest>=6.0",
     "pytest-runner",
-    "cplex",
     "tox",
     "pyscipopt>=5.0.0",
     "scikit-learn>=1.0.0",
@@ -75,7 +75,7 @@ test = [
 dev = [
     "pytest>=6.0",
     "pytest-runner",
-    "cplex",
+    "pyscipopt>=5.0.0",
     "tox",
     "flake8",
     "black",
@@ -86,6 +86,11 @@ dev = [
 docs = [
     "sphinx",
     "sphinx-rtd-theme",
+]
+# Optional packages used by some examples (GECKO with geckopy, Escher maps in the community notebook)
+examples = [
+    "geckopy",
+    "escher",
 ]
 
 [project.urls]

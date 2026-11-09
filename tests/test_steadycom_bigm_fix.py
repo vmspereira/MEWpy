@@ -111,14 +111,14 @@ class TestSteadyComBigMFix(unittest.TestCase):
         total_abundance_vars = sum(abundance_vars.values())
         self.assertAlmostEqual(total_abundance_vars, 1.0, places=6, msg="Abundance variables (x_org) should sum to 1")
 
-        # Each abundance variable should be between 0 and 1
+        # Each abundance variable should be between 0 and 1 (up to solver round-off)
         for org_id, x_value in abundance_vars.items():
-            self.assertGreaterEqual(x_value, 0, f"Abundance variable x_{org_id} should be non-negative")
-            self.assertLessEqual(x_value, 1, f"Abundance variable x_{org_id} should not exceed 1")
+            self.assertGreaterEqual(x_value, -1e-9, f"Abundance variable x_{org_id} should be non-negative")
+            self.assertLessEqual(x_value, 1 + 1e-9, f"Abundance variable x_{org_id} should not exceed 1")
 
-        # Biomass fluxes (result.abundance) should be positive
-        for org_id, biomass_flux in result.abundance.items():
-            self.assertGreater(biomass_flux, 0, f"Biomass flux for {org_id} should be positive")
+        # The organisms are identical, so any split is optimal and one abundance may be 0;
+        # the reported abundances must still sum to 1.
+        self.assertAlmostEqual(sum(result.abundance.values()), 1.0, places=6)
 
     def test_steadycom_with_manual_bigM(self):
         """Test that SteadyCom still works when BigM is manually specified."""

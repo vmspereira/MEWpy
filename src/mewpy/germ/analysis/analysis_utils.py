@@ -1,6 +1,6 @@
 from collections import namedtuple
 from dataclasses import dataclass
-from math import exp, log
+from math import exp, log1p
 from typing import TYPE_CHECKING, Callable, Dict, Tuple, Union
 
 from mewpy.germ.algebra import And, Or
@@ -12,11 +12,13 @@ if TYPE_CHECKING:
     from mewpy.solvers import Solution
 
 
-def decode_solver_solution(solution: "Solution") -> Tuple[float, str]:
+def decode_solver_solution(solution: "Solution", minimize: bool = False) -> Tuple[float, str]:
     """
     It decodes the solution of the solver and returns the objective value.
 
     :param solution: the solution of the solver
+    :param minimize: whether the objective was minimized. An unbounded minimization is decoded as the
+    lower bound, an unbounded maximization as the upper bound
     :return: the objective value and the status of the solution
     """
     sol_status = solution.status.value
@@ -26,7 +28,7 @@ def decode_solver_solution(solution: "Solution") -> Tuple[float, str]:
 
     elif solution.status == Status.UNBOUNDED or solution.status == Status.INF_OR_UNB:
 
-        sol_f_obj = ModelConstants.REACTION_UPPER_BOUND
+        sol_f_obj = ModelConstants.REACTION_LOWER_BOUND if minimize else ModelConstants.REACTION_UPPER_BOUND
 
     else:
         sol_f_obj = 0.0
@@ -63,7 +65,8 @@ def run_method_and_decode(
         solver_kwargs["minimize"] = kwargs["minimize"]
 
     solution = method.optimize(to_solver=True, solver_kwargs=solver_kwargs, **kwargs)
-    objective_value, status = decode_solver_solution(solution=solution)
+    minimize = bool(kwargs.get("minimize", False))
+    objective_value, status = decode_solver_solution(solution=solution, minimize=minimize)
     return objective_value, status
 
 
@@ -82,6 +85,7 @@ class CoRegResult:
     biomass: CoRegBiomass = None
     state: Dict[str, float] = None
     constraints: Dict[str, Tuple[float, float]] = None
+    status: Status = Status.OPTIMAL
 
 
 def build_metabolites(
@@ -106,8 +110,9 @@ def build_metabolites(
         else:
             rxn = model.reactions[ex_rxn_id]
 
-        for met_id in rxn.stoichiometry.keys():
-            met_to_exchange[met_id] = ex_rxn_id
+        for met in rxn.stoichiometry.keys():
+            # legacy reactions key the stoichiometry by Metabolite objects
+            met_to_exchange[getattr(met, "id", met)] = ex_rxn_id
 
     for metabolite, concentration in metabolites.items():
         # Find exchange reaction for this metabolite
@@ -140,12 +145,19 @@ def concentration_to_lb(concentration, biomass, time_step):
     return concentration / (biomass * time_step)
 
 
+def _soft_plus(x):
+    # log(1 + exp(x)) without overflowing exp for large x (e.g. scaled states of 1000)
+    if x > 0:
+        return x + log1p(exp(-x))
+    return log1p(exp(x))
+
+
 def lb_soft_plus(soft_plus, coefficient):
-    return -1 * log(1 + exp(soft_plus + abs(coefficient)))
+    return -1 * _soft_plus(soft_plus + abs(coefficient))
 
 
 def ub_soft_plus(soft_plus, coefficient):
-    return log(1 + exp(soft_plus + coefficient))
+    return _soft_plus(soft_plus + coefficient)
 
 
 def euler_step_biomass(old_biomass_yield, growth_rate, time_step):
@@ -197,6 +209,83 @@ def metabolites_constraints(
     return constraints
 
 
+def _metabolite_exchanges(model) -> Dict[str, Tuple[str, float]]:
+    """Metabolite id -> (exchange reaction id, lower bound), from the simulator of a RegulatoryExtension."""
+    if isinstance(model.reactions, dict) or not hasattr(model, "get_exchange_reactions"):
+        # legacy GERM models link metabolite regulators to their exchange reaction directly
+        return {}
+    exchanges = {}
+    for ex_rxn_id in model.get_exchange_reactions():
+        rxn = model.get_reaction(ex_rxn_id)
+        for met_id in rxn["stoichiometry"]:
+            exchanges[met_id] = (ex_rxn_id, rxn["lb"])
+    return exchanges
+
+
+def regulators_initial_state(
+    model: Union["Model", "MetabolicModel", "RegulatoryModel"], state: Dict[str, float] = None
+) -> Dict[str, float]:
+    """
+    Initial state of every regulator: the value given in state; for a metabolite with an exchange reaction,
+    the uptake bound |lower bound| of the exchange (or the value given in state for the exchange), i.e. whether
+    the metabolite is in the medium; otherwise the maximum coefficient of the regulator.
+
+    :param model: the model to be simulated
+    :param state: values given explicitly for regulators or exchange reactions
+    :return: dict of regulator ids and their initial values
+    """
+    if not state:
+        state = {}
+
+    exchanges = _metabolite_exchanges(model)
+    initial_state = {}
+    for regulator in model.yield_regulators():
+        # RegulatoryExtension yields (id, regulator) tuples, legacy models yield regulators
+        if isinstance(regulator, tuple):
+            regulator = regulator[1]
+
+        if regulator.id in state:
+            initial_state[regulator.id] = state[regulator.id]
+            continue
+
+        if regulator.is_metabolite() and getattr(regulator, "exchange_reaction", None):
+            exchange = (regulator.exchange_reaction.id, regulator.exchange_reaction.lower_bound)
+        else:
+            exchange = exchanges.get(regulator.id)
+
+        if exchange is not None:
+            exchange_id, lower_bound = exchange
+            initial_state[regulator.id] = state[exchange_id] if exchange_id in state else abs(lower_bound)
+        else:
+            initial_state[regulator.id] = max(regulator.coefficients)
+
+    return initial_state
+
+
+def gene_defaults(model: Union["Model", "MetabolicModel", "RegulatoryModel"]) -> Dict[str, float]:
+    """
+    Default activity of every metabolic gene: the maximum coefficient for legacy GERM genes
+    (what a GPR symbol falls back to when the gene is missing from the state), 1.0 otherwise.
+    """
+    genes = model.genes
+    if isinstance(genes, dict):
+        return {gene_id: max(getattr(gene, "coefficients", (1.0,))) for gene_id, gene in genes.items()}
+    return {getattr(gene, "id", gene): 1.0 for gene in genes}
+
+
+def reaction_gpr(model: Union["Model", "MetabolicModel", "RegulatoryModel"], rxn_id: str):
+    """Parsed GPR of a reaction for both RegulatoryExtension (get_parsed_gpr) and legacy GERM models."""
+    if hasattr(model, "get_parsed_gpr"):
+        return model.get_parsed_gpr(rxn_id)
+    return model.reactions[rxn_id].gpr
+
+
+def gpr_gene_ids(gpr) -> list:
+    """Names of all gene symbols in a GPR (an Expression or a Symbolic), at any nesting depth."""
+    symbolic = getattr(gpr, "symbolic", gpr)
+    return [atom.name for atom in symbolic.atoms(symbols_only=True)]
+
+
 def continuous_gpr(
     model: Union["Model", "MetabolicModel", "RegulatoryModel"], state: Dict[str, float], scale: bool = False
 ):
@@ -205,36 +294,22 @@ def continuous_gpr(
     states = {}
     # Iterate over reaction IDs and get parsed GPR for each
     for rxn_id in model.reactions:
-        # Handle both APIs for accessing GPR
-        if hasattr(model, "get_parsed_gpr"):
-            # RegulatoryExtension: has get_parsed_gpr() method
-            gpr = model.get_parsed_gpr(rxn_id)
-        else:
-            # Legacy model: access reaction's gpr attribute directly
-            rxn = model.reactions[rxn_id]
-            gpr = rxn.gpr
+        gpr = reaction_gpr(model, rxn_id)
 
         if gpr.is_none:
             continue
 
-        # Extract gene IDs from GPR variables
-        # Handle both APIs: RegulatoryExtension has Symbol objects, legacy has dict with string keys
-        if isinstance(gpr.variables, dict):
-            # Legacy model: variables is a dict with gene IDs as keys
-            gene_ids = list(gpr.variables.keys())
-        else:
-            # RegulatoryExtension: variables are Symbol objects with .name attribute
-            gene_ids = [var.name for var in gpr.variables]
-
-        if not set(gene_ids).issubset(state):
+        # gene symbols at any depth (gpr.variables only holds the root operator's children)
+        if not set(gpr_gene_ids(gpr)).issubset(state):
             continue
 
-        states[rxn_id] = gpr.evaluate(values=state, operators=operators, missing_value=0)
+        states[rxn_id] = gpr.evaluate(values=state, operators=operators)
 
-    if scale:
+    if scale and states:
         _max_state = max(states.values())
 
-        return {key: round((val / _max_state), 6) * 1000 for key, val in states.items()}
+        if _max_state > 0:
+            return {key: round((val / _max_state), 6) * 1000 for key, val in states.items()}
 
     return states
 
@@ -255,10 +330,6 @@ def gene_state_constraints(
     # evaluate the soft plus over the bounds computed using the continuous version of the gpr rules
     # gene_state_bounds does not contain reactions without gpr rules
     for reaction, coefficient in reactions_state.items():
-        # Skip reactions not in constraints dict (may not be in model's yield_reactions())
-        if reaction not in constraints:
-            continue
-
         old_lb, old_ub = constraints[reaction]
 
         if coefficient > tolerance:

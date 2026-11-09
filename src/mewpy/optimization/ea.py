@@ -154,6 +154,7 @@ class AbstractEA(ABC):
         mp: bool = True,
         np: int = None,
         visualizer: bool = False,
+        seed: int = None,
         **kwargs,
     ):
 
@@ -164,6 +165,8 @@ class AbstractEA(ABC):
         self.mp = mp
         self.final_population = None
         self.np = np
+        # seed for the random number generators; None draws a non reproducible seed
+        self.seed = seed
 
     def run(self, simplify=True):
         """Runs the optimization for the defined problem.
@@ -270,23 +273,24 @@ def dominance_test(solution1, solution2, maximize=True):
     best_is_one = 0
     best_is_two = 0
 
+    # get_fitness: jMetal solutions keep their values in `objectives`, not in `fitness`
     if isinstance(solution1, list):
         s1 = solution1
     else:
-        s1 = solution1.fitness
+        s1 = solution1.get_fitness()
 
     if isinstance(solution2, list):
         s2 = solution2
     else:
-        s2 = solution2.fitness
+        s2 = solution2.get_fitness()
 
     for i in range(len(s1)):
         value1 = s1[i]
         value2 = s2[i]
         if value1 != value2:
-            if value1 < value2:
-                best_is_one = 1
             if value1 > value2:
+                best_is_one = 1
+            if value1 < value2:
                 best_is_two = 1
 
     if best_is_one > best_is_two:
@@ -318,10 +322,10 @@ def non_dominated_population(solutions, maximize=True, filter_duplicate=True):
         for q in range(p + 1, len(solutions)):
             dominance_test_result = dominance_test(solutions[p], solutions[q], maximize=maximize)
 
-            if dominance_test_result == -1:
+            if dominance_test_result == 1:
                 ith_dominated[p].append(q)
                 dominating_ith[q] += 1
-            elif dominance_test_result == 1:
+            elif dominance_test_result == -1:
                 ith_dominated[q].append(p)
                 dominating_ith[p] += 1
 

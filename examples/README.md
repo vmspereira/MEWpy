@@ -14,6 +14,7 @@ This folder contains examples on how MEWpy can be used to perform phenotype simu
 - The [CoFactorSwap](07-CoFactorSwap.ipynb) illustrates how to swap co-factors to optimize the production of a metabolite.
 - The [Community](08-community.ipynb) provides examples on how to use MEWpy to build community models.
 - The [CrossFeeding](09-crossfeeding.ipynb) illustrated how to use MEWpy to design strains that favor crossfeeding. 
+- The [Omics](11-omics.ipynb) notebook integrates yeast transcriptomics with the iMM904 model using eFlux, GIMME and iMAT, builds context-specific models (saved as SBML), and runs the same analysis on COBRApy and REFRAMED models.
 - The [GERM_Models](GERM_Models.ipynb) example illustrates how to work with GERM models in MEWpy.
 - The [GERM_Models_analysis](GERM_Models_analysis.ipynb) example illustrates how to work with GERM models analysis in MEWpy.
 proteins.

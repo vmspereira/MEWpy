@@ -26,6 +26,8 @@ import string
 from reframed.core.cbmodel import CBModel
 from reframed.external.cobrapy import to_cobrapy
 
+from mewpy.simulation import get_simulator
+
 
 def escher_maps():
     try:
@@ -59,6 +61,8 @@ def to_json(model, filename=None):
 
 
 def remove_prefix(text, prefix="R_"):
+    """Strip a reaction id prefix. Used only when no model is given; otherwise build_escher uses
+    the model's own Simulator.to_canonical."""
     if text.startswith(prefix):
         return text[len(prefix) :]
     return text
@@ -82,7 +86,12 @@ def build_escher(model=None, fluxes=None, fmt_func=remove_prefix, **kwargs):
             map_name = "e_coli_core.Core metabolism"
 
     if fluxes and fmt_func:
-        fluxes = {fmt_func(r_id): val for r_id, val in fluxes.items()}
+        if fmt_func is remove_prefix and model is not None and not isinstance(model, str):
+            # the model knows its own reaction id prefix (REFRAMED 'R_', none for COBRApy)
+            sim = get_simulator(model)
+            fluxes = {sim.to_canonical(r_id, "reaction"): val for r_id, val in fluxes.items()}
+        else:
+            fluxes = {fmt_func(r_id): val for r_id, val in fluxes.items()}
     else:
         fluxes = None
     if js:

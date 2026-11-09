@@ -101,9 +101,106 @@ class ModelContainer(ABC):
     Provides an abstraction from models implementations.
     """
 
+    # Backend id prefixes (REFRAMED keeps the SBML R_/M_/G_ prefixes; COBRApy and GERM drop them).
+    # prefix(kind) is the public form; these attributes are kept as aliases.
     _r_prefix = ""
     _m_prefix = ""
     _g_prefix = ""
+
+    # -----------------------------------------------------------------------------
+    # Identifier resolution: callers may pass ids with or without the SBML prefix
+    # -----------------------------------------------------------------------------
+    _ID_KINDS = {"reaction": "reactions", "metabolite": "metabolites", "gene": "genes"}
+    _SBML_PREFIXES = {"reaction": "R_", "metabolite": "M_", "gene": "G_"}
+
+    def prefix(self, kind: str) -> str:
+        """The backend prefix of an id kind ('reaction', 'metabolite' or 'gene'); '' when ids are unprefixed."""
+        self._check_kind(kind)
+        return {"reaction": self._r_prefix, "metabolite": self._m_prefix, "gene": self._g_prefix}[kind]
+
+    def to_native(self, base_id: str, kind: str) -> str:
+        """Adds the backend prefix to a base (unprefixed) id, e.g. to name a new reaction."""
+        return self.prefix(kind) + base_id
+
+    def to_canonical(self, native_id: str, kind: str) -> str:
+        """Strips the backend prefix from a backend-native id."""
+        prefix = self.prefix(kind)
+        return native_id[len(prefix) :] if prefix and native_id.startswith(prefix) else native_id
+
+    def resolve(self, identifier, kind: str = "reaction"):
+        """Returns the backend-native id for an id given with or without its SBML prefix.
+
+        An exact match wins; otherwise the prefixed form, then the form with the SBML prefix stripped.
+        An id that matches neither is returned unchanged, so lookups fail as before.
+
+        :raises ValueError: if there is no exact match and both candidate forms exist.
+        """
+        ids = self._native_ids(kind)
+        if not isinstance(identifier, str) or identifier in ids:
+            return identifier
+        sbml_prefix = self._SBML_PREFIXES[kind]
+        candidates = {self.to_native(identifier, kind)}
+        if identifier.startswith(sbml_prefix):
+            candidates.add(identifier[len(sbml_prefix) :])
+        found = sorted(c for c in candidates if c in ids)
+        if len(found) > 1:
+            raise ValueError(f"Ambiguous {kind} id '{identifier}': matches {found}")
+        return found[0] if found else identifier
+
+    def resolve_many(self, ids, kind: str = "reaction") -> list:
+        """Resolves each id of an iterable (see resolve)."""
+        return [self.resolve(i, kind) for i in ids]
+
+    def resolve_keys(self, mapping, kind: str = "reaction"):
+        """Returns a copy of a dict (e.g. constraints) with its keys resolved (see resolve); None stays None."""
+        if mapping is None:
+            return None
+        resolved = OrderedDict() if isinstance(mapping, OrderedDict) else dict()
+        for key, value in mapping.items():
+            resolved[self.resolve(key, kind)] = value
+        return resolved
+
+    def _resolve_mapping(self, mapping, kind: str = "reaction"):
+        """Like resolve_keys, but returns the mapping itself when all its keys are already native."""
+        if not mapping or all(self.resolve(key, kind) == key for key in mapping):
+            return mapping
+        return self.resolve_keys(mapping, kind)
+
+    def _resolve_objective(self, objective):
+        """Resolves the reaction ids of an objective given as an id, a list of ids or a {id: coefficient} dict."""
+        if isinstance(objective, dict):
+            return self.resolve_keys(objective, "reaction")
+        if isinstance(objective, str):
+            return self.resolve(objective, "reaction")
+        if isinstance(objective, (list, tuple)):
+            return self.resolve_many(objective, "reaction")
+        return objective
+
+    def _check_kind(self, kind):
+        if kind not in self._ID_KINDS:
+            raise ValueError(f"Unknown id kind '{kind}'; use one of {list(self._ID_KINDS)}")
+
+    def _id_count(self, kind):
+        try:
+            return len(getattr(self.model, self._ID_KINDS[kind]))
+        except (AttributeError, TypeError):
+            return None
+
+    def _native_ids(self, kind):
+        """Cached set of the model's ids of a kind, rebuilt when the model's count of that kind changes."""
+        self._check_kind(kind)
+        cache = self.__dict__.setdefault("_id_cache", {})
+        count = self._id_count(kind)
+        entry = cache.get(kind)
+        if entry is None or count is None or entry[0] != count:
+            ids = frozenset(getattr(self, self._ID_KINDS[kind]))
+            entry = (count, ids)
+            cache[kind] = entry
+        return entry[1]
+
+    def _invalidate_id_cache(self):
+        """Drops the cached id sets; called by methods that add or remove model entities."""
+        self.__dict__.pop("_id_cache", None)
 
     @property
     def reactions(self):
@@ -405,6 +502,7 @@ class Simulator(ModelContainer, SimulationInterface):
         raise NotImplementedError
 
     def set_environmental_conditions(self, medium):
+        medium = self.resolve_keys(medium)
         for k, v in medium.items():
             if isinstance(v, tuple):
                 lb, ub = v
@@ -527,6 +625,7 @@ class Simulator(ModelContainer, SimulationInterface):
         :returns: A list of active reaction identifiers.
 
         """
+        active_genes = set(self.resolve_many(active_genes, "gene"))
         active_reactions = []
         reactions = self.reactions
         for r_id in reactions:
@@ -539,6 +638,7 @@ class Simulator(ModelContainer, SimulationInterface):
         return active_reactions
 
     def is_essential_gene(self, gene, min_growth=0.01):
+        gene = self.resolve(gene, "gene")
         gr = self.get_gene_reactions()
         active_genes = set(self.genes) - {gene}
         rxns = gr.get(gene, [])
@@ -616,7 +716,7 @@ class Simulator(ModelContainer, SimulationInterface):
         :return: A list of reaction identifiers
         """
         m_r = self.metabolite_reaction_lookup()
-        return list(m_r[m_id].keys())
+        return list(m_r[self.resolve(m_id, "metabolite")].keys())
 
     def get_metabolite_producers(self, m_id: str) -> List[str]:
         """Returns the list or reactions that produce a metabolite.
@@ -625,7 +725,7 @@ class Simulator(ModelContainer, SimulationInterface):
         :return: A list of reaction identifiers
         """
         m_r = self.metabolite_reaction_lookup()
-        return [k for k, v in m_r[m_id].items() if v > 0]
+        return [k for k, v in m_r[self.resolve(m_id, "metabolite")].items() if v > 0]
 
     def get_metabolite_consumers(self, m_id):
         """Returns the list or reactions that consume a metabolite.
@@ -634,11 +734,19 @@ class Simulator(ModelContainer, SimulationInterface):
         :return: A list of reaction identifiers
         """
         m_r = self.metabolite_reaction_lookup()
-        return [k for k, v in m_r[m_id].items() if v < 0]
+        return [k for k, v in m_r[self.resolve(m_id, "metabolite")].items() if v < 0]
 
     def copy(self):
         """Retuns a copy of the Simulator instance."""
         return deepcopy(self)
+
+    def __getstate__(self):
+        # A cached LP solver (reset_solver=False) wraps a native object (e.g. SCIP) that cannot be
+        # copied or pickled; the copy builds its own solver on the next simulation.
+        state = self.__dict__.copy()
+        if state.get("solver") is not None:
+            state["solver"] = None
+        return state
 
 
 class SimulationResult(object):
@@ -925,6 +1033,7 @@ class SimulationResult(object):
                     right = right + str(fluxValue)
                     right = right + " " + m[0]
 
+        biomassId = sim.resolve(biomassId, "reaction") if biomassId else biomassId
         if biomassId and biomassId in ssFluxes.keys():
             biomassFlux = ssFluxes[biomassId]
             if biomassFlux > 0:
@@ -999,7 +1108,7 @@ class SimulationResult(object):
         if not self.fluxes:
             return None
 
-        m_r = sim.metabolite_reaction_lookup()[met_id]
+        m_r = sim.metabolite_reaction_lookup()[sim.resolve(met_id, "metabolite")]
         data = {r_id: coeff * self.fluxes[r_id] for r_id, coeff in m_r.items()}
         if format == "df":
             import pandas as pd

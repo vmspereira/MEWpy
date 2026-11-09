@@ -434,9 +434,11 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
         :param history: Whether to register this operation in the model history
         """
         if history:
+            # undoing restores the previous target and removes the new one from the model only if it was not there
+            in_model = bool(self.model) and target is not None and self.model.get(target.id) is target
             self.history.queue_command(
-                undo_func=self.remove_target,
-                undo_kwargs={"remove_from_model": True, "history": False},
+                undo_func=self._restore_target,
+                undo_kwargs={"target": self.target, "remove_from_model": not in_model},
                 func=self.add_target,
                 kwargs={"target": target, "history": history},
             )
@@ -448,6 +450,9 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
             return
 
         else:
+            if self._target is not None and self._target is not target:
+                # the replaced target is no longer regulated by this interaction
+                self._target._interaction = None
             self._target = target
             self.target._interaction = self
 
@@ -455,6 +460,43 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
                 self.model.add(self.target, comprehensive=False, history=False)
 
                 self.model.notify()
+
+    def _restore_target(self, target: "Target", remove_from_model: bool):
+        """
+        It restores a previous target of this interaction. Used to undo add_target.
+
+        Internal use only.
+        :param target: the previous target or None
+        :param remove_from_model: whether the current target must be removed from the model
+        """
+        self.remove_target(remove_from_model=remove_from_model, history=False)
+        if target is not None:
+            self.add_target(target, history=False)
+
+    def _unlink_unused_regulators(self, expression: Expression) -> list:
+        """
+        It removes this interaction from the regulators of the given expression that are no longer used by any
+        regulatory event of this interaction.
+
+        Internal use only.
+        :param expression: an expression that was removed or replaced
+        :return: the regulators left without any interaction
+        """
+        in_use = {reg_id for event in self._regulatory_events.values() for reg_id in event.variables}
+
+        orphans = []
+        for regulator in expression.variables.values():
+            if regulator.id in in_use:
+                continue
+
+            # noinspection PyProtectedMember
+            regulator._interactions.pop(self.id, None)
+
+            # noinspection PyProtectedMember
+            if not regulator._interactions:
+                orphans.append(regulator)
+
+        return orphans
 
     def remove_target(self, remove_from_model=True, history=True):
         """
@@ -508,15 +550,20 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
                 f"expression must be an {Expression} object. " f"To set None, provide an empty Expression()"
             )
 
+        previous = self._regulatory_events.get(coefficient)
+
         if history:
+            if previous is None:
+                undo_func = self.remove_regulatory_event
+                undo_kwargs = {"coefficient": coefficient, "remove_orphans": True, "history": False}
+            else:
+                # undoing a replacement restores the previous regulatory event
+                undo_func = self.add_regulatory_event
+                undo_kwargs = {"coefficient": coefficient, "expression": previous, "history": False}
+
             self.history.queue_command(
-                undo_func=self.remove_regulatory_event,
-                undo_kwargs={
-                    "coefficient": coefficient,
-                    "expression": expression,
-                    "remove_orphans": True,
-                    "history": False,
-                },
+                undo_func=undo_func,
+                undo_kwargs=undo_kwargs,
                 func=self.add_regulatory_event,
                 kwargs={"coefficient": coefficient, "expression": expression, "history": history},
             )
@@ -531,6 +578,9 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
                     to_add.append(regulator)
 
         self._regulatory_events[coefficient] = expression
+
+        if previous is not None and previous is not expression:
+            self._unlink_unused_regulators(previous)
 
         if self.model:
             self.model.add(*to_add, comprehensive=False, history=False)
@@ -567,18 +617,10 @@ class Interaction(Variable, variable_type="interaction", register=True, construc
                 kwargs={"coefficient": coefficient, "remove_orphans": remove_orphans, "history": history},
             )
 
-        to_remove = []
-
-        for regulator in expression.variables.values():
-
-            # noinspection PyProtectedMember
-            del regulator._interactions[self.id]
-
-            # noinspection PyProtectedMember
-            if not regulator._interactions:
-                to_remove.append(regulator)
-
         self._regulatory_events.pop(coefficient)
+
+        # regulators shared with other regulatory events of this interaction stay linked
+        to_remove = self._unlink_unused_regulators(expression)
 
         if self.model:
 

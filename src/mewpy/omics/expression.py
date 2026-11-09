@@ -195,21 +195,27 @@ class ExpressionSet:
                     UserWarning,
                 )
 
-                # Create new index with suffixes for duplicates
+                # Create new index with suffixes for duplicates, skipping ids already in use
+                taken = set(data_frame.index)
                 new_index = []
                 seen = {}
                 for idx in data_frame.index:
-                    if idx in seen:
-                        seen[idx] += 1
-                        new_index.append(f"{idx}_{seen[idx]}")
-                    else:
+                    if idx not in seen:
                         seen[idx] = 1
                         new_index.append(idx)
+                        continue
+                    n = seen[idx] + 1
+                    while f"{idx}_{n}" in taken:
+                        n += 1
+                    seen[idx] = n
+                    taken.add(f"{idx}_{n}")
+                    new_index.append(f"{idx}_{n}")
 
-                data_frame.index = new_index
+                # set_axis returns a new frame, so the caller's DataFrame is not modified
+                data_frame = data_frame.set_axis(new_index, axis=0)
 
         columns = [str(x) for x in data_frame.columns]
-        data_frame.columns = columns
+        data_frame = data_frame.set_axis(columns, axis=1)
 
         conditions = [c for c in columns if "p-value" not in c]
         p_value_keys = [c for c in columns if "p-value" in c]
@@ -309,12 +315,14 @@ class ExpressionSet:
             dict: A dictionary of differences
         """
 
+        # p-value columns follow combinations(conditions, 2): map each consecutive pair to its column
+        pair_column = {pair: col for col, pair in enumerate(combinations(range(len(self._conditions)), 2))}
         diff = {}
         for idx, iden in enumerate(self._identifiers):
             diff[iden] = []
             for i in range(1, len(self._conditions)):
                 start, end = self._expression[idx, i - 1 : i + 1]
-                p_val = self.p_values[idx, i - 1]
+                p_val = self.p_values[idx, pair_column[(i - 1, i)]]
                 if p_val <= p_value:
                     if start < end:
                         diff[iden].append(+1)
@@ -358,7 +366,7 @@ class ExpressionSet:
 
     def quantile_pipeline(
         self,
-        missing_values: float = None,
+        missing_values: float = np.nan,
         n_neighbors: int = 5,
         weights: str = "uniform",
         metric: str = "nan_euclidean",
@@ -384,6 +392,8 @@ class ExpressionSet:
         :param q: Quantile to compute
         :return: Quantile preprocessed expression matrix, quantile expression binarized matrix
         """
+        if missing_values is None:
+            missing_values = np.nan
         expression = knn_imputation(
             self._expression, missing_values=missing_values, n_neighbors=n_neighbors, weights=weights, metric=metric
         )
@@ -402,7 +412,10 @@ def gene_to_reaction_expression(model, gene_exp, and_func=min, or_func=max):
 
     Args:
         model: A model or a MEWpy Simulation
-        gene_exp (dict): gene identifiers and expression values
+        gene_exp (dict): gene identifiers and expression values.
+            Missing (NaN or None) values are treated as genes without data.
+            Identifiers may be given with or without the SBML 'G_' prefix (see Simulator.resolve),
+            so the same data works with COBRApy and REFRAMED models; an exact gene id wins.
         and_func ([type], optional): Function for AND. Defaults to min.
         or_func ([type], optional): Function for OR. Defaults to max.
 
@@ -410,6 +423,15 @@ def gene_to_reaction_expression(model, gene_exp, and_func=min, or_func=max):
         dict: Reaction levels
     """
     sim = get_simulator(model)
+    # NaN would make min/max depend on operand order and poison every threshold computed downstream
+    gene_exp = {g: v for g, v in gene_exp.items() if not pd.isna(v)}
+    ids = list(gene_exp)
+    native = dict(zip(ids, sim.resolve_many(ids, "gene")))
+    resolved = {g: v for g, v in gene_exp.items() if native[g] == g}
+    for g, v in gene_exp.items():
+        resolved.setdefault(native[g], v)
+    gene_exp = resolved
+    measured = set(gene_exp)
 
     rxn_exp = {}
     evaluator = GeneEvaluator(gene_exp, and_func, or_func, unexpressed_value=None)
@@ -417,7 +439,7 @@ def gene_to_reaction_expression(model, gene_exp, and_func=min, or_func=max):
         gpr = sim.get_gpr(rxn_id)
         if gpr:
             tree = build_tree(gpr, Boolean)
-            op_set = tree.get_operands().intersection(set(gene_exp.keys()))
+            op_set = tree.get_operands().intersection(measured)
             if len(op_set) == 0:
                 lv = None
             else:
@@ -480,6 +502,8 @@ class Preprocessing:
         # Compute reaction expression once (optimization for tuple cutoffs)
         rxn_exp = self.reactions_expression(condition)
         rxn_values = list(rxn_exp.values())
+        if not rxn_values:
+            raise ValueError("No reaction expression values: no expressed gene matches the model genes.")
 
         if isinstance(cutoff, tuple):
             coef = []

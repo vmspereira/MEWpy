@@ -54,3 +54,13 @@ class TestKineticSimulation(unittest.TestCase):
             # Verify result is computed (shows factors work in build_ode path)
             assert build_ode_factors_result is not None
             # Note: This test mainly verifies that both paths use the same stoichiometry and volume normalization
+
+    def test_deriv_vs_build_ode_off_initial_state(self):
+        """deriv() must use the state vector y, not the initial concentrations."""
+        import numpy as np
+
+        y0 = [self.model.concentrations.get(m_id, 0.0) for m_id in self.model.metabolites]
+        y1 = [2 * v + 0.1 for v in y0]
+        ode_func = self.model.get_ode()
+        np.testing.assert_allclose(self.model.deriv(0.0, y1), ode_func(0.0, y1), rtol=1e-8, atol=1e-12)
+        assert not np.allclose(self.model.deriv(0.0, y0), self.model.deriv(0.0, y1))

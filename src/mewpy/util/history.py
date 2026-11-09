@@ -17,6 +17,10 @@ class HistoryManager:
         self._undo_able_commands = []
         self._temp_stack = []
         self._redo_able_commands = []
+        # undo commands matching the redo-able commands, so that a redone command can be undone again
+        self._redo_undo_stack = []
+        # while an undo/redo command runs, the commands it would queue are not recorded
+        self._replaying = False
 
     def __str__(self):
         return f"History: {len(self._undo_able_commands)} undos and {len(self._redo_able_commands)} redos"
@@ -148,11 +152,19 @@ class HistoryManager:
             method = self.undo_able_commands.pop()
             redo_command = self._temp_stack.pop()
             self.redo_able_commands.append(redo_command)
+            self._redo_undo_stack.append(method)
 
         else:
             method = self.redo_able_commands.pop()
+            undo_command = self._redo_undo_stack.pop()
+            self.undo_able_commands.append(undo_command)
+            self._temp_stack.append(method)
 
-        method()
+        self._replaying = True
+        try:
+            method()
+        finally:
+            self._replaying = False
 
     def undo(self) -> None:
         self._do(undo=True)
@@ -185,6 +197,10 @@ class HistoryManager:
         obj: "Model" = None,
     ) -> None:
 
+        if self._replaying:
+            # undo/redo commands must not record themselves again
+            return
+
         if not undo_args:
             undo_args = ()
 
@@ -202,6 +218,10 @@ class HistoryManager:
         self._temp_stack.append(partial(func, *args, **kwargs))
 
         self._history.append((func.__name__, str(args), str(kwargs), str(obj)))
+
+        # a new command invalidates the commands that could be redone
+        self._redo_able_commands.clear()
+        self._redo_undo_stack.clear()
 
 
 def recorder(func: Callable):

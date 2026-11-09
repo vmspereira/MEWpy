@@ -39,6 +39,7 @@ SWAPS = [[COFACTORS["NAD"], COFACTORS["NADH"]], [COFACTORS["NADP"], COFACTORS["N
 class CofactorSwapProblem(AbstractKOProblem):
 
     RX_SUFIX = "_SWAP"
+    _target_kind = "reaction"
 
     def __init__(
         self,

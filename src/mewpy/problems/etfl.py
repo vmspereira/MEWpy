@@ -162,6 +162,8 @@ class ETFLGKOProblem(AbstractKOProblem):
 
     """
 
+    _target_kind = "gene"
+
     def __init__(self, model, fevaluation=None, **kwargs):
         super(ETFLGKOProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
         self._only_gpr = kwargs.get("only_gpr", False)
@@ -195,14 +197,15 @@ class ETFLGKOProblem(AbstractKOProblem):
         target = genes - essential - transport
         if self.non_target:
             target = target - set(self.non_target)
-        target = list(target)
+        # sorted: set order depends on the interpreter hash seed, which breaks seeded runs
+        target = sorted(target)
         self._trg_list = target
 
     def solution_to_constraints(self, candidate):
         """
         Converts a candidate, dict of genes:0 into a dictionary of constraints.
         """
-        genes = list(candidate.keys())
+        genes = list(self._native_keys(candidate).keys())
         gr_constraints = dict()
         no_trans = []
         # Translation
@@ -256,6 +259,8 @@ class ETFLGOUProblem(AbstractOUProblem):
 
     """
 
+    _target_kind = "gene"
+
     def __init__(self, model, fevaluation=None, **kwargs):
         super(ETFLGOUProblem, self).__init__(model, fevaluation=fevaluation, **kwargs)
         # operators to replace 'and'/'or'. By default min/max
@@ -291,7 +296,7 @@ class ETFLGOUProblem(AbstractOUProblem):
             target = target - set(self.non_target)
         if self._partial_solution:
             target = target - set(self._partial_solution.keys())
-        target = list(target)
+        target = sorted(target)
         self._trg_list = target
 
     def __op(self):
@@ -346,6 +351,7 @@ class ETFLGOUProblem(AbstractOUProblem):
         Decodes a candidate, a dict of genes:lv into a dictionary of reaction constraints
         """
         gr_constraints = dict()
+        candidate = self._native_keys(candidate)
         reference = self.reference
         if self._partial_solution:
             candidate.update(self._partial_solution)

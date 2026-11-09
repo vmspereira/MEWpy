@@ -7,7 +7,8 @@ metabolic data. All metabolic operations are delegated to the wrapped simulator.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, Generator, Optional, Tuple, Union
+import logging
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from mewpy.germ.algebra import Expression
@@ -16,6 +17,12 @@ if TYPE_CHECKING:
 
 # Runtime imports
 from mewpy.germ.algebra import parse_expression
+from mewpy.germ.models.model import notify_observer
+
+logger = logging.getLogger(__name__)
+
+# id kinds tried by the TRN reconciliation, in order, and the simulator container of each kind
+_ID_KINDS = (("gene", "genes"), ("reaction", "reactions"), ("metabolite", "metabolites"))
 
 
 class RegulatoryExtension:
@@ -43,7 +50,9 @@ class RegulatoryExtension:
         >>> simulator = get_simulator(cobra_model)
         >>>
         >>> # Add regulatory network
-        >>> reg_network = RegulatoryModel.from_file('regulatory.json')
+        >>> from mewpy.io import Engines, Reader, read_model
+        >>> reader = Reader(Engines.BooleanRegulatoryCSV, 'regulatory.csv', sep=',')
+        >>> reg_network = read_model(reader)
         >>> integrated = RegulatoryExtension(simulator, reg_network)
         >>>
         >>> # Use in analysis
@@ -72,6 +81,11 @@ class RegulatoryExtension:
 
         # Cache for parsed GPR expressions (performance optimization)
         self._gpr_cache: Dict[str, "Expression"] = {}
+
+        # Observers (analysis methods attached with attach=True) and TRN id -> simulator id renames
+        self._simulators: List[Any] = []
+        self._id_map: Dict[str, str] = {}
+        self._regulatory_network = None
 
         # Load regulatory network if provided
         if regulatory_network is not None:
@@ -409,11 +423,173 @@ class RegulatoryExtension:
         if isinstance(regulatory_network, RegulatoryModel):
             # Extract regulators, targets, interactions from RegulatoryModel
             # These are already stored as dictionaries in the regulatory model
+            self._regulatory_network = regulatory_network
             self._regulators = regulatory_network.regulators.copy()
             self._targets = regulatory_network.targets.copy()
             self._interactions = regulatory_network.interactions.copy()
+            self._reconcile_ids()
+            self._warn_if_disconnected()
         else:
             raise TypeError(f"Expected RegulatoryModel, got {type(regulatory_network)}")
+
+    def _reconcile_ids(self, variables=None):
+        """
+        Rename TRN variables whose ids differ from the simulator ids only by the backend prefix.
+
+        Rule: a TRN id that is not a simulator gene, reaction or metabolite id is renamed to
+        ``simulator.resolve(id, kind)`` for the first kind, in the order gene, reaction, metabolite,
+        that resolves it to a different id of that kind (the simulator owns its id prefixes, e.g.
+        reframed adds or strips G_/R_/M_). Ambiguous ids are not renamed. A rename is skipped when
+        the new id is already used by another TRN variable. Symbols inside the regulatory expressions
+        are renamed with the variables, so targets match GPR genes and regulators match
+        reaction/metabolite ids. The applied renames are available in ``id_map``
+        (original TRN id -> simulator id).
+
+        It runs when a network is loaded and whenever regulators, targets or interactions are added.
+
+        :param variables: the TRN variables to reconcile. If None, all variables of the network
+        """
+        simulator = self._simulator
+        resolve = getattr(simulator, "resolve", None)
+        if resolve is None:
+            # only mewpy Simulators know their id prefixes
+            return
+        simulator_ids = {kind: set(getattr(simulator, name, None) or ()) for kind, name in _ID_KINDS}
+        known = set.union(*simulator_ids.values())
+
+        if variables is None:
+            variables = list(self._regulators.values()) + list(self._targets.values())
+            for interaction in self._interactions.values():
+                variables.append(interaction.target)
+                variables.extend(interaction.yield_regulators())
+        candidates = {id(variable): variable for variable in variables if variable is not None}
+
+        # distinct objects sharing an id (e.g. a self-regulated target read as a target and a regulator)
+        # are renamed together, so they keep a common id
+        groups = {}
+        for variable in candidates.values():
+            groups.setdefault(variable.id, []).append(variable)
+
+        used = set(self._regulators) | set(self._targets) | set(groups)
+        renames = {}
+        for old_id, members in groups.items():
+            if not isinstance(old_id, str) or old_id in known:
+                continue
+            new_id = None
+            for kind, _ in _ID_KINDS:
+                try:
+                    native = resolve(old_id, kind)
+                except ValueError:
+                    logger.warning("Regulatory id %s is ambiguous as a simulator %s id; not renamed", old_id, kind)
+                    continue
+                if native != old_id and native in simulator_ids[kind]:
+                    new_id = native
+                    break
+            # the new id may only be taken by variables renamed earlier from the same TRN id
+            if new_id is None or (new_id in used and self._id_map.get(old_id) != new_id):
+                continue
+            for variable in members:
+                renames[id(variable)] = (variable, old_id, new_id)
+            used.add(new_id)
+
+        if not renames:
+            return
+
+        # expressions holding a renamed variable: regulators know their interactions
+        interactions = {}
+        for variable, _, _ in renames.values():
+            for interaction in getattr(variable, "_interactions", {}).values():
+                interactions[id(interaction)] = interaction
+        expressions = {}
+        for interaction in interactions.values():
+            for expression in interaction.yield_expressions():
+                expressions[id(expression)] = expression
+
+        for expression in expressions.values():
+            expression_variables = expression.variables
+            renamed = {name: renames[id(var)][2] for name, var in expression_variables.items() if id(var) in renames}
+            if not renamed:
+                continue
+            for symbol in expression.symbolic.atoms(symbols_only=True):
+                if symbol.name in renamed:
+                    symbol.value = renamed[symbol.name]
+                    symbol.name = symbol.value
+            for variable in expression_variables.values():
+                if id(variable) in renames:
+                    variable._id = renames[id(variable)][2]
+            # re-link the expression with the new keys
+            expression.variables = {var.id: var for var in expression_variables.values()}
+
+        for variable, _, new_id in renames.values():
+            variable._id = new_id
+
+        containers = [self, self._regulatory_network] if self._regulatory_network is not None else [self]
+        for owner in containers:
+            # keep the containers (and the wrapped RegulatoryModel) keyed by the new identifiers
+            owner._regulators = {var.id: var for var in owner._regulators.values()}
+            owner._targets = {var.id: var for var in owner._targets.values()}
+
+        renamed_ids = {old_id: new_id for _, old_id, new_id in renames.values()}
+        self._id_map.update(renamed_ids)
+        logger.info("Renamed %d regulatory ids to match the simulator ids", len(renamed_ids))
+
+    def _warn_if_disconnected(self):
+        """Warn when no regulatory target matches a metabolic gene (the TRN cannot affect metabolism)."""
+        if not self._targets:
+            return
+        genes = set(getattr(self._simulator, "genes", None) or ())
+        if not genes.intersection(self._targets):
+            logger.warning(
+                "RegulatoryExtension %s: no regulatory target matches a metabolic gene of the "
+                "simulator (%d targets, %d genes); the regulatory network cannot affect metabolism",
+                self._identifier,
+                len(self._targets),
+                len(genes),
+            )
+
+    @property
+    def id_map(self) -> Dict[str, str]:
+        """Renames applied to TRN ids to match the simulator (original TRN id -> simulator id)."""
+        return self._id_map.copy()
+
+    # =========================================================================
+    # Observer pattern (analysis methods attached to the model)
+    # =========================================================================
+
+    @property
+    def simulators(self) -> List[Any]:
+        """Analysis methods attached to this model."""
+        return self._simulators
+
+    def attach(self, simulator: Any):
+        """
+        Attach an analysis method. It is notified when the regulatory network changes.
+        The observer is also attached to the wrapped RegulatoryModel, so changes to regulatory
+        variables notify it too.
+
+        :param simulator: the analysis method to be attached
+        """
+        if simulator not in self._simulators:
+            self._simulators.append(simulator)
+        network = self._regulatory_network
+        if network is not None and simulator not in network.simulators:
+            network.attach(simulator)
+
+    def detach(self, simulator: Any):
+        """
+        Detach an analysis method.
+
+        :param simulator: the analysis method to be detached
+        """
+        self._simulators.remove(simulator)
+        network = self._regulatory_network
+        if network is not None and simulator in network.simulators:
+            network.detach(simulator)
+
+    def notify(self):
+        """Notify all attached analysis methods that the model changed."""
+        for simulator in self._simulators:
+            notify_observer(simulator)
 
     def add_regulator(self, regulator: "Regulator"):
         """
@@ -422,6 +598,8 @@ class RegulatoryExtension:
         :param regulator: Regulator instance
         """
         self._regulators[regulator.id] = regulator
+        self._reconcile_ids([regulator])
+        self.notify()
 
     def add_target(self, target: "Target"):
         """
@@ -430,6 +608,8 @@ class RegulatoryExtension:
         :param target: Target instance
         """
         self._targets[target.id] = target
+        self._reconcile_ids([target])
+        self.notify()
 
     def add_interaction(self, interaction: "Interaction"):
         """
@@ -438,6 +618,8 @@ class RegulatoryExtension:
         :param interaction: Interaction instance
         """
         self._interactions[interaction.id] = interaction
+        self._reconcile_ids([interaction.target, *interaction.yield_regulators()])
+        self.notify()
 
     def remove_regulator(self, regulator_id: str):
         """
@@ -447,6 +629,7 @@ class RegulatoryExtension:
         """
         if regulator_id in self._regulators:
             del self._regulators[regulator_id]
+            self.notify()
 
     def remove_target(self, target_id: str):
         """
@@ -456,6 +639,7 @@ class RegulatoryExtension:
         """
         if target_id in self._targets:
             del self._targets[target_id]
+            self.notify()
 
     def remove_interaction(self, interaction_id: str):
         """
@@ -465,6 +649,7 @@ class RegulatoryExtension:
         """
         if interaction_id in self._interactions:
             del self._interactions[interaction_id]
+            self.notify()
 
     def get_regulator(self, regulator_id: str) -> "Regulator":
         """
@@ -492,6 +677,19 @@ class RegulatoryExtension:
         :return: Interaction instance
         """
         return self._interactions.get(interaction_id)
+
+    def get(self, identifier: str, default=None) -> Union["Regulator", "Target", "Interaction", Any]:
+        """
+        Get a regulator, target or interaction by ID (same lookup interface as GERM models).
+
+        :param identifier: Regulator, target or interaction identifier
+        :param default: Value returned when the identifier is not found
+        :return: the regulatory variable or the default value
+        """
+        for container in (self._regulators, self._targets, self._interactions):
+            if identifier in container:
+                return container[identifier]
+        return default
 
     def yield_regulators(self) -> Generator[Tuple[str, "Regulator"], None, None]:
         """
@@ -647,26 +845,21 @@ class RegulatoryExtension:
         :param simulator: Simulator instance to wrap
         :return: RegulatoryExtension instance
         """
-        from mewpy.germ.variables import Interaction, Regulator, Target
+        from mewpy.germ.models.regulatory import RegulatoryModel
 
-        extension = cls(simulator, identifier=data.get("id"))
+        # Rebuild the network as a single model, so interactions, regulators and targets share the same objects
+        identifier = data.get("id")
+        network = {
+            "id": identifier or "regulatory",
+            "name": identifier or "",
+            "types": ["regulatory"],
+            "interactions": data.get("interactions", {}),
+            "regulators": data.get("regulators", {}),
+            "targets": data.get("targets", {}),
+        }
+        regulatory_model = RegulatoryModel.from_dict(network, variables=True)
 
-        # Load regulators
-        for reg_id, reg_data in data.get("regulators", {}).items():
-            regulator = Regulator.from_dict(reg_data)
-            extension.add_regulator(regulator)
-
-        # Load targets
-        for tgt_id, tgt_data in data.get("targets", {}).items():
-            target = Target.from_dict(tgt_data)
-            extension.add_target(target)
-
-        # Load interactions
-        for int_id, int_data in data.get("interactions", {}).items():
-            interaction = Interaction.from_dict(int_data)
-            extension.add_interaction(interaction)
-
-        return extension
+        return cls(simulator, regulatory_model, identifier)
 
     def save(self, filepath: str):
         """

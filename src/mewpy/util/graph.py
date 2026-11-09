@@ -102,11 +102,18 @@ def create_metabolic_graph(
     if not metabolites:
         met_nodes = [x for x, v in dict(G.nodes(data="node_class")).items() if v == METABOLITE]
         for m in met_nodes:
-            in_ = G.in_edges(m, data=True)
-            out_ = G.out_edges(m, data=True)
-            for s, _, r1 in in_:
-                for _, t, r2 in out_:
-                    G.add_edge(s, t)
+            if directed:
+                in_ = G.in_edges(m, data=True)
+                out_ = G.out_edges(m, data=True)
+                for s, _, r1 in in_:
+                    for _, t, r2 in out_:
+                        G.add_edge(s, t)
+            else:
+                # undirected graphs have no in/out edges: link every pair of reactions sharing m
+                neighbors = list(G.neighbors(m))
+                for i, s in enumerate(neighbors):
+                    for t in neighbors[i + 1 :]:
+                        G.add_edge(s, t)
             G.remove_node(m)
 
     return G

@@ -8,6 +8,7 @@ No backwards compatibility with legacy GERM models.
 from typing import Dict, Tuple, Union
 from warnings import warn
 
+from mewpy.germ.analysis.analysis_utils import gene_defaults, regulators_initial_state
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.germ.solution import DynamicSolution
@@ -116,17 +117,11 @@ class RFBA(_RegulatoryAnalysisBase):
         """
         constraints = {}
 
-        # Handle ID mismatch between regulatory targets and metabolic genes
-        # Regulatory targets use IDs like 'b0351', while GPRs use 'G_b0351'
-        # Create an extended state dict with both naming conventions
-        extended_state = dict(state)
-        for gene_id, value in list(state.items()):
-            # If the gene ID doesn't start with 'G_', add a version with prefix
-            if not gene_id.startswith("G_"):
-                extended_state[f"G_{gene_id}"] = value
-            # If the gene ID starts with 'G_', add a version without prefix
-            elif gene_id.startswith("G_"):
-                extended_state[gene_id[2:]] = value
+        # TRN ids match the GPR gene ids: RegulatoryExtension reconciles them ('b0351' -> 'G_b0351') when the
+        # regulatory network is loaded or extended.
+        # Genes absent from the state (not regulated by the TRN) keep their default activity instead of
+        # evaluating to 0 (RegulatoryExtension GPR symbols carry no gene coefficients to fall back on)
+        extended_state = {**gene_defaults(self.model), **state}
 
         # Evaluate GPRs for all reactions
         for rxn_id in self.model.reactions:
@@ -155,14 +150,12 @@ class RFBA(_RegulatoryAnalysisBase):
         if initial_state is None:
             initial_state = {}
 
-        # Initialize all regulators to active (1.0) by default
+        # Regulators default to the environment: metabolites with an exchange reaction are present when the
+        # medium allows their uptake (|lb| > 0); other regulators take their maximum coefficient
         state = {}
 
         if self._has_regulatory_network():
-            # Get all regulators
-            for reg_id, regulator in self._get_regulators():
-                # Use user-provided state if available, otherwise default to active
-                state[reg_id] = initial_state.get(reg_id, 1.0)
+            state = regulators_initial_state(self.model, initial_state)
 
         # Override with any user-provided states
         state.update(initial_state)
@@ -175,6 +168,7 @@ class RFBA(_RegulatoryAnalysisBase):
         dynamic: bool = False,
         to_solver: bool = False,
         solver_kwargs: Dict = None,
+        **kwargs,
     ) -> Union[Solution, DynamicSolution]:
         """
         Solve the RFBA problem.
@@ -182,7 +176,8 @@ class RFBA(_RegulatoryAnalysisBase):
         :param initial_state: Initial regulatory state. If None, all regulators start active.
         :param dynamic: If True, performs dynamic RFBA (iterative). Default: False
         :param to_solver: If True, returns raw solver solution. Default: False
-        :param solver_kwargs: Additional arguments for solver
+        :param solver_kwargs: Additional arguments for solver. 'linear' and 'minimize' set a temporary objective.
+        :param kwargs: Ignored; accepted for compatibility with the other analysis methods
         :return: Solution object (or DynamicSolution for dynamic=True)
         """
         # Build solver if not synchronized
@@ -197,22 +192,35 @@ class RFBA(_RegulatoryAnalysisBase):
 
         if not dynamic:
             # Steady-state RFBA
-            return self._optimize_steady_state(state, to_solver, solver_kwargs)
+            return self._optimize_steady_state(state, to_solver, solver_kwargs, overrides=initial_state)
         else:
             # Dynamic RFBA (iterative until convergence)
-            return self._optimize_dynamic(state, to_solver, solver_kwargs)
+            return self._optimize_dynamic(state, to_solver, solver_kwargs, overrides=initial_state)
 
-    def _optimize_steady_state(self, state: Dict[str, float], to_solver: bool, solver_kwargs: Dict) -> Solution:
+    def _optimize_steady_state(
+        self, state: Dict[str, float], to_solver: bool, solver_kwargs: Dict, overrides: Dict[str, float] = None
+    ) -> Solution:
         """
         Perform steady-state RFBA simulation.
 
         :param state: Initial regulatory state
         :param to_solver: Whether to return raw solver solution
         :param solver_kwargs: Solver arguments
+        :param overrides: States given explicitly by the caller; they replace the decoded gene states
         :return: Solution object
         """
-        # Decode regulatory state to metabolic state
-        metabolic_state = self.decode_metabolic_state(state)
+        overrides = overrides or {}
+
+        # Synchronous update: regulators that are also targets (e.g. ArcA = NOT o2 > 0) first follow their own
+        # rules, then the metabolic targets are decoded from that regulatory state
+        regulator_ids = {reg_id for reg_id, _ in self._get_regulators()}
+        regulatory_state = {
+            key: value for key, value in self.decode_regulatory_state(state).items() if key in regulator_ids
+        }
+        metabolic_state = self.decode_metabolic_state({**state, **regulatory_state, **overrides})
+
+        # States given explicitly by the caller (e.g. a gene knockout) win over the decoded target states
+        metabolic_state = {**metabolic_state, **overrides}
 
         # Get constraints from metabolic state
         constraints = self.decode_constraints(metabolic_state)
@@ -226,14 +234,13 @@ class RFBA(_RegulatoryAnalysisBase):
 
         # Remove conflicting arguments that we set explicitly
         solver_kwargs_copy.pop("constraints", None)
-        solver_kwargs_copy.pop("linear", None)
-        solver_kwargs_copy.pop("minimize", None)
         solver_kwargs_copy.pop("get_values", None)
+        linear, minimize = self._objective_from(solver_kwargs_copy)
 
         # Solve
         solution = self.solver.solve(
-            linear=self._linear_objective,
-            minimize=self._minimize,
+            linear=linear,
+            minimize=minimize,
             constraints=constraints,
             get_values=True,
             **solver_kwargs_copy,
@@ -242,9 +249,11 @@ class RFBA(_RegulatoryAnalysisBase):
         if to_solver:
             return solution
 
-        return Solution.from_solver(method=self.method, solution=solution, model=self.model, minimize=self._minimize)
+        return Solution.from_solver(method=self.method, solution=solution, model=self.model, minimize=minimize)
 
-    def _optimize_dynamic(self, state: Dict[str, float], to_solver: bool, solver_kwargs: Dict) -> DynamicSolution:
+    def _optimize_dynamic(
+        self, state: Dict[str, float], to_solver: bool, solver_kwargs: Dict, overrides: Dict[str, float] = None
+    ) -> DynamicSolution:
         """
         Perform dynamic RFBA simulation (iterative until convergence).
 
@@ -263,7 +272,9 @@ class RFBA(_RegulatoryAnalysisBase):
 
         for iteration in range(max_iterations):
             # Solve with current state
-            solution = self._optimize_steady_state(state, to_solver=False, solver_kwargs=solver_kwargs)
+            solution = self._optimize_steady_state(
+                state, to_solver=False, solver_kwargs=solver_kwargs, overrides=overrides
+            )
             solutions.append(solution)
 
             # Check if solution is optimal

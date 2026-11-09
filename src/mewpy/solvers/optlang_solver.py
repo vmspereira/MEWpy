@@ -30,6 +30,12 @@ from optlang.symbolics import Zero, add
 from .solution import Solution, Status
 from .solver import Parameter, Solver, VarType, default_parameters
 
+
+def _bound(value):
+    """optlang expects None for an unbounded side; GLPK aborts the process on +/-inf."""
+    return None if value is None or value in (inf, -inf) else value
+
+
 status_mapping = {
     "optimal": Status.OPTIMAL,
     "unbounded": Status.UNBOUNDED,
@@ -46,8 +52,9 @@ class OptLangSolver(Solver):
         Solver.__init__(self)
         self.problem = Model()
 
+        # parameter -> attribute of self.problem.configuration
         self.parameter_mapping = {
-            Parameter.TIME_LIMIT: self.problem.configuration.timeout,
+            Parameter.TIME_LIMIT: "timeout",
             # Parameter.FEASIBILITY_TOL: self.problem.configuration.tolerances.feasibility,
             # Parameter.OPTIMALITY_TOL: self.problem.configuration.tolerances.optimality,
             # Parameter.INT_FEASIBILITY_TOL: self.problem.configuration.tolerances.integrality,
@@ -72,11 +79,10 @@ class OptLangSolver(Solver):
 
         if var_id in self.var_ids:
             var = self.problem.variables[var_id]
-            var.lb = lb
-            var.ub = ub
+            var.set_bounds(_bound(lb), _bound(ub))
             var.type = vartype.value
         else:
-            var = Variable(var_id, lb=lb, ub=ub, type=vartype.value)
+            var = Variable(var_id, lb=_bound(lb), ub=_bound(ub), type=vartype.value)
             self.problem.add(var)
             self.var_ids.append(var_id)
 
@@ -91,11 +97,11 @@ class OptLangSolver(Solver):
             lb (float): lower bound
             ub (float): upper bound
         """
+        # None keeps the current value; a bound of 0 must still be applied
         var = self.problem.variables[var_id]
-        if lb:
-            var.lb = lb
-        if ub:
-            var.ub = ub
+        new_lb = var.lb if lb is None else _bound(lb)
+        new_ub = var.ub if ub is None else _bound(ub)
+        var.set_bounds(new_lb, new_ub)
 
     def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
         """Add a constraint to the current problem.
@@ -267,19 +273,8 @@ class OptLangSolver(Solver):
                 if r_id in self.var_ids:
                     lpvar = problem.variables[r_id]
                     old_constraints[r_id] = (lpvar.lb, lpvar.ub)
-                    # Set bounds in safe order to avoid lb > ub validation errors
-                    if lb > lpvar.ub:
-                        # New lb is larger than current ub, set ub first
-                        lpvar.ub = ub
-                        lpvar.lb = lb
-                    elif ub < lpvar.lb:
-                        # New ub is smaller than current lb, set lb first
-                        lpvar.lb = lb
-                        lpvar.ub = ub
-                    else:
-                        # Safe to set in normal order
-                        lpvar.lb = lb
-                        lpvar.ub = ub
+                    # set_bounds changes both sides at once, so no lb > ub ordering issue
+                    lpvar.set_bounds(_bound(lb), _bound(ub))
                 else:
                     warn(f"Constrained variable '{r_id}' not previously declared")
             problem.update()
@@ -320,20 +315,7 @@ class OptLangSolver(Solver):
         # restore values of temporary constraints
         if constraints:
             for r_id, (lb, ub) in old_constraints.items():
-                lpvar = problem.variables[r_id]
-                # Set bounds in safe order to avoid lb > ub validation errors
-                if lb > lpvar.ub:
-                    # Restoring lb is larger than current ub, set ub first
-                    lpvar.ub = ub
-                    lpvar.lb = lb
-                elif ub < lpvar.lb:
-                    # Restoring ub is smaller than current lb, set lb first
-                    lpvar.lb = lb
-                    lpvar.ub = ub
-                else:
-                    # Safe to set in normal order
-                    lpvar.lb = lb
-                    lpvar.ub = ub
+                problem.variables[r_id].set_bounds(lb, ub)
             problem.update()
 
         return solution
@@ -347,7 +329,7 @@ class OptLangSolver(Solver):
         """
 
         if parameter in self.parameter_mapping:
-            self.parameter_mapping[parameter] = value
+            setattr(self.problem.configuration, self.parameter_mapping[parameter], value)
         # else:
         #    raise RuntimeError('Parameter unknown (or not yet supported).')
 

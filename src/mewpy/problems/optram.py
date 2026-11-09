@@ -197,7 +197,8 @@ class OptRamProblem(AbstractOUProblem):
         return res
 
     def solution_to_constraints(self, decoded_solution):
-        mgenes_p = decoded_solution
+        # the regulatory model genes may lack, or have, the simulator's gene prefix
+        mgenes_p = self.simulator.resolve_keys(decoded_solution, "gene")
         gr_constraints = OrderedDict()
         # Evaluate gpr.
         if not self._operators:
