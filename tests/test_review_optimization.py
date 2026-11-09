@@ -536,6 +536,120 @@ class TestProcess(unittest.TestCase):
         self.assertEqual(out.stdout.strip().splitlines()[-1], "None")
 
 
+def run_python(code, env=None, timeout=300):
+    """Runs `code` in a fresh interpreter and returns its stdout lines."""
+    import os
+
+    full_env = dict(os.environ, **(env or {}))
+    cmd = [sys.executable, "-c", code]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=full_env)
+    assert out.returncode == 0, out.stderr[-3000:]
+    return out.stdout.strip().splitlines()
+
+
+SEEDED_RAY_EA = """
+import warnings, logging
+warnings.filterwarnings("ignore"); logging.disable(logging.WARNING)
+from reframed.io.sbml import load_cbmodel
+from mewpy.util.constants import EAConstants, ModelConstants
+from mewpy.optimization.evaluation import BPCY
+from mewpy.optimization.jmetal.ea import EA
+from mewpy.problems import RKOProblem
+
+ModelConstants.MP_EVALUATOR, EAConstants.NUM_CPUS = "ray", 2
+model = load_cbmodel("%s")
+targets = ["PFL", "ACKr", "LDH_D", "ALCD2x", "PTAr", "PGI", "PFK", "FUM"]
+for _ in range(2):
+    fevaluation = [BPCY("Biomass_Ecoli_core", "EX_succ_e")]
+    problem = RKOProblem(model, fevaluation, target=targets, candidate_max_size=3)
+    ea = EA(problem, max_generations=3, mp=True, population_size=8, seed=5, algorithm="GA")
+    print(sorted(str(s) for s in ea.run(simplify=False)))
+""" % str(Path(__file__).parent.joinpath("data", "e_coli_core.xml"))
+
+HASHED_FITNESS = """
+import warnings, logging
+warnings.filterwarnings("ignore"); logging.disable(logging.WARNING)
+from cobra.io import read_sbml_model
+from mewpy.optimization.evaluation import BPCY, WYIELD
+from mewpy.problems import GKOProblem
+
+model = read_sbml_model("%s")
+fevaluation = [BPCY("Biomass_Ecoli_core", "EX_succ_e"), WYIELD("Biomass_Ecoli_core", "EX_succ_e")]
+targets = ["b0902", "b3951", "b1241", "b2296", "b1380"]
+problem = GKOProblem(model, fevaluation, target=targets, envcond={"EX_o2_e": (0, 1000)})
+problem.pre_process()
+print(repr(problem.evaluate_solution(problem.encode(["b0902", "b3951"]))))
+""" % str(Path(__file__).parent.joinpath("data", "e_coli_core.xml"))
+
+
+class TestRound3(unittest.TestCase):
+    """Defects found by the notebook reviews and the value/parity tests (2026-11-10)."""
+
+    def test_r1_import_mewpy_does_not_import_ray(self):
+        lines = run_python("import sys, mewpy; print('ray' in sys.modules)")
+        self.assertEqual(lines[-1], "False")
+
+    def test_r2_seeded_jmetal_ea_with_ray_is_reproducible_in_one_process(self):
+        first, second = run_python(SEEDED_RAY_EA)[-2:]
+        self.assertEqual(first, second)
+
+    def test_r3_fitness_does_not_depend_on_the_hash_seed(self):
+        values = [run_python(HASHED_FITNESS, env={"PYTHONHASHSEED": h})[-1] for h in ("1", "2")]
+        self.assertEqual(values[0], values[1])
+
+    def test_r3_simulations_run_in_evaluation_function_order(self):
+        from mewpy.optimization.evaluation import BPCY, WYIELD, AggregatedSum
+        from mewpy.problems import RKOProblem
+
+        fevaluation = [WYIELD(BIOMASS_ID, SUCC_ID), BPCY(BIOMASS_ID, SUCC_ID)]  # FBA, then pFBA
+        problem = RKOProblem(load_ecoli(), fevaluation, target=SMALL_TARGETS)
+        self.assertEqual([str(m) for m in problem.methods], ["FBA", "pFBA"])
+        methods = AggregatedSum(fevaluation).required_simulations()
+        self.assertEqual([str(m) for m in methods], ["FBA", "pFBA"])
+
+    def test_r5_dataframe_columns_are_unique(self):
+        from mewpy.optimization.evaluation import BPCY, CandidateSize
+        from mewpy.optimization.inspyred.ea import EA as InspyredEA
+        from mewpy.problems import RKOProblem
+
+        fevaluation = [BPCY(BIOMASS_ID, SUCC_ID), CandidateSize()]
+        problem = RKOProblem(load_ecoli(), fevaluation, target=SMALL_TARGETS)
+        ea = InspyredEA(problem, max_generations=1, mp=False, population_size=4, seed=1)
+        ea.run(simplify=False)
+        columns = list(ea.dataframe().columns)
+        self.assertEqual(len(columns), len(set(columns)), columns)
+        self.assertEqual(columns[:3], ["Modification", "Size", "BPCY"])
+
+    def test_r6_repr_reports_the_real_target_count(self):
+        from mewpy.problems import GOUProblem
+
+        problem = GOUProblem(load_ecoli(), [])
+        self.assertNotIn("estimated", repr(problem))
+        self.assertNotIn("estimated", problem._repr_html_())
+        n_targets = len(problem.target_list)
+        target_lines = [line for line in repr(problem).splitlines() if "Targets" in line]
+        self.assertEqual([line.split()[-1] for line in target_lines], [str(n_targets)])
+
+    def test_r8_modification_type_of_an_empty_candidate(self):
+        from mewpy.optimization.evaluation import ModificationType
+
+        f = ModificationType()
+        self.assertEqual(f.get_fitness({}, {}), f.no_solution)
+        self.assertEqual(f.get_fitness({}, {"a": 0, "b": 0.5}), (5 + 2) / 2)
+        self.assertEqual(f.get_fitness({}, {"a": 4}), 0)
+
+    def test_r9_unknown_simulation_method_raises_a_clear_error(self):
+        from mewpy.io import read_sbml
+        from mewpy.optimization.evaluation import BPCY
+        from mewpy.problems import RKOProblem
+
+        model = read_sbml(str(DATA / "e_coli_core.xml"), regulatory=False, warnings=False)
+        fevaluation = [BPCY("Biomass_Ecoli_core", "EX_succ_e", method="foo")]
+        with self.assertRaises(ValueError) as ctx:
+            RKOProblem(model, fevaluation, target=["PFL"])
+        self.assertIn("foo", str(ctx.exception))
+
+
 if __name__ == "__main__":
     logging.basicConfig()
     unittest.main()

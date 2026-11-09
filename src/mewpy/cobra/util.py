@@ -100,7 +100,7 @@ def convert_gpr_to_dnf(model) -> None:
         _set_gpr(sim, rxn_id, gpr_dnf)
 
 
-def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
+def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"], verbose: bool = False):
     """Split reversible reactions into two irreversible reactions
     These two reactions will proceed in opposite directions. This
     guarentees that all reactions in the model will only allow
@@ -108,6 +108,7 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
 
     :param model: A COBRApy or REFRAMED Model or an instance of
         mewpy.simulation.simulation.Simulator
+    :param verbose: show a progress bar, defaults to False
     :return: A new irreversible model simulator and a reverse mapping.
     :rtype: (Simulator, dict)
 
@@ -119,7 +120,7 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
 
     objective = sim.objective.copy()
     irrev_map = dict()
-    for r_id in tqdm(sim.reactions, "Converting to irreversible"):
+    for r_id in tqdm(sim.reactions, "Converting to irreversible", disable=not verbose):
         lb, _ = sim.get_reaction_bounds(r_id)
         if lb < 0:
             rxn = sim.get_reaction(r_id)

@@ -292,7 +292,19 @@ class ModelContainer(ABC):
 class Simulator(ModelContainer, SimulationInterface):
     """
     Interface for simulators
+
+    Results without an optimum (every backend): when a simulation is not OPTIMAL or SUBOPTIMAL, its
+    SimulationResult has the solver status, objective_value None and fluxes None, and
+    simulate(..., slim=True) returns None. A slim simulation otherwise returns the objective value (a float).
     """
+
+    # methods whose objective value is a minimised quantity (total flux, distance, changed fluxes)
+    _MINIMISING_METHODS = (SimulationMethod.pFBA, SimulationMethod.lMOMA, SimulationMethod.MOMA, SimulationMethod.ROOM)
+
+    @classmethod
+    def _optimised_sense(cls, method, maximize):
+        """The sense of the objective a method optimises: pFBA, (l)MOMA and ROOM always minimise."""
+        return False if method in cls._MINIMISING_METHODS else maximize
 
     def __repr__(self):
         """Rich representation showing simulator state."""
@@ -597,20 +609,38 @@ class Simulator(ModelContainer, SimulationInterface):
     def find_reactions(self, pattern=None, sort=False):
         return self.find(pattern=pattern, sort=sort, find_in="r")
 
+    def _knockout_growth(self, constraints):
+        """Objective value under the constraints, or None when the solver fails (the candidate is non-viable).
+
+        Solver errors (e.g. "SCIP: error in LP solver!") are logged once per essentiality scan; errors that
+        point to a bug (KeyError, ValueError, TypeError, AttributeError) are raised.
+        """
+        try:
+            return self.simulate(constraints=constraints, slim=True)
+        except (KeyError, ValueError, TypeError, AttributeError):
+            raise
+        except Exception as e:
+            if not getattr(self, "_essentiality_warned", False):
+                logger.warning("A simulation failed during an essentiality check; treated as non-viable: %s", e)
+                self._essentiality_warned = True
+            return None
+
     def is_essential_reaction(self, rxn, min_growth=0.01):
-        res = self.simulate(constraints={rxn: 0}, slim=True)
+        """Whether knocking out a reaction leaves a growth (objective value) below min_growth (absolute)."""
+        res = self._knockout_growth({self.resolve(rxn, "reaction"): 0})
         return res is None or math.isnan(res) or res < min_growth
 
     def essential_reactions(self, min_growth=0.01):
-        """Essential reactions are those when knocked out enable a biomass flux value above a minimal growth defined as
-        a percentage of the wild type growth.
+        """Essential reactions are those whose knockout leaves a growth (objective value) below min_growth.
 
-        :param float min_growth: Minimal percentage of the wild type growth value. Default 0.01 (1%).
+        :param float min_growth: Minimal growth, an absolute objective value (not a fraction of the wild type).
+            Default 0.01.
         :returns: A list of essential reactions.
         """
         essential = getattr(self, "_essential_reactions", None)
         if essential is not None:
             return essential
+        self._essentiality_warned = False
         essential = []
         for rxn in tqdm(self.reactions):
             if self.is_essential_reaction(rxn, min_growth=min_growth):
@@ -637,7 +667,52 @@ class Simulator(ModelContainer, SimulationInterface):
                 active_reactions.append(r_id)
         return active_reactions
 
+    def _compartment_of(self, m_id):
+        return self.get_metabolite(m_id)["compartment"]
+
+    def _formula_of(self, m_id):
+        return self.get_metabolite(m_id).get("formula") or ""
+
+    def _is_proton(self, m_id):
+        """A metabolite with formula H; without a formula, one whose id stem is 'h' (h_c, M_h_e)."""
+        formula = self._formula_of(m_id).strip()
+        if formula:
+            return formula == "H"
+        return self.to_canonical(m_id, "metabolite").rsplit("_", 1)[0] == "h"
+
+    def get_transport_reactions(self):
+        """Transport reactions: metabolites other than protons in two or more compartments, exchange (boundary)
+        reactions excluded. Proton-pumping enzymes (e.g. ATP synthase, NADH dehydrogenase) are not transport.
+
+        Defined here, once, so that every backend agrees.
+        :returns: A list of reaction identifiers.
+        """
+        exchanges = set(self.get_exchange_reactions())
+        compartment = {}
+        transport = []
+        for r_id in self.reactions:
+            if r_id in exchanges:
+                continue
+            compartments = set()
+            for m_id in self.get_reaction_metabolites(r_id):
+                if m_id not in compartment:
+                    compartment[m_id] = None if self._is_proton(m_id) else self._compartment_of(m_id)
+                if compartment[m_id] is not None:
+                    compartments.add(compartment[m_id])
+            if len(compartments) > 1:
+                transport.append(r_id)
+        return transport
+
+    def get_transport_genes(self):
+        """Transport genes: genes all of whose reactions are transport reactions (see get_transport_reactions).
+
+        :returns: A list of gene identifiers.
+        """
+        transport = set(self.get_transport_reactions())
+        return [g for g, rxns in self.get_gene_reactions().items() if rxns and set(rxns) <= transport]
+
     def is_essential_gene(self, gene, min_growth=0.01):
+        """Whether deleting a gene leaves a growth (objective value) below min_growth (absolute)."""
         gene = self.resolve(gene, "gene")
         gr = self.get_gene_reactions()
         active_genes = set(self.genes) - {gene}
@@ -650,20 +725,21 @@ class Simulator(ModelContainer, SimulationInterface):
             if gpr and not evaluate_expression_tree(str(gpr), active_genes):
                 inactive_reactions.append(r_id)
         constraints = {rxn: 0 for rxn in inactive_reactions}
-        res = self.simulate(constraints=constraints, slim=True)
+        res = self._knockout_growth(constraints)
         return res is None or math.isnan(res) or res < min_growth
 
     def essential_genes(self, min_growth=0.01):
-        """Essential genes are those when deleted enable a biomass flux value above a minimal growth defined as
-        a percentage of the wild type growth.
+        """Essential genes are those whose deletion leaves a growth (objective value) below min_growth.
 
-        :param float min_growth: Minimal percentage of the wild type growth value. Default 0.01 (1%).
+        :param float min_growth: Minimal growth, an absolute objective value (not a fraction of the wild type).
+            Default 0.01.
         :returns: A list of essential genes.
 
         """
         essential = getattr(self, "_essential_genes", None)
         if essential is not None:
             return essential
+        self._essentiality_warned = False
         essential = []
         for g in tqdm(self.genes):
             if self.is_essential_gene(g, min_growth=min_growth):

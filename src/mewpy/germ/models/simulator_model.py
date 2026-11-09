@@ -179,7 +179,7 @@ class SimulatorBasedMetabolicModel(
 
                 # Create gene variables dictionary
                 genes = {}
-                for gene_id in {symbol.name for symbol in parsed_gpr.atoms(symbols_only=True)}:
+                for gene_id in dict.fromkeys(symbol.name for symbol in parsed_gpr.atoms(symbols_only=True)):
                     germ_gene = self._create_germ_gene(gene_id)
                     genes[gene_id] = germ_gene
 
@@ -353,9 +353,8 @@ class SimulatorBasedMetabolicModel(
             else:
                 linear_obj[str(var)] = coef
 
-        # Set objective on simulator
-        if hasattr(self._simulator, "set_objective"):
-            self._simulator.set_objective(linear=linear_obj, minimize=False)
+        # Replace the objective on the simulator (its objective setter replaces on every backend)
+        self._simulator.objective = linear_obj
 
         self._invalidate_caches()
 

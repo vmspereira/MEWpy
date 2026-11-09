@@ -49,8 +49,8 @@ class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
     def required_simulations(self):
         methods = []
         for f in self.fevaluation:
-            methods.extend(f.required_simulations())
-        return list(set(methods))
+            methods.extend(f.required_simulations() or [])
+        return list(dict.fromkeys(methods))  # deterministic order, see AbstractProblem.methods
 
     def get_fitness(self, simul_results, candidate, **kwargs):
         """Evaluates a candidate
@@ -122,6 +122,9 @@ class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         self.penalizations = penalizations
 
     def get_fitness(self, simulResult, candidate, **kwargs):
+        if not candidate:
+            # no modification, no modification type: the mean below is undefined
+            return self.no_solution
         total = 0
         for v in candidate.values():
             if v == 0:

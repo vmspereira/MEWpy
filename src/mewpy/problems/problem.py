@@ -186,8 +186,15 @@ class AbstractProblem(ABC):
         # required simulations
         methods = []
         for f in self.fevaluation:
-            methods.extend(f.required_simulations())
-        self.methods = list(set(methods))
+            methods.extend(f.required_simulations() or [])
+        # in evaluation function order, not set order: COBRApy reuses its solver between
+        # simulations, so the order of the simulations can change the last digits of the results
+        self.methods = list(dict.fromkeys(methods))
+        for method in self.methods:
+            if not (callable(method) or method in list(SimulationMethod)):
+                names = [m.name for m in SimulationMethod]
+                msg = f"Unknown simulation method {method!r}; use one of {names} or a callable"
+                raise ValueError(msg)
         # problem specific EA operators
         self.operators = None
         self.operators_param = None
@@ -300,13 +307,11 @@ class AbstractProblem(ABC):
 
         # Targets
         try:
+            # the list is built on first use (it may require simulations); no estimate is shown
             if self._trg_list is not None:
                 lines.append(f"{'Targets:':<25} {len(self._trg_list)}")
-            elif hasattr(self, "simulator"):
-                # Try to estimate from model
-                sim = self.simulator
-                if hasattr(sim, "genes"):
-                    lines.append(f"{'Targets (estimated):':<25} {len(sim.genes)} genes")
+            else:
+                lines.append(f"{'Targets:':<25} not built yet (see target_list)")
         except:
             pass
 
@@ -375,11 +380,8 @@ class AbstractProblem(ABC):
         try:
             if self._trg_list is not None:
                 rows.append(("Targets", str(len(self._trg_list))))
-            elif hasattr(self, "simulator"):
-                # Try to estimate from model
-                sim = self.simulator
-                if hasattr(sim, "genes"):
-                    rows.append(("Targets (estimated)", f"{len(sim.genes)} genes"))
+            else:
+                rows.append(("Targets", "not built yet (see target_list)"))
         except:
             pass
 

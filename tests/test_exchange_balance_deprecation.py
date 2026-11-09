@@ -5,12 +5,16 @@ Test to validate the exchange balancing deprecation and demonstrate mass balance
 This test verifies that balance_exchange=True triggers a deprecation warning
 and documents why this feature violates conservation of mass.
 """
+
 import unittest
 import warnings
 
 from cobra.io.sbml import read_sbml_model
 
 from mewpy.com import CommunityModel
+
+# the community oracle: identical members grow as one alone in the open community medium
+from test_g_com import check_community_fba
 
 MODELS_PATH = "tests/data/"
 EC_CORE_MODEL = MODELS_PATH + "e_coli_core.xml.gz"
@@ -100,9 +104,12 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
 
             # Check that DeprecationWarning was raised
             deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-            self.assertGreater(
-                len(deprecation_warnings), 0, "DeprecationWarning should be raised when setting balance_exchanges=True"
+            self.assertEqual(
+                len(deprecation_warnings), 1, "DeprecationWarning should be raised when setting balance_exchanges=True"
             )
+            self.assertIn("deprecated", str(deprecation_warnings[0].message).lower())
+            self.assertIn("mass", str(deprecation_warnings[0].message).lower())
+        self.assertTrue(community.balance_exchanges)
 
     def test_community_fba_works_with_default_false(self):
         """Test that community FBA works correctly with default balance_exchange=False."""
@@ -120,42 +127,41 @@ class TestExchangeBalanceDeprecation(unittest.TestCase):
         # Run FBA
         result = sim.simulate()
 
-        # Should work and produce positive growth
-        self.assertIsNotNone(result)
-        self.assertGreater(result.objective_value, 0, "Community should grow with balance_exchange=False")
+        # the growth of one member alone; shared exchanges balance the members' exchanges
+        check_community_fba(self, community, result)
 
     def test_mass_balance_documentation(self):
         """
         Document the mass balance violation that occurs with balance_exchange=True.
 
-        This test doesn't actually run balance_exchange=True, but documents the issue.
+        A member's exchange moves a metabolite from its own compartment to the shared environment. With the
+        default (False) one molecule out is one molecule in (coefficients -1 and 1). With balance_exchange=True
+        and abundance 0.3, 1 molecule consumed produces only 0.3 molecules: mass is not conserved.
+        Abundance scaling is already handled by the merged biomass equation.
         """
-        # DOCUMENTATION OF THE BUG:
-        # ========================
-        #
-        # When balance_exchange=True and add_compartments=True, the code creates
-        # transport reactions between organism-specific and shared compartments:
-        #
-        # Example: Transport glucose from organism A to shared environment
-        # Original stoichiometry:
-        #   glc_A + (-1) → glc_shared + (1)
-        #   (1 molecule consumed produces 1 molecule - MASS BALANCED)
-        #
-        # With balance_exchange=True and abundance_A=0.3:
-        #   glc_A + (-1) → glc_shared + (0.3)
-        #   (1 molecule consumed produces only 0.3 molecules - MASS VIOLATED!)
-        #
-        # Where did the other 0.7 molecules go? They vanished!
-        #
-        # This violates the fundamental law of conservation of mass and makes
-        # the model thermodynamically inconsistent.
-        #
-        # The correct approach:
-        # - Keep stoichiometry 1:1 (mass balanced)
-        # - Scale fluxes through bounds or constraints, not stoichiometry
-        # - Abundance scaling is already handled by the merged biomass equation
+        model1 = read_sbml_model(EC_CORE_MODEL)
+        model1.reactions.get_by_id("ATPM").bounds = (0, 0)
+        model1.id = "ecoli1"
 
-        self.assertTrue(True, "Documentation test - see comments for explanation")
+        model2 = model1.copy()
+        model2.id = "ecoli2"
+
+        abundances = {"ecoli1": 0.3, "ecoli2": 0.7}
+        balanced = CommunityModel([model1, model2], abundances=list(abundances.values())).get_community_model()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            community = CommunityModel([model1, model2], abundances=list(abundances.values()), balance_exchange=True)
+            unbalanced = community.get_community_model()
+
+        for org_id, abundance in abundances.items():
+            exchange = f"R_EX_glc__D_e_{org_id}"
+            self.assertEqual(
+                dict(balanced.get_reaction(exchange)["stoichiometry"]), {f"M_glc__D_e_{org_id}": -1, "M_glc__D_e": 1}
+            )
+            self.assertEqual(
+                dict(unbalanced.get_reaction(exchange)["stoichiometry"]),
+                {f"M_glc__D_e_{org_id}": -1, "M_glc__D_e": abundance},
+            )
 
 
 if __name__ == "__main__":

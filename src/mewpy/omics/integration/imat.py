@@ -132,8 +132,11 @@ def iMAT(
 
     if isinstance(expr, ExpressionSet):
         pp = Preprocessing(sim, expr)
-        coeffs, _ = pp.percentile(condition, cutoff=cutoff)
-        low_coeffs, high_coeffs = coeffs
+        # percentile() returns, for each cutoff, the reactions BELOW it: that is the lowly expressed
+        # set for the low cutoff, but the highly expressed set lies ABOVE the high cutoff
+        (low_coeffs, _), (_, high_threshold) = pp.percentile(condition, cutoff=cutoff)
+        rxn_exp = pp.reactions_expression(condition)
+        high_coeffs = {r_id: val - high_threshold for r_id, val in rxn_exp.items() if val > high_threshold}
     else:
         low_coeffs, high_coeffs = expr
 

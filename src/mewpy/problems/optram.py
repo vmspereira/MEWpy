@@ -23,7 +23,9 @@ https://doi.org/10.1371/journal.pcbi.1006835
 Author: Vitor Pereira
 ##############################################################################
 """
+import logging
 import math
+import re
 from collections import OrderedDict
 
 import numpy as np
@@ -32,6 +34,15 @@ import pandas as pd
 from ..util.constants import EAConstants
 from ..util.parsing import Boolean, GeneEvaluator, build_tree
 from .problem import AbstractOUProblem
+
+logger = logging.getLogger(__name__)
+
+
+def _sbml_id_forms(identifier):
+    """The id as written, SBML-escaped and unescaped: REFRAMED keeps 'G_YCR024C__45__A'."""
+    escaped = re.sub(r"[^0-9A-Za-z_]", lambda m: f"__{ord(m.group())}__", identifier)
+    unescaped = re.sub(r"__(\d+)__", lambda m: chr(int(m.group(1))), identifier)
+    return dict.fromkeys([identifier, escaped, unescaped])
 
 
 # TODO: Consider moving this function to the io module as it primarily handles
@@ -131,8 +142,23 @@ class OptRamProblem(AbstractOUProblem):
         # Reset default OU levels to OptRAM levels if none are provided
         self.levels = kwargs.get("levels", EAConstants.OPTRAM_LEVELS)
 
+    def _map_regulatory_genes(self):
+        """Renames, in the regulatory model, the genes whose id is another form of a model gene id
+        (SBML prefix or escape), so that they match the model's GPRs."""
+        model_genes = set(self.simulator.genes)
+        genes = OrderedDict()
+        for name, gene in self.regmodel.genes.items():
+            forms = [self.simulator.resolve(form, "gene") for form in _sbml_id_forms(name)]
+            native = next((form for form in forms if form in model_genes), name)
+            if native != name:
+                logger.info("OptRAM regulatory gene %s mapped to model gene %s", name, native)
+                gene.name = native
+            genes[native] = gene
+        self.regmodel.genes = genes
+
     def _build_target_list(self):
         """The EA target list is the combination [mGene]+[TFs]"""
+        self._map_regulatory_genes()
         self._trg_list = []
         self._trg_list.extend(list(self.regmodel.genes.keys()))
         self._trg_list.extend(list(self.regmodel.tfs.keys()))

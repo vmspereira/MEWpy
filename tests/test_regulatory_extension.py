@@ -12,6 +12,22 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+# e_coli_core_trn.csv: header row, columns bNum, Gene (alias), Rule
+TRN_CSV = dict(regulatory_format="csv", sep=",", id_col=0, rule_col=2, aliases_cols=[1], header=0)
+# Orth et al. (2010): e_coli_core grows at 0.8739 /h on 10 mmol/gDW/h glucose, aerobic
+AEROBIC_GROWTH = 0.8739
+# RFBA growth on E. coli core with the default regulatory state (CHANGELOG, "as in the documentation")
+RFBA_GROWTH = 0.8514
+# e_coli_core and its TRN: reactions, genes, interactions (one per target), regulators
+N_REACTIONS, N_GENES, N_INTERACTIONS, N_REGULATORS = 95, 137, 159, 45
+
+
+def _cobra_growth():
+    import cobra
+
+    model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
+    return cobra.io.read_sbml_model(str(model_path)).slim_optimize()
+
 
 class TestRegulatoryExtensionFactoryMethods:
     """Test factory methods for creating RegulatoryExtension instances."""
@@ -24,9 +40,8 @@ class TestRegulatoryExtensionFactoryMethods:
 
         model = RegulatoryExtension.from_sbml(str(model_path), flavor="reframed")
 
-        assert model is not None
-        assert len(model.reactions) > 0
-        assert len(model.genes) > 0
+        assert len(model.reactions) == N_REACTIONS
+        assert len(model.genes) == N_GENES
         assert not model.has_regulatory_network()
 
     def test_from_sbml_with_regulatory(self):
@@ -36,15 +51,12 @@ class TestRegulatoryExtensionFactoryMethods:
         model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
-        model = RegulatoryExtension.from_sbml(
-            str(model_path), str(reg_path), regulatory_format="csv", sep=",", flavor="reframed"
-        )
+        model = RegulatoryExtension.from_sbml(str(model_path), str(reg_path), flavor="reframed", **TRN_CSV)
 
-        assert model is not None
-        assert len(model.reactions) > 0
+        assert len(model.reactions) == N_REACTIONS
         assert model.has_regulatory_network()
-        assert len(model.regulators) > 0
-        assert len(model.interactions) > 0
+        assert len(model.regulators) == N_REGULATORS
+        assert len(model.interactions) == N_INTERACTIONS
 
     def test_from_model_cobrapy(self):
         """Test from_model() with COBRApy model."""
@@ -56,11 +68,12 @@ class TestRegulatoryExtensionFactoryMethods:
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         cobra_model = cobra.io.read_sbml_model(str(model_path))
-        model = RegulatoryExtension.from_model(cobra_model, str(reg_path), regulatory_format="csv", sep=",")
+        model = RegulatoryExtension.from_model(cobra_model, str(reg_path), **TRN_CSV)
 
-        assert model is not None
-        assert len(model.reactions) > 0
+        assert len(model.reactions) == N_REACTIONS
         assert model.has_regulatory_network()
+        assert len(model.regulators) == N_REGULATORS
+        assert len(model.interactions) == N_INTERACTIONS
 
 
 class TestRegulatoryExtensionAPI:
@@ -74,9 +87,7 @@ class TestRegulatoryExtensionAPI:
         model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
-        return RegulatoryExtension.from_sbml(
-            str(model_path), str(reg_path), regulatory_format="csv", sep=",", flavor="reframed"
-        )
+        return RegulatoryExtension.from_sbml(str(model_path), str(reg_path), flavor="reframed", **TRN_CSV)
 
     def test_yield_interactions_returns_tuples(self, integrated_model):
         """Test that yield_interactions() returns (id, interaction) tuples."""
@@ -141,17 +152,15 @@ class TestRegulatoryExtensionWithAnalysis:
         model_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core.xml"
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
-        return RegulatoryExtension.from_sbml(
-            str(model_path), str(reg_path), regulatory_format="csv", sep=",", flavor="reframed"
-        )
+        return RegulatoryExtension.from_sbml(str(model_path), str(reg_path), flavor="reframed", **TRN_CSV)
 
     def test_fba_analysis(self, integrated_model):
         """Test FBA works with RegulatoryExtension via simulator."""
         # Use simulator directly which works with RegulatoryExtension
         result = integrated_model.simulator.simulate()
 
-        assert result.objective_value is not None
-        assert result.objective_value > 0
+        assert result.objective_value == pytest.approx(_cobra_growth(), abs=1e-6)
+        assert result.objective_value == pytest.approx(AEROBIC_GROWTH, abs=5e-5)
 
     def test_rfba_analysis(self, integrated_model):
         """Test RFBA works with RegulatoryExtension."""
@@ -161,10 +170,9 @@ class TestRegulatoryExtensionWithAnalysis:
         rfba = RFBA(integrated_model)
         solution = rfba.optimize()
 
-        assert solution is not None
-        # RFBA may return infeasible with default initial state due to regulatory constraints
-        # This is correct behavior - we just verify it runs without errors
-        assert solution.status in [Status.OPTIMAL, Status.INFEASIBLE]
+        # the default regulatory state represses some aerobic routes: the documented 0.8514
+        assert solution.status == Status.OPTIMAL
+        assert solution.objective_value == pytest.approx(RFBA_GROWTH, abs=1e-4)
 
     def test_srfba_analysis(self, integrated_model):
         """Test SRFBA works with RegulatoryExtension."""
@@ -173,8 +181,8 @@ class TestRegulatoryExtensionWithAnalysis:
         srfba = SRFBA(integrated_model)
         solution = srfba.optimize()
 
-        assert solution is not None
-        assert solution.objective_value is not None or solution.fobj is not None
+        # regulators are free in SRFBA: the FBA optimum
+        assert solution.objective_value == pytest.approx(_cobra_growth(), abs=1e-6)
 
 
 class TestBackwardsCompatibility:
@@ -189,7 +197,9 @@ class TestBackwardsCompatibility:
         reg_path = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 
         metabolic_reader = Reader(Engines.MetabolicSBML, str(model_path))
-        regulatory_reader = Reader(Engines.BooleanRegulatoryCSV, str(reg_path), sep=",")
+        regulatory_reader = Reader(
+            Engines.BooleanRegulatoryCSV, str(reg_path), sep=",", id_col=0, rule_col=2, aliases_cols=[1], header=0
+        )
 
         legacy_model = read_model(metabolic_reader, regulatory_reader, warnings=False)
 
@@ -197,8 +207,8 @@ class TestBackwardsCompatibility:
         simulator = get_simulator(legacy_model)
         result = simulator.simulate()
 
-        assert result.objective_value is not None
-        assert result.objective_value > 0
+        assert len(legacy_model.interactions) == N_INTERACTIONS
+        assert result.objective_value == pytest.approx(_cobra_growth(), abs=1e-6)
 
 
 if __name__ == "__main__":

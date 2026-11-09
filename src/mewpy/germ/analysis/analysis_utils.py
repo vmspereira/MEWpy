@@ -209,6 +209,63 @@ def metabolites_constraints(
     return constraints
 
 
+class IdResolver:
+    """
+    Maps user ids to the model's native ids: an id in the other SBML form (with or without the R_/M_/G_
+    prefix, see Simulator.resolve) or an original TRN id renamed by RegulatoryExtension (id_map).
+    Ids that are already native, or that match nothing, are returned unchanged.
+    """
+
+    def __init__(self, model):
+        self.model = model
+        simulator = getattr(model, "simulator", None)
+        if simulator is None:
+            from mewpy.simulation import get_simulator
+
+            simulator = get_simulator(model)
+        self.simulator = simulator
+        self.id_map = dict(getattr(model, "id_map", None) or {})
+        known = set()
+        for attribute in ("reactions", "genes", "metabolites", "regulators", "targets"):
+            known.update(getattr(model, attribute, None) or ())
+        self.known = known
+
+    def id(self, identifier):
+        if not isinstance(identifier, str) or identifier in self.known:
+            return identifier
+        if identifier in self.id_map:
+            return self.id_map[identifier]
+        for kind in ("reaction", "gene", "metabolite"):
+            native = self.simulator.resolve(identifier, kind)
+            if native != identifier:
+                return native
+        return identifier
+
+    def ids(self, identifiers):
+        return [self.id(identifier) for identifier in identifiers]
+
+    def keys(self, mapping):
+        """A copy of mapping with resolved keys (tuple keys, e.g. PROM's (target, regulator), item by item)."""
+        if not mapping:
+            return mapping
+        return {
+            (tuple(self.id(item) for item in key) if isinstance(key, tuple) else self.id(key)): value
+            for key, value in mapping.items()
+        }
+
+    def solver_kwargs(self, solver_kwargs):
+        """A copy of solver_kwargs with the keys of its constraints and linear objective resolved."""
+        if not solver_kwargs:
+            return solver_kwargs
+        resolved = dict(solver_kwargs)
+        for key in ("constraints", "linear"):
+            if isinstance(resolved.get(key), dict):
+                resolved[key] = self.keys(resolved[key])
+            elif isinstance(resolved.get(key), str):
+                resolved[key] = self.id(resolved[key])
+        return resolved
+
+
 def _metabolite_exchanges(model) -> Dict[str, Tuple[str, float]]:
     """Metabolite id -> (exchange reaction id, lower bound), from the simulator of a RegulatoryExtension."""
     if isinstance(model.reactions, dict) or not hasattr(model, "get_exchange_reactions"):
@@ -220,6 +277,24 @@ def _metabolite_exchanges(model) -> Dict[str, Tuple[str, float]]:
         for met_id in rxn["stoichiometry"]:
             exchanges[met_id] = (ex_rxn_id, rxn["lb"])
     return exchanges
+
+
+def regulator_exchanges(model: Union["Model", "MetabolicModel", "RegulatoryModel"]) -> Dict[str, Tuple[str, float]]:
+    """
+    Metabolite regulators and their exchange reaction: regulator id -> (exchange reaction id, lower bound).
+    Legacy GERM metabolites know their exchange reaction; RegulatoryExtension regulators are matched to the
+    simulator metabolites (the TRN ids are reconciled with the simulator ids when the network is loaded).
+    """
+    exchanges = _metabolite_exchanges(model)
+    result = {}
+    for regulator in model.yield_regulators():
+        if isinstance(regulator, tuple):
+            regulator = regulator[1]
+        if regulator.is_metabolite() and getattr(regulator, "exchange_reaction", None):
+            result[regulator.id] = (regulator.exchange_reaction.id, regulator.exchange_reaction.lower_bound)
+        elif regulator.id in exchanges:
+            result[regulator.id] = exchanges[regulator.id]
+    return result
 
 
 def regulators_initial_state(
@@ -237,7 +312,7 @@ def regulators_initial_state(
     if not state:
         state = {}
 
-    exchanges = _metabolite_exchanges(model)
+    exchanges = regulator_exchanges(model)
     initial_state = {}
     for regulator in model.yield_regulators():
         # RegulatoryExtension yields (id, regulator) tuples, legacy models yield regulators
@@ -248,11 +323,7 @@ def regulators_initial_state(
             initial_state[regulator.id] = state[regulator.id]
             continue
 
-        if regulator.is_metabolite() and getattr(regulator, "exchange_reaction", None):
-            exchange = (regulator.exchange_reaction.id, regulator.exchange_reaction.lower_bound)
-        else:
-            exchange = exchanges.get(regulator.id)
-
+        exchange = exchanges.get(regulator.id)
         if exchange is not None:
             exchange_id, lower_bound = exchange
             initial_state[regulator.id] = state[exchange_id] if exchange_id in state else abs(lower_bound)

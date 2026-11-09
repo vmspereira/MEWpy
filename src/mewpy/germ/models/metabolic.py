@@ -337,7 +337,8 @@ class MetabolicModel(Model, model_type="metabolic", register=True, constructor=T
 
             if rxn.boundary:
 
-                for compartment in rxn.compartments:
+                # sorted: ties are broken by the compartment order, not by set iteration
+                for compartment in sorted(rxn.compartments):
                     boundary_compartments[compartment] += 1
 
         external_compartment = None

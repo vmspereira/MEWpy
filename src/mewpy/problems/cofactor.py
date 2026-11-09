@@ -122,7 +122,7 @@ class CofactorSwapProblem(AbstractKOProblem):
 
     def solution_to_constraints(self, candidate):
         constraints = {}
-        for rx in candidate:
+        for rx in self._native_keys(candidate):
             # ko the original reaction
             constraints[rx] = (0, 0)
             # define the bound for the cofactor swapped reaction

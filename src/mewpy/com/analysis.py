@@ -99,6 +99,23 @@ def _apply_environment(environment: Environment, sim) -> None:
     environment.apply(sim.model, inplace=True, warning=False)
 
 
+def _supplied_exchanges(environment: Environment, sim) -> set:
+    """
+    Exchange reactions through which the environment supplies a compound (lower bound < 0).
+
+    Closed exchanges (lower bound 0) are left out, so minimal media are searched only among
+    compounds the environment provides, as in mp_score.
+
+    Args:
+        environment: Environment
+        sim: Simulator whose reaction ids the result uses
+
+    Returns:
+        set of reaction ids
+    """
+    return {sim.resolve(r_id, "reaction") for r_id, (lb, _) in environment.items() if lb < 0}
+
+
 def _trim_metabolite_prefix(sim, met_id: str) -> str:
     """
     Trim the metabolite ID prefix and the external compartment suffix.
@@ -188,6 +205,25 @@ def sc_score(
     for b in community.organisms_biomass.values():
         comm_model.set_reaction_bounds(b, 0, ModelConstants.REACTION_UPPER_BOUND, False)
 
+    bigM = ModelConstants.REACTION_UPPER_BOUND
+    switched = []
+    for org_id, sim in community.organisms.items():
+        rxns = set(sim.reactions) - set(sim.get_exchange_reactions())
+        for rxn in rxns:
+            r_id = community.reaction_map[(org_id, rxn)]
+            if r_id == community.organisms_biomass[org_id]:
+                continue
+
+            # Get original reaction bounds from the organism model, with bigM for infinite bounds
+            original_rxn = sim.get_reaction(rxn)
+            lb = max(original_rxn.lb, -bigM)
+            ub = min(original_rxn.ub, bigM)
+            switched.append((org_id, r_id, lb, ub))
+            # an absent organism carries no flux, so v = 0 must stay feasible: bounds that exclude 0
+            # (e.g. a positive ATPM lower bound) move to the constraints below
+            if lb > 0 or ub < 0:
+                comm_model.set_reaction_bounds(r_id, min(lb, 0), max(ub, 0), False)
+
     solver = solver_instance(comm_model)
 
     for org_id in community.organisms:
@@ -196,38 +232,16 @@ def sc_score(
 
     solver.update()
 
-    bigM = ModelConstants.REACTION_UPPER_BOUND
-    for org_id, sim in community.organisms.items():
+    # Big-M constraints turn off reactions when the organism is absent:
+    # lb * y_k <= v <= ub * y_k, so y_k = 0 forces v = 0 and y_k = 1 restores [lb, ub]
+    for org_id, r_id, lb, ub in switched:
         org_var = "y_{}".format(org_id)
-        rxns = set(sim.reactions) - set(sim.get_exchange_reactions())
-        for rxn in rxns:
-            r_id = community.reaction_map[(org_id, rxn)]
-            if r_id == community.organisms_biomass[org_id]:
-                continue
-
-            # Get original reaction bounds from the organism model
-            original_rxn = sim.get_reaction(rxn)
-            lb = original_rxn.lb
-            ub = original_rxn.ub
-
-            # Use bigM if bounds are infinite
-            if isinf(lb) or lb < -bigM:
-                lb = -bigM
-            if isinf(ub) or ub > bigM:
-                ub = bigM
-
-            # Add Big-M constraints to turn off reactions when organism is absent
-            # Formulation: lb * y_k <= v <= ub * y_k
-            # When y_k = 0: forces v = 0 (reaction off)
-            # When y_k = 1: allows v in [lb, ub] (reaction on)
-
-            if lb < 0:  # Can have negative flux
-                # v >= lb * y_k  =>  v - lb * y_k >= 0
-                solver.add_constraint("c_{}_lb".format(r_id), {r_id: 1, org_var: -lb}, ">", 0, update=False)
-
-            if ub > 0:  # Can have positive flux
-                # v <= ub * y_k  =>  v - ub * y_k <= 0
-                solver.add_constraint("c_{}_ub".format(r_id), {r_id: 1, org_var: -ub}, "<", 0, update=False)
+        if lb != 0:
+            # v >= lb * y_k  =>  v - lb * y_k >= 0
+            solver.add_constraint("c_{}_lb".format(r_id), {r_id: 1, org_var: -lb}, ">", 0, update=False)
+        if ub != 0:
+            # v <= ub * y_k  =>  v - ub * y_k <= 0
+            solver.add_constraint("c_{}_ub".format(r_id), {r_id: 1, org_var: -ub}, "<", 0, update=False)
 
     solver.update()
 
@@ -506,7 +520,7 @@ def mip_score(
 
     if environment:
         _apply_environment(environment, noninteracting)
-        exch_reactions &= set(environment)
+        exch_reactions &= _supplied_exchanges(environment, sim)
 
     noninteracting_medium, sol1 = minimal_medium(
         noninteracting,
@@ -605,7 +619,7 @@ def mro_score(
 
     if environment:
         _apply_environment(environment, sim)
-        exch_reactions &= set(environment)
+        exch_reactions &= _supplied_exchanges(environment, sim)
 
     medium, sol = minimal_medium(
         sim,

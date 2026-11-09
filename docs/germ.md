@@ -13,9 +13,8 @@ It also includes external stimuli (effectors), regulatory metabolites, and regul
 GEM models and TRNs are often linked by the target genes of the TRN and the genes of the GEM model.
 
 MEWpy supports several methods to perform phenotype simulations using integrated GERM models.
-The following simulation methods are available in **`mewpy.germ.analysis`** module:
-- **`FBA`** - Metabolic model only
-- **`pFBA`** - Metabolic model only
+FBA and pFBA run through the model's simulator (`get_simulator(model).simulate(method=...)`).
+The following regulatory-metabolic methods are available in the **`mewpy.germ.analysis`** module:
 - **`RFBA`** - Regulatory-Metabolic model
 - **`SRFBA`** - Regulatory-Metabolic model
 - **`PROM`** - Regulatory-Metabolic model
@@ -698,7 +697,7 @@ srfba = SRFBA(model).build()
 srfba
 ```
 <table>
-<tr><td>Method</td><td>SRFBA</td></tr><tr><td>Model</td><td>Model e_coli_core - E. coli core model - Orth et al 2010</td></tr><tr><th>Variables</th><td>486</td></tr><tr><th>Constraints</th><td>326</td></tr><tr><th>Objective</th><td>{'Biomass_Ecoli_core': 1.0}</td></tr><tr><th>Solver</th><td>CplexSolver</td></tr><tr><th>Synchronized</th><td>True</td></tr>
+<tr><td>Method</td><td>SRFBA</td></tr><tr><td>Model</td><td>Model e_coli_core - E. coli core model - Orth et al 2010</td></tr><tr><th>Variables</th><td>619</td></tr><tr><th>Constraints</th><td>951</td></tr><tr><th>Objective</th><td>{'Biomass_Ecoli_core': 1.0}</td></tr><tr><th>Solver</th><td>PySCIPOptSolver</td></tr><tr><th>Synchronized</th><td>True</td></tr>
 </table>
 
 The `optimize` interface creates a `ModelSolution` output by default containing the objective value, 
@@ -711,7 +710,7 @@ solution = srfba.optimize()
 solution
 ```
 <table>
-<tr><td>Method</td><td>SRFBA</td></tr><tr><td>Model</td><td>Model e_coli_core - E. coli core model - Orth et al 2010</td></tr><tr><th>Objective</th><td>Biomass_Ecoli_core</td></tr><tr><th>Objective value</th><td>0.8739215069684986</td></tr><tr><th>Status</th><td>optimal</td></tr>
+<tr><td>Method</td><td>SRFBA</td></tr><tr><td>Model</td><td>Model e_coli_core - E. coli core model - Orth et al 2010</td></tr><tr><th>Objective</th><td>Biomass_Ecoli_core</td></tr><tr><th>Objective value</th><td>0.8739215066796725</td></tr><tr><th>Status</th><td>optimal</td></tr>
 </table>
 
 One can generate a pandas `DataFrame` using the **`to_frame()`** method of the **`ModelSolution`** object.
@@ -751,12 +750,12 @@ All phenotype simulation methods have a fast one-line code function to run the s
 the objective value of the solution.
 
 ```python
-from mewpy.germ.analysis import slim_fba
+from mewpy.germ.analysis import slim_srfba
 
-# using slim FBA analysis
-slim_fba(model)
+# using slim SRFBA analysis
+slim_srfba(model)
 ```
-    0.8739215069684303
+    0.8739215066796725
 
 ### MEWpy phenotype simulation using GERM models
 **`FBA`** and **`pFBA`** are also available in MEWpy's **`Simulator`**, 
@@ -770,10 +769,15 @@ from mewpy.simulation import get_simulator
 simulator = get_simulator(model)
 simulator.simulate()
 ```
-    objective: 0.8739215069684303
-    Status: OPTIMAL
-    Constraints: OrderedDict()
-    Method: SimulationMethod.FBA
+    ============================================================
+    Simulation Result
+    ============================================================
+    Status:              OPTIMAL
+    Objective (maximize): 0.873922
+    Method:              FBA
+    Model:               e_coli_core
+    Fluxes:              49 non-zero / 95 total
+    ============================================================
 
 
 ### GERM model and phenotype simulation workflow
@@ -812,8 +816,8 @@ with model:
     solution = srfba.optimize()
 print('KO growth rate', solution.objective_value)
 ```
-    Wild-type growth rate 0.8739215069684303
-    KO growth rate 0.0
+    Wild-type growth rate 0.8739215066796725
+    KO growth rate 0.21166294973531047
 
 ```python
 # second workflow build and optimize
@@ -827,13 +831,15 @@ with model:
     solution = srfba.optimize()
 print('KO growth rate', solution.objective_value)
 ```
-    Wild-type growth rate 0.8739215069684303
-    KO growth rate 0.0
+    Wild-type growth rate 0.8739215066796725
+    KO growth rate 0.21166294973531047
 
 In addition, one can attach as many simulation methods as needed to a single model instance. 
 This behavior eases the comparison between simulation methods.
     
 ```python
+from mewpy.germ.analysis import RFBA
+
 # many simulation methods attached (srfba from the previous example is still attached)
 rfba = RFBA(model, attach=True).build()
 
@@ -850,10 +856,10 @@ print('RFBA WT growth rate:', rfba.optimize().objective_value)
 print('SRFBA WT growth rate:', srfba.optimize().objective_value)
 ```
     RFBA KO growth rate: 0.8513885233462086
-    SRFBA KO growth rate: 0.0
+    SRFBA KO growth rate: 0.21166294973531047
     
     RFBA WT growth rate: 0.8513885233462086
-    SRFBA WT growth rate: 0.8739215069684303
+    SRFBA WT growth rate: 0.8739215066796725
 
 FBA and pFBA have no attachable analysis class; see the FBA and pFBA section below.
 
@@ -878,7 +884,7 @@ simulator.simulate(method=SimulationMethod.FBA).objective_value
 # pFBA (objective value = total absolute flux)
 simulator.simulate(method=SimulationMethod.pFBA).objective_value
 ```
-    518.4220855176065
+    517.922444320979
 
 ## FVA and deletions
 The **`mewpy.germ.analysis`** module includes **`FVA`** method to inspect the solution space of a GEM model.
@@ -1031,7 +1037,7 @@ solution = rfba.optimize(initial_state=initial_state)
 solution
 ```
 <table>
-<tr><td>Method</td><td>RFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.8517832811766279</td></tr><tr><th>Status</th><td>optimal</td></tr>
+<tr><td>Method</td><td>RFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.8517832768455648</td></tr><tr><th>Status</th><td>optimal</td></tr>
 </table>
 
 ## SRFBA
@@ -1068,17 +1074,17 @@ model = read_model(imc1010_gem_reader, imc1010_trn_reader)
 
 **`SRFBA`** does not need an initial state in most cases, as this method can perform a steady-state simulation using MILP. 
 The solver tries to find a regulatory state favoring reactions that contribute to faster growth rates. 
-Accordingly, regulatory variables can take values between zero and one.
+Regulatory variables are binary (0 or 1).
 
 ```python
-from mewpy.analysis import SRFBA
+from mewpy.germ.analysis import SRFBA
 # steady-state SRFBA
 srfba = SRFBA(model).build()
 solution = srfba.optimize()
 solution
 ```
 <table>
-<tr><td>Method</td><td>SRFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.8218562176868295</td></tr><tr><th>Status</th><td>optimal</td></tr>
+<tr><td>Method</td><td>SRFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.851783281176895</td></tr><tr><th>Status</th><td>optimal</td></tr>
 </table>
 
 ## iFVA and iDeletions
@@ -1106,7 +1112,7 @@ reactions_ids = list(model.reactions)[:15]
 ifva(model, fraction=0.9, reactions=reactions_ids, method='srfba')
 ```
 
-<div><style scoped>.dataframe tbody tr th:only-of-type {  vertical-align: middle;}.dataframe tbody tr th {  vertical-align: top;}.dataframe thead th {  text-align: right;}</style><table class=\"dataframe\"><thead><tr><th></th><th>minimum</th><th>maximum</th></tr></thead><tbody><tr><th>12PPDt</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>2DGLCNRx</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>2DGLCNRy</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>2DGULRx</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>2DGULRy</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>3HCINNMH</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>3HPPPNH</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>4HTHRS</th><td>0.000000e+00</td><td>0.000000</td></tr><tr><th>5DGLCNR</th><td>-1.319152e+00</td><td>0.000000</td></tr><tr><th>A5PISO</th><td>3.106617e-02</td><td>0.034518</td></tr><tr><th>AACPS1</th><td>-7.177128e-12</td><td>0.055426</td></tr><tr><th>AACPS2</th><td>-1.794282e-11</td><td>0.138565</td></tr><tr><th>AACPS3</th><td>-1.291883e-10</td><td>0.997670</td></tr><tr><th>AACPS4</th><td>-2.511995e-11</td><td>0.193991</td></tr><tr><th>AACPS5</th><td>-1.794282e-10</td><td>1.385652</td></tr></tbody></table></div>
+<div><style scoped>.dataframe tbody tr th:only-of-type {  vertical-align: middle;}.dataframe tbody tr th {  vertical-align: top;}.dataframe thead th {  text-align: right;}</style><table class=\"dataframe\"><thead><tr><th></th><th>minimum</th><th>maximum</th></tr></thead><tbody><tr><th>12PPDt</th><td>0.000000</td><td>0.000000</td></tr><tr><th>2DGLCNRx</th><td>0.000000</td><td>0.000000</td></tr><tr><th>2DGLCNRy</th><td>0.000000</td><td>0.000000</td></tr><tr><th>2DGULRx</th><td>0.000000</td><td>0.000000</td></tr><tr><th>2DGULRy</th><td>0.000000</td><td>0.000000</td></tr><tr><th>3HCINNMH</th><td>0.000000</td><td>0.000000</td></tr><tr><th>3HPPPNH</th><td>0.000000</td><td>0.000000</td></tr><tr><th>4HTHRS</th><td>0.000000</td><td>0.000000</td></tr><tr><th>5DGLCNR</th><td>-1.364861</td><td>0.000000</td></tr><tr><th>A5PISO</th><td>0.032197</td><td>0.035775</td></tr><tr><th>AACPS1</th><td>0.000000</td><td>0.000000</td></tr><tr><th>AACPS2</th><td>0.000000</td><td>0.000000</td></tr><tr><th>AACPS3</th><td>0.000000</td><td>0.000000</td></tr><tr><th>AACPS4</th><td>0.000000</td><td>0.000000</td></tr><tr><th>AACPS5</th><td>0.000000</td><td>0.000000</td></tr></tbody></table></div>
 
 ## PROM
 **`PROM`** is a probabilistic-based phenotype simulation method. 
@@ -1123,15 +1129,6 @@ Hence, **`PROM`** is adequate to predict the effect of regulator perturbations.
 Alternatively, one can use the simple version **`mewpy.germ.analysis.slim_prom`**.
 
 For more details consult: [https://doi.org/10.1073/pnas.1005139107](https://doi.org/10.1073/pnas.1005139107).
-
-**Note**: The PROM implementation has been fully updated to work correctly with the RegulatoryExtension API.
-All compatibility issues have been resolved, and the implementation now properly handles:
-- Regulator and gene object access via `model.get_gene()` and `model.get_regulator()`
-- Reaction data retrieval via `model.get_reaction()` and `model.get_parsed_gpr()`
-- Gene membership checks using `id in model.genes`
-- Proper handling of None values when FVA solutions are infeasible
-
-The method has been validated with comprehensive tests and is production-ready.
 
 In this example, we will be using _M. tuberculosis_ iNJ661 model available at _examples/models/germ/iNJ661.xml_, 
 _examples/models/germ/iNJ661_trn.csv_, 
@@ -1182,11 +1179,11 @@ initial_state, _ = target_regulator_interaction_probability(model,
 initial_state
 ```
     ...
-    ('Rv2920c', 'Rv3575c'): 1,
+    ('Rv2920c', 'Rv3575c'): 0.8580060422960725,
     ('Rv3275c', 'Rv3575c'): 1,
     ('Rv3275c', 'Rv3676'): 0.7416666666666667,
     ('Rv3276c', 'Rv3575c'): 0.5045317220543807,
-    ('Rv3276c', 'Rv3676'): 1,
+    ('Rv3276c', 'Rv3676'): 0.65,
     ('Rv0408', 'Rv3676'): 0.55,
     ...
 
@@ -1201,13 +1198,13 @@ solution = prom.optimize(initial_state=initial_state)
 solution.solutions
 ```
     {'ko_Rv0001': PROM Solution
-      Objective value: 0.028300772436182654
+      Objective value: 0.028301046082039726
       Status: optimal,
      'ko_Rv3575c': PROM Solution
-      Objective value: 0.052199202493402735
+      Objective value: 0.012513850840811296
       Status: optimal,
      'ko_Rv3676': PROM Solution
-      Objective value: 0.03117434871202209
+      Objective value: 0.014113511471482388
       Status: optimal,
     ...
 
@@ -1232,16 +1229,6 @@ In addition, **`CoRegFlux`** can generate a **`DynamicSolution`** containing tim
 Alternatively, one can use the simple version **`slim_coregflux`**.
 
 For more details consult: [https://doi.org/10.1186/s12918-017-0507-0](https://doi.org/10.1186/s12918-017-0507-0).
-
-**Note**: The CoRegFlux implementation has been fully updated to work correctly with the RegulatoryExtension API.
-All compatibility issues have been resolved, and the implementation now properly handles:
-- Reaction iteration using `model.yield_reactions()` which returns reaction IDs (strings)
-- Reaction data access via `model.get_reaction()` returning AttrDict objects
-- GPR evaluation via `model.get_parsed_gpr()` with Symbol objects for gene variables
-- Target iteration via `model.yield_targets()` which returns (id, object) tuples
-- Gene data access via `model.get_gene()` for retrieving gene-reaction associations
-- Metabolite-to-exchange reaction mapping via stoichiometry lookup
-- Proper DynamicSolution construction with positional arguments
 
 In this example we will be using the following models and data:
 - _S. cerevisae_ iMM904 model available at _examples/models/germ/iMM904.xml_,

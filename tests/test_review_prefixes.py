@@ -229,7 +229,7 @@ def test_germ_accepts_prefixed_ids():
     res = sim.simulate(constraints={"R_PGI": 0})
     assert res.objective_value == pytest.approx(PGI_KO_GROWTH, abs=1e-4)
     assert sim.get_reaction_bounds("R_PGI") == sim.get_reaction_bounds("PGI")
-    assert set(sim.FVA(reactions=["R_PGI"], obj_frac=0.9)["minimum"]) == {"PGI"}
+    assert set(sim.FVA(reactions=["R_PGI"], obj_frac=0.9)) == {"PGI"}
     assert sim.essential_genes() and all(not g.startswith("G_") for g in sim.essential_genes())
     assert sim.get_gpr("R_PGI") == sim.get_gpr("PGI")
 
@@ -263,3 +263,94 @@ def test_environment_compounds_backward_compatible():
     assert list(Environment.from_compounds(["glc__D"], fmt_func="EX_{}_b")) == ["EX_glc__D_b"]
     from_model = {backend: Environment.from_model(load(backend)).get_compounds() for backend in BACKENDS}
     assert from_model["cobra"] == from_model["reframed"]
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Round 3: one behaviour on every backend (COBRApy, REFRAMED and, where it applies, GERM)
+# ----------------------------------------------------------------------------------------------------------------------
+def load_germ():
+    from mewpy.io import read_sbml
+    from mewpy.simulation import get_simulator
+
+    return get_simulator(read_sbml(EC_CORE_XML, regulatory=False, warnings=False))
+
+
+def all_backends():
+    return {"cobra": load("cobra"), "reframed": load("reframed"), "germ": load_germ()}
+
+
+def test_pfba_keeps_the_shared_fraction_on_every_backend():
+    from mewpy.util.constants import ModelConstants
+
+    assert ModelConstants.PFBA_OBJ_FRAC == 0.999
+    results = {name: sim.simulate(method="pFBA") for name, sim in all_backends().items()}
+    growth = {name: res.fluxes[native("reframed" if name == "reframed" else "cobra", "Biomass_Ecoli_core")]
+              for name, res in results.items()}
+    for name in results:
+        assert growth[name] == pytest.approx(ModelConstants.PFBA_OBJ_FRAC * 0.8739215, abs=1e-6), name
+        assert results[name].objective_value == pytest.approx(results["cobra"].objective_value, abs=1e-5), name
+
+
+INFEASIBLE = {"ATPM": (500, 1000)}
+
+
+def test_infeasible_results_follow_one_convention():
+    for name, sim in all_backends().items():
+        constraints = {native(name if name == "reframed" else "cobra", k): v for k, v in INFEASIBLE.items()}
+        assert sim.simulate(constraints=constraints, slim=True) is None, name
+        res = sim.simulate(constraints=constraints)
+        assert (res.objective_value, res.fluxes) == (None, None), name
+        assert isinstance(sim.simulate(slim=True), float), name
+        if name != "germ":
+            assert isinstance(sim.simulate(method="pFBA", slim=True), float), name
+            assert sim.simulate(method="pFBA", constraints=constraints, slim=True) is None, name
+
+
+def test_fva_layout_is_the_same_on_every_backend():
+    frames, dicts = {}, {}
+    for name, sim in all_backends().items():
+        ids = [native(name if name == "reframed" else "cobra", r) for r in ("PGI", "ACKr")]
+        dicts[name] = {sim.to_canonical(k, "reaction"): v for k, v in sim.FVA(reactions=ids).items()}
+        frames[name] = sim.FVA(reactions=ids, format="df")
+    for name, frame in frames.items():
+        assert list(frame.columns) == ["Reaction ID", "Minimum", "Maximum"], name
+        assert list(frame.index) == [0, 1], name
+        assert not frame.isna().any().any(), name
+        assert sorted(dicts[name]) == ["ACKr", "PGI"], name
+        for r_id, (low, high) in dicts[name].items():
+            assert [low, high] == pytest.approx(dicts["cobra"][r_id], abs=1e-4), (name, r_id)
+
+
+def test_set_objective_replaces_the_objective(backend):
+    sim = load(backend)
+    sim.set_objective("EX_o2_e")
+    assert {k: v for k, v in sim.objective.items() if v} == {native(backend, "EX_o2_e"): 1.0}
+    assert sim.simulate(maximize=False).objective_value == pytest.approx(-60.0, abs=1e-6)
+
+
+def test_result_reports_the_sense_that_was_optimised(backend):
+    sim = load(backend)
+    assert sim.simulate().maximize is True
+    for method in ("pFBA", "lMOMA"):
+        res = sim.simulate(method=method, constraints={"PGI": 0})
+        assert res.maximize is False, method
+        assert "Objective (minimize)" in repr(res), method
+    if backend == "reframed":  # ROOM on COBRApy/GLPK takes minutes
+        wt = sim.simulate(method="pFBA").fluxes
+        reference = {r: wt[r] for r in ("R_PGI", "R_PFK", "R_CS")}
+        assert sim.simulate(method="ROOM", constraints={"PGI": 0}, reference=reference).maximize is False
+
+
+def test_transport_is_defined_once():
+    counts, genes = {}, {}
+    for name, sim in all_backends().items():
+        transport = sim.get_transport_reactions()
+        assert not set(transport) & set(sim.get_exchange_reactions()), name
+        counts[name] = sorted(sim.to_canonical(r, "reaction") for r in transport)
+        genes[name] = sorted(sim.to_canonical(g, "gene") for g in sim.get_transport_genes())
+    assert counts["cobra"] == counts["reframed"] == counts["germ"]
+    assert genes["cobra"] == genes["reframed"] == genes["germ"]
+    assert "GLCpts" in counts["cobra"] and "NADTRHD" not in counts["cobra"]
+    assert "ACt2r" in counts["cobra"]  # acetate-proton symport moves acetate
+    assert not {"ATPS4r", "NADH16", "CYTBD", "THD2"} & set(counts["cobra"])  # proton pumps are enzymes
+    assert not {"b1602", "b1603"} & set(genes["cobra"])  # pntAB also catalyse the internal NADTRHD

@@ -349,8 +349,11 @@ def test_f11_fva_default_objective_regulatory_extension(re_model, cobra_fva):
 def test_f11_pfba_regulatory_extension(re_model, wt_growth):
     from mewpy.germ.analysis.pfba import _pFBA
 
+    from mewpy.util.constants import ModelConstants
+
     solution = _pFBA(re_model).optimize()
-    assert solution.values["R_Biomass_Ecoli_core"] == pytest.approx(wt_growth, abs=TOL)
+    fraction = getattr(ModelConstants, "PFBA_OBJ_FRAC", 0.999)
+    assert solution.values["R_Biomass_Ecoli_core"] == pytest.approx(fraction * wt_growth, abs=1e-6)
 
 
 def test_f11_single_gene_deletion_regulatory_extension(re_model, wt_growth):
@@ -487,8 +490,12 @@ def test_pfba_honours_requested_objective(legacy_metabolic, cobra_model, minimiz
         tmp.objective_direction = "min" if minimize else "max"
         expected = tmp.slim_optimize()
 
+    from mewpy.util.constants import ModelConstants
+
     solution = _pFBA(legacy_metabolic).optimize(solver_kwargs={"linear": {"PGI": 1.0}, "minimize": minimize})
-    assert solution.values["PGI"] == pytest.approx(expected, abs=TOL)
+    # pFBA keeps the objective within the shared fraction (PFBA_OBJ_FRAC) of its optimum
+    margin = (1 - getattr(ModelConstants, "PFBA_OBJ_FRAC", 0.999)) * abs(expected)
+    assert solution.values["PGI"] == pytest.approx(expected + margin if minimize else expected - margin, abs=TOL)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -627,3 +634,142 @@ def test_legacy_gene_knockout_closes_its_reactions(method):
         assert model.reactions["GAPD"].bounds != (0, 0)
         solution = cls(model).build().optimize()
         assert (solution.values or {}).get("Biomass_Ecoli_core", 0.0) == pytest.approx(0.0, abs=TOL)
+
+
+# ======================================================================================================================
+# Round 3: SRFBA ko() semantics, metabolite regulators, tolerances, solver argument, ordering, user ids, pFBA fraction
+# ======================================================================================================================
+def _fba_growth(model):
+    from mewpy.germ.analysis.fba import _FBA
+
+    return _FBA(model).build().optimize().objective_value or 0.0
+
+
+def _srfba(model, **kwargs):
+    from mewpy.germ.analysis import SRFBA
+
+    return SRFBA(model).build().optimize(to_solver=True, **kwargs)
+
+
+@pytest.mark.parametrize("variable", ["b0721", "b1779", "b0113", "b3261"])
+def test_srfba_ko_overrides_the_regulatory_rule_like_initial_state(variable):
+    """USER DECISION: ko() on a TRN target (or regulator) overrides its rule exactly like initial_state={x: 0}."""
+    expected = _srfba(_fresh_legacy_integrated(), initial_state={variable: 0.0})
+    model = _fresh_legacy_integrated()
+    with model:
+        model.get(variable).ko()
+        knockout = _srfba(model)
+        assert knockout.status == expected.status
+        assert (knockout.fobj or 0.0) == pytest.approx(expected.fobj or 0.0, abs=TOL)
+        if variable == "b0721":  # sdhC, a target gene: same as FBA with the gene knocked out (0.8143)
+            assert knockout.fobj == pytest.approx(_fba_growth(model), abs=TOL)
+
+
+def test_srfba_metabolite_regulators_follow_their_exchange_flux():
+    """USER DECISION: a metabolite regulator is 1 iff its exchange carries uptake beyond the tolerance."""
+    model = _fresh_legacy_integrated()
+    wild_type = _srfba(model)
+    assert wild_type.values["EX_glc__D_e"] < -1 and wild_type.values["glc__D_e"] == pytest.approx(1.0)
+    assert wild_type.values["EX_o2_e"] < -1 and wild_type.values["o2_e"] == pytest.approx(1.0)
+    # acetate is not in the medium: no uptake, so the regulator is off
+    assert wild_type.values["EX_ac_e"] >= -1e-6 and wild_type.values["ac_e"] == pytest.approx(0.0)
+
+    anaerobic = _srfba(model, initial_state={"o2_e": 0.0})
+    assert anaerobic.values["EX_o2_e"] == pytest.approx(0.0, abs=1e-5)
+
+
+def test_srfba_indicator_tolerance_is_above_the_solver_feasibility_tolerance(re_model):
+    from mewpy.germ.analysis import SRFBA
+
+    srfba = SRFBA(re_model).build()
+    # rows of the 'x > 0' indicators: a*(c + tol - ub) + x <= c + tol, with c = 0 for every '> 0' in the TRN
+    rows = {name: data for name, data in srfba.solver._constr_data.items() if name.startswith("rel_")}
+    upper = [rhs for name, (_, sense, rhs) in rows.items() if name.endswith("_1") and ">0)" in name and sense == "<"]
+    assert upper and min(upper) >= 1e-6
+
+
+def test_solver_argument_is_used(legacy_metabolic):
+    from mewpy.germ.analysis.fba import _FBA
+    from mewpy.solvers.optlang_solver import OptLangSolver
+
+    fba = _FBA(legacy_metabolic, solver="optlang").build()
+    assert isinstance(fba.solver, OptLangSolver)
+    assert fba.optimize().objective_value == pytest.approx(0.8739215, abs=TOL)
+
+
+def test_find_conflicts_order_is_deterministic():
+    from mewpy.germ.analysis import find_conflicts
+    from mewpy.io import Engines, Reader, read_model
+
+    model = read_model(
+        Reader(Engines.BooleanRegulatoryCSV, DATA.joinpath("SampleRegNet.csv"), sep=",", id_col=0, rule_col=1),
+        Reader(Engines.MetabolicSBML, DATA.joinpath("SampleNet.xml")),
+    )
+    model.objective = {"r11": 1}
+    model.get("pH").coefficients = (0, 14)
+    genes, reactions = find_conflicts(model, initial_state={"g21": 0, "g23": 0})
+    assert list(genes.index) == sorted(genes.index) and len(genes) > 1
+    assert list(reactions.index) == sorted(reactions.index) and len(reactions) > 1
+    assert list(genes.columns) == ["interaction"] + sorted(c for c in genes.columns if c != "interaction")
+    assert list(reactions.columns) == ["gpr"] + sorted(c for c in reactions.columns if c != "gpr")
+
+
+@pytest.fixture(scope="module")
+def re_cobra():
+    from mewpy.germ.models import RegulatoryExtension
+
+    return RegulatoryExtension.from_sbml(
+        str(EC_CORE), str(EC_CORE_TRN), regulatory_format="csv", flavor="cobra", **TRN_KWARGS
+    )
+
+
+@pytest.mark.parametrize("flavor, form", [("reframed", "unprefixed"), ("cobra", "prefixed")])
+def test_user_ids_in_the_other_form_are_resolved(re_model, re_cobra, cobra_fva, flavor, form):
+    from mewpy.germ.analysis import fva, slim_rfba, slim_srfba
+
+    model = re_model if flavor == "reframed" else re_cobra
+
+    def given(base, prefix):
+        return prefix + base if form == "prefixed" else base
+
+    assert slim_srfba(model, initial_state={given("b1779", "G_"): 0.0}) == pytest.approx(0.0, abs=TOL)
+    table = fva(model, fraction=0.9, reactions=[given("PGI", "R_")])
+    assert table.iloc[0]["minimum"] == pytest.approx(cobra_fva.loc["PGI", "minimum"], abs=TOL)
+    assert table.iloc[0]["maximum"] == pytest.approx(cobra_fva.loc["PGI", "maximum"], abs=TOL)
+    native = slim_srfba(model, constraints={("R_EX_o2_e" if flavor == "reframed" else "EX_o2_e"): (0, 1000)})
+    assert slim_srfba(model, constraints={given("EX_o2_e", "R_"): (0, 1000)}) == pytest.approx(native, abs=TOL)
+    assert native < 0.5  # anaerobic
+    # 'o2_e' is the TRN's id of the oxygen regulator
+    native_o2 = "M_o2_e" if flavor == "reframed" else "o2_e"
+    expected = slim_rfba(model, initial_state={native_o2: 0.0})
+    assert slim_rfba(model, initial_state={given("o2_e", "M_"): 0.0}) == pytest.approx(expected, abs=TOL)
+
+
+def test_pfba_keeps_the_shared_fraction_of_the_optimum(legacy_metabolic, wt_growth):
+    from mewpy.germ.analysis.pfba import _pFBA
+    from mewpy.util.constants import ModelConstants
+
+    fraction = getattr(ModelConstants, "PFBA_OBJ_FRAC", 0.999)
+    solution = _pFBA(legacy_metabolic).optimize()
+    assert solution.values["Biomass_Ecoli_core"] == pytest.approx(fraction * wt_growth, abs=1e-6)
+    exact = _pFBA(legacy_metabolic).optimize(fraction=1.0)
+    assert exact.values["Biomass_Ecoli_core"] == pytest.approx(wt_growth, abs=1e-6)
+
+
+def test_prom_max_rates_only_for_regulated_reactions(re_model):
+    """slim_prom/PROM with one regulator: FVA only over the reactions of that regulator's targets."""
+    from mewpy.germ.analysis import PROM
+
+    prom = PROM(re_model).build()
+    calls = []
+    original = prom._max_rates
+
+    def spy(solver_kwargs, *args, **kwargs):
+        rates = original(solver_kwargs, *args, **kwargs)
+        calls.append(len(rates))
+        return rates
+
+    prom._max_rates = spy
+    solution = prom.optimize(initial_state=_all_zero_probabilities(re_model), regulators=["b4401"])
+    assert calls and calls[0] < len(re_model.reactions) / 2
+    assert next(iter(solution.solutions.values())).objective_value < 0.874 - 1e-3

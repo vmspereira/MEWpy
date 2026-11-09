@@ -128,8 +128,18 @@ result = simul.simulate(method='FBA')
 ```
 
 ```
-objective: 0.8769972144269748
-Status: OPTIMAL
+============================================================
+Simulation Result
+============================================================
+Status:              OPTIMAL
+Objective (maximize): 0.876997
+Method:              FBA
+Model:               iML1515
+Fluxes:              432 non-zero / 2712 total
+Constraints:         2
+  Environment:       2
+Shadow prices:       1877 available
+============================================================
 ```
 
 Flux Balance Analysis (FBA) can be run without identifying any method, or  by passing the 'FBA' as method parameter. Other phenotype simulation methods may also be run using one of the identifiers:
@@ -146,8 +156,18 @@ result = simul.simulate(method = 'pFBA')
 ```
 
 ```
-objective: 769.7902399146501
-Status: OPTIMAL
+============================================================
+Simulation Result
+============================================================
+Status:              OPTIMAL
+Objective (minimize): 768.978
+Method:              pFBA
+Model:               iML1515
+Fluxes:              436 non-zero / 2712 total
+Constraints:         2
+  Environment:       2
+Shadow prices:       1877 available
+============================================================
 ```
 
 
@@ -165,7 +185,7 @@ OrderedDict([('CYTDK2', 0.0),
              ('XPPT', 0.0),
              ('HXPRT', 0.0),
              ('NDPK5', 0.0),
-             ('SHK3Dr', 0.33424030136519417),
+             ('SHK3Dr', 0.3339060610638284),
              ('NDPK6', 0.0),
              ('NDPK8', 0.0),
              ...])
@@ -176,7 +196,7 @@ It is also to possible to retrieve reaction fluxes in the form of a data frame:
 ```python
 result.dataframe
 # or using find to list specific fluxes ordered by their values
-result.find('glc|biomass', sorted=True)
+result.find('glc|biomass', sort=True)
 ```
 
 ```
@@ -185,7 +205,7 @@ result.find('glc|biomass', sorted=True)
 1       XPPT    0.00000
 2       HXPRT   0.00000
 3       NDPK5   0.00000
-4       SHK3Dr  0.33424
+4       SHK3Dr  0.33391
 ... 	...     ...
 2707    MPTS    0.00000
 2708    MOCOS   0.00000
@@ -267,7 +287,7 @@ result.fluxes['EX_tyr__L_e']
 We also need to verify that the organism continues to grow:
 
 ```python
-res.fluxes['BIOMASS_Ec_iML1515_core_75p37M']
+result.fluxes['BIOMASS_Ec_iML1515_core_75p37M']
 0.691926343744802
 ```
 

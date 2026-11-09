@@ -2,8 +2,8 @@ from typing import Dict, Union
 
 from mewpy.germ.analysis.fba import _FBA
 from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
-from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import Solution, Status
+from mewpy.util.constants import ModelConstants
 from mewpy.solvers.solver import Solver
 
 
@@ -47,7 +47,8 @@ class _pFBA(_FBA):
         """
         Build the pFBA problem using pure simulator approach.
 
-        :param fraction: Fraction of optimal objective value to maintain. Default: None (exact optimal)
+        :param fraction: Fraction of the optimal objective value to maintain. Default: None, i.e.
+            ModelConstants.PFBA_OBJ_FRAC (0.999), the setting shared by all backends
         :param constraints: Optional constraints to apply when finding optimal objective value
         :param objective: Objective of the first (FBA) step. Default: None (the model objective)
         :param minimize: Whether the first (FBA) step minimizes the objective. Default: False
@@ -64,7 +65,7 @@ class _pFBA(_FBA):
                 simulator = self.model
 
         # Step 1: Create a temporary solver to find optimal objective value
-        temp_solver = solver_instance(simulator)
+        temp_solver = self._new_solver(simulator)
         self._close_reactions(temp_solver)
 
         # Set up the FBA objective: the requested one, otherwise the model objective
@@ -89,17 +90,21 @@ class _pFBA(_FBA):
 
         # Step 2: Create a fresh solver for pFBA optimization
         # (SCIP doesn't allow adding constraints after solving)
-        self._solver = solver_instance(simulator)
+        self._solver = self._new_solver(simulator)
         self._close_reactions(self._solver)
 
-        # Add constraint to maintain objective at optimal level (or fraction thereof)
+        # Keep the objective within a fraction of its optimum (at least frac * optimum when maximizing, as in
+        # REFRAMED's pFBA; the margin protects the second step from infeasibility at the exact optimum)
         if fraction is None:
-            constraint_value = fba_solution.fobj
+            fraction = ModelConstants.PFBA_OBJ_FRAC
+        margin = (1.0 - fraction) * abs(fba_solution.fobj)
+        if minimize:
+            sense, constraint_value = "<", fba_solution.fobj + margin
         else:
-            constraint_value = fba_solution.fobj * fraction
+            sense, constraint_value = ">", fba_solution.fobj - margin
 
         # Add biomass constraint to maintain optimal growth
-        self._solver.add_constraint("pfba_biomass_constraint", biomass_objective, "=", constraint_value)
+        self._solver.add_constraint("pfba_biomass_constraint", biomass_objective, sense, constraint_value)
         self._solver.update()
 
         # Step 3: Set up minimization objective (sum of absolute fluxes)
@@ -146,12 +151,16 @@ class _pFBA(_FBA):
         """
         Optimize the pFBA problem using pure simulator approach.
 
-        :param fraction: Fraction of optimal objective value to maintain. Default: None (exact optimal)
+        :param fraction: Fraction of the optimal objective value to maintain. Default: None, i.e.
+            ModelConstants.PFBA_OBJ_FRAC (0.999)
         :param solver_kwargs: A dictionary of keyword arguments to be passed to the solver.
         :return: A Solution instance.
         """
         if not solver_kwargs:
             solver_kwargs = {}
+
+        # Ids may be given in either SBML form
+        solver_kwargs = self._ids.solver_kwargs(solver_kwargs)
 
         # Check if constraints are provided
         current_constraints = solver_kwargs.get("constraints") if "constraints" in solver_kwargs else None

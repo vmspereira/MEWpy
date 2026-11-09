@@ -79,8 +79,10 @@ class TestCobraReferenceMethods(unittest.TestCase):
         fba_ko = sim.simulate(constraints=ko).fluxes[C_BIOMASS]
         lmoma = sim.simulate(method="lMOMA", constraints=ko).fluxes[C_BIOMASS]
 
+        from mewpy.util.constants import ModelConstants
+
         model = sim.model
-        wt = pfba(model)
+        wt = pfba(model, fraction_of_optimum=ModelConstants.PFBA_OBJ_FRAC)  # the simulator's default reference
         with model:
             model.reactions.PGI.bounds = (0, 0)
             expected = moma(model, solution=wt, linear=True).fluxes[C_BIOMASS]
@@ -461,3 +463,181 @@ class TestSmallItems(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Round 3
+# ----------------------------------------------------------------------------------------------------------------------
+_GECKO = {}
+
+
+def gecko_sim():
+    """The bundled single-pool ecYeastGEM (loaded once; ~3 s)."""
+    from mewpy.model.gecko import GeckoModel
+    from mewpy.simulation import get_simulator
+
+    if "model" not in _GECKO:
+        _GECKO["model"] = GeckoModel("single-pool")
+    return get_simulator(copy.deepcopy(_GECKO["model"]))
+
+
+GECKO_BIOMASS = "r_2111"
+GECKO_WT = 0.32543  # GLPK 0.3254276; SCIP 0.3254288
+
+
+class TestRegulatoryExtension(unittest.TestCase):
+    """Item 6: get_simulator(RegulatoryExtension) raised 'has no defined simulator'."""
+
+    def test_get_simulator_of_a_regulatory_extension(self):
+        from mewpy.germ.models.regulatory_extension import RegulatoryExtension
+        from mewpy.simulation import Simulator, get_simulator
+
+        ext = RegulatoryExtension(reframed_sim())
+        sim = get_simulator(ext)
+        self.assertIsInstance(sim, Simulator)
+        self.assertAlmostEqual(sim.simulate().objective_value, WT_GROWTH, places=4)
+        anaerobic = get_simulator(ext, envcond={"R_EX_o2_e": (0, 1000)})
+        self.assertLess(anaerobic.simulate().objective_value, 0.3)
+
+
+class TestEssentialityScan(unittest.TestCase):
+    """Item 7: one solver exception aborted a whole essentiality scan."""
+
+    def test_solver_error_marks_candidate_non_viable(self):
+        sim = reframed_sim()
+        real = sim.simulate
+
+        def flaky(*args, **kwargs):
+            if kwargs.get("constraints", {}).get("R_PGI") == 0:
+                raise Exception("SCIP: error in LP solver!")
+            return real(*args, **kwargs)
+
+        with mock.patch.object(sim, "simulate", side_effect=flaky):
+            with self.assertLogs("mewpy.simulation.simulation", level="WARNING") as logs:
+                essential = sim.essential_reactions()
+                self.assertTrue(sim.is_essential_reaction("PGI"))
+        self.assertIn("R_PGI", essential)
+        self.assertEqual(len(logs.records), 1)
+
+    def test_programming_errors_still_raise(self):
+        sim = reframed_sim()
+        with mock.patch.object(sim, "simulate", side_effect=KeyError("bug")):
+            with self.assertRaises(KeyError):
+                sim.is_essential_reaction("R_PGI")
+
+
+class TestGeckoSimulator(unittest.TestCase):
+    """Items 8 and 11: the GECKO protein prefix, and SCIP on GECKO's tiny kcat coefficients."""
+
+    def test_protein_prefix_and_kcats(self):
+        sim = gecko_sim()
+        self.assertEqual(sim.protein_prefix, "draw_prot_")
+        kcats = sim.get_Kcats("A2P2R3")
+        self.assertFalse([r for r in kcats if "draw_prot" in r])
+
+    def test_essential_proteins_are_protein_ids(self):
+        sim = gecko_sim()
+        with mock.patch.object(type(sim.model), "proteins", new_callable=mock.PropertyMock) as proteins:
+            proteins.return_value = ["P33312", "Q12184"]
+            self.assertEqual(sim.essential_proteins(), ["P33312"])
+
+    def test_scip_knockout_without_wild_type_flux(self):
+        from mewpy.solvers.pyscipopt_solver import PySCIPOptSolver
+
+        sim = gecko_sim()
+        ko = {"draw_prot_Q12184": (0, 0)}
+        sol = PySCIPOptSolver(sim).solve({GECKO_BIOMASS: 1}, minimize=False, constraints=ko)
+        self.assertAlmostEqual(sol.fobj, GECKO_WT, delta=1e-3)
+        self.assertAlmostEqual(sim.simulate(constraints=ko).objective_value, GECKO_WT, delta=1e-3)
+        essential = PySCIPOptSolver(sim).solve({GECKO_BIOMASS: 1}, minimize=False, constraints={"draw_prot_P33312": 0})
+        self.assertLess(essential.fobj, 1e-6)
+
+
+class TestKineticNaN(unittest.TestCase):
+    """Item 10: NaN results reported as OPTIMAL; plot(size=) changed global rcParams."""
+
+    def test_nan_concentrations_are_an_error(self):
+        from mewpy.simulation import kinetic
+        from mewpy.solvers import ODEStatus
+
+        fake = types.SimpleNamespace(solve=lambda y0, ts: ([float("nan")], [0.0], [[float("nan")]]))
+        with mock.patch.object(kinetic, "ode_solver_instance", return_value=fake):
+            result = kinetic.kinetic_solve(FakeKineticModel(), [1.0], [0, 1])
+        self.assertEqual(result[0], ODEStatus.ERROR)
+
+    def test_chassagnole_without_enolase(self):
+        from mewpy.io.sbml import load_ODEModel
+        from mewpy.simulation.kinetic import KineticSimulation
+        from mewpy.solvers import ODEStatus
+
+        model = load_ODEModel(str(DATA.joinpath("chassagnole2002.xml")))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = KineticSimulation(model, t_points=[0, 1e9], timeout=0).simulate(factors={"rmaxENO": 0})
+        self.assertEqual(result.status, ODEStatus.ERROR)
+
+    def test_plot_size_keeps_global_rcparams(self):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from mewpy.io.sbml import load_ODEModel
+        from mewpy.simulation.kinetic import KineticSimulation
+
+        model = load_ODEModel(str(DATA.joinpath("chassagnole2002.xml")))
+        result = KineticSimulation(model, timeout=0).simulate()
+        before = list(plt.rcParams["figure.figsize"])
+        backend = matplotlib.get_backend()
+        plt.figure()
+        first = result.plot(size=(3, 2))
+        self.assertEqual(list(plt.rcParams["figure.figsize"]), before)
+        self.assertEqual(list(first.figure.get_size_inches()), [3, 2])
+        # each call draws a new figure (in Jupyter, later plots otherwise land on earlier axes)
+        second = result.plot()
+        self.assertIsNot(second.figure, first.figure)
+        self.assertEqual(matplotlib.get_backend(), backend)
+        plt.close("all")
+
+
+class TestQuadraticObjective(unittest.TestCase):
+    """Item 12: SCIP dropped quadratic objectives; optlang/GLPK failed with an unclear message."""
+
+    @staticmethod
+    def _problem(cls):
+        s = cls()
+        s.add_variable("x", -10, 10)
+        s.add_variable("y", -10, 10)
+        s.add_constraint("c", {"x": 1, "y": 1}, "=", 2)
+        return s
+
+    def test_scip_minimises_a_quadratic_objective(self):
+        from mewpy.solvers.pyscipopt_solver import PySCIPOptSolver
+
+        s = self._problem(PySCIPOptSolver)
+        # min x^2 + y^2 - 2x  s.t. x + y = 2  ->  x = 1.5, y = 0.5, objective -0.5
+        sol = s.solve(linear={"x": -2}, quadratic={("x", "x"): 1, ("y", "y"): 1}, minimize=True)
+        self.assertAlmostEqual(sol.fobj, -0.5, places=5)
+        self.assertAlmostEqual(sol.values["x"], 1.5, places=4)
+        self.assertEqual(set(sol.values), {"x", "y"})
+        only_quadratic = s.solve(quadratic={("x", "x"): 1, ("y", "y"): 1}, minimize=True)
+        self.assertAlmostEqual(only_quadratic.fobj, 2.0, places=5)
+        linear_again = s.solve(linear={"x": 1}, minimize=False)
+        self.assertAlmostEqual(linear_again.fobj, 10.0, places=6)
+
+    def test_optlang_without_qp_raises_a_clear_error(self):
+        from mewpy.solvers.optlang_solver import OptLangSolver
+
+        s = self._problem(OptLangSolver)
+        with self.assertRaisesRegex(ValueError, "quadratic"):
+            s.solve(quadratic={("x", "x"): 1}, minimize=True)
+
+
+class TestGermUnknownMethod(unittest.TestCase):
+    """An unknown method reached the dispatcher as AttributeError: 'NoneType' object has no attribute '__get__'."""
+
+    def test_unknown_method_raises_value_error(self):
+        sim = germ_sim()
+        with self.assertRaisesRegex(ValueError, "XYZ.*FBA"):
+            sim.simulate(method="XYZ")
+        self.assertAlmostEqual(sim.simulate(method="FBA").objective_value, WT_GROWTH, places=4)

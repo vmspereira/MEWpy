@@ -162,6 +162,12 @@ class GERMModel(ModelContainer):
                 return AttrDict(compartment)
         return AttrDict()
 
+    def _compartment_of(self, m_id):
+        return self.model.get(m_id).compartment
+
+    def _formula_of(self, m_id):
+        return self.model.get(m_id).formula or ""
+
     def get_gene_reactions(self) -> Dict[str, List[str]]:
         """
         It returns a dictionary of genes and their associated reactions
@@ -506,37 +512,6 @@ class Simulation(GERMModel, Simulator):
 
         return [rxn.id for rxn in self.model.yield_exchanges() if rxn.reversibility or rxn.lower_bound < 0]
 
-    def get_transport_reactions(self) -> List[str]:
-        """
-        Get the transport reactions
-        :return: The list of transport reactions.
-        """
-        if not self.model.is_metabolic():
-            return []
-
-        ext = self.model.external_compartment
-
-        return [rxn.id for rxn in self.model.yield_reactions() if ext in rxn.compartments and len(rxn.compartments) > 1]
-
-    def get_transport_genes(self) -> List[str]:
-        """
-        Get genes associated with transport reactions
-        :return: the list genes associated with transport reactions.
-        """
-        if not self.model.is_metabolic():
-            return []
-
-        ext = self.model.external_compartment
-
-        genes = set()
-
-        for rxn in self.model.yield_reactions():
-
-            if ext in rxn.compartments and len(rxn.compartments) > 1:
-                genes.update(rxn.genes.keys())
-
-        return list(genes)
-
     def reverse_reaction(self, reaction_id: str) -> Union[str, None]:
         """
         Identify if a reaction is reversible and returns the reverse reaction if it is the case.
@@ -710,7 +685,10 @@ class Simulation(GERMModel, Simulator):
         solver_kwargs = {"linear": objective, "minimize": minimize, "constraints": constraints}
         try:
             pfba = _pFBA(model).build()
-            sol = pfba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
+            # the fraction of the optimum kept is shared by every backend
+            sol = pfba.optimize(
+                fraction=ModelConstants.PFBA_OBJ_FRAC, solver_kwargs=solver_kwargs, to_solver=True, get_values=True
+            )
         except RuntimeError:
             # _pFBA raises when its first FBA step has no optimum; report that status like the other methods.
             # (Status is a local name in this function because of the import above, hence the alias.)
@@ -750,9 +728,11 @@ class Simulation(GERMModel, Simulator):
         reference: Dict[str, Union[int, float]] = None,
         scalefactor: float = None,
         solver: Union["Solver", "CplexSolver", "GurobiSolver", "OptLangSolver"] = None,
+        slim: bool = False,
     ) -> SimulationResult:
         """
         Simulates a phenotype for a given objective and set of constraints using the specified method.
+        With slim=True only the objective value is returned (None without an optimum).
         Reference wild-type conditions are also accepted
 
         :param objective: a dictionary with the objective function
@@ -782,21 +762,28 @@ class Simulation(GERMModel, Simulator):
         # simulation constraints override persistent ones; environmental conditions win (as in COBRA/REFRAMED)
         simulation_constraints = {**self.constraints, **constraints, **self.environmental_conditions}
 
+        registry = type(self).dispatcher.registry
+        if method not in registry:
+            raise ValueError(f"Unknown simulation method {method!r}; use one of {[str(m) for m in registry]}")
+
         solution: Solution = self.dispatcher(
             method, model=self.model, objective=objective, minimize=not maximize, constraints=simulation_constraints
         )
 
         status = self.__status_mapping[solution.status]
+        solved = status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL)
+        if slim:
+            return solution.fobj if solved else None
 
         return SimulationResult(
             model=self.model,
-            objective_value=solution.fobj,
-            fluxes=solution.values,
+            objective_value=solution.fobj if solved else None,
+            fluxes=solution.values if solved else None,
             status=status,
             envcond=dict(self.environmental_conditions),
             model_constraints=dict(self.constraints),
             simul_constraints=dict(constraints),
-            maximize=maximize,
+            maximize=self._optimised_sense(method, maximize),
             method=method,
         )
 
@@ -855,10 +842,10 @@ class Simulation(GERMModel, Simulator):
 
         solution = fva(model=self.model, fraction=obj_frac, reactions=reactions, constraints=simulation_constraints)
 
+        # the same layouts as the other backends: {id: [min, max]}, or columns Reaction ID, Minimum, Maximum
+        variability = {r_id: [float(row.iloc[0]), float(row.iloc[1])] for r_id, row in solution.iterrows()}
         if format == "df":
-            df = pd.concat([pd.DataFrame(solution.index), solution], axis=1)
-            df.columns = ["Reaction ID", "Minimum", "Maximum"]
+            rows = [[r_id, low, high] for r_id, (low, high) in variability.items()]
+            return pd.DataFrame(rows, columns=["Reaction ID", "Minimum", "Maximum"])
 
-            return df
-
-        return solution.to_dict()
+        return variability

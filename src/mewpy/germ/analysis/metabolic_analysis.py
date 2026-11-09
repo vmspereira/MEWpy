@@ -6,7 +6,7 @@ import pandas as pd
 from mewpy.solvers import solver_prefers_fresh_instance
 from mewpy.util.constants import ModelConstants
 
-from .analysis_utils import gene_defaults, reaction_gpr, run_method_and_decode
+from .analysis_utils import IdResolver, gene_defaults, reaction_gpr, run_method_and_decode
 from .fba import _FBA
 from .pfba import _pFBA
 
@@ -59,7 +59,14 @@ def fva(
     # Get optimal objective value
     _fba = _FBA(model).build()
     objective_value, _ = run_method_and_decode(method=_fba, objective=objective, constraints=constraints)
-    constraints[obj] = (fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND)
+    lower, upper = fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND
+    if obj in constraints:
+        # a user bound on the objective reaction (e.g. a flux envelope fixing growth) still applies
+        bound = constraints[obj]
+        user_lb, user_ub = bound if isinstance(bound, (tuple, list)) else (bound, bound)
+        upper = min(upper, user_ub)
+        lower = min(max(lower, user_lb), upper)
+    constraints[obj] = (lower, upper)
 
     # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
     use_fresh_instance = solver_prefers_fresh_instance()
@@ -133,10 +140,13 @@ def single_gene_deletion(
             for gene_id, rxn_ids in model.get_gene_reactions().items()
         }
 
+    # (given id, native id); ids may be given in either SBML form. Results are indexed by the given ids
     if not genes:
-        genes = list(state)
+        genes = [(gene, gene) for gene in state]
     else:
-        genes = [gene for gene in genes if gene in state]
+        resolver = IdResolver(model)
+        genes = [(gene, resolver.id(gene)) for gene in genes]
+        genes = [(gene, native) for gene, native in genes if native in state]
 
     # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
     use_fresh_instance = solver_prefers_fresh_instance()
@@ -151,13 +161,13 @@ def single_gene_deletion(
         wt_objective_value, wt_status = run_method_and_decode(method=fba, constraints=constraints)
 
     result = {}
-    for gene in genes:
+    for gene, native in genes:
 
-        gene_coefficient = state.pop(gene, 0.0)
-        state[gene] = 0.0
+        gene_coefficient = state.pop(native, 0.0)
+        state[native] = 0.0
 
         gene_constraints = {}
-        for rxn_id, gpr in gene_reactions.get(gene, []):
+        for rxn_id, gpr in gene_reactions.get(native, []):
 
             if gpr.is_none:
                 continue
@@ -186,7 +196,7 @@ def single_gene_deletion(
         else:
             result[gene] = [float(wt_objective_value), str(wt_status)]
 
-        state[gene] = gene_coefficient
+        state[native] = gene_coefficient
 
     return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])
 

@@ -21,6 +21,7 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import copy
+import importlib.util
 import logging
 from abc import ABC, abstractmethod
 
@@ -247,96 +248,106 @@ class SparkEvaluator(Evaluator):
         return self.evaluate(candidates, args)
 
 
-# ray
-try:
-    import ray
-
+# ray: imported when a Ray evaluator is created, not with mewpy (it is slow and writes to stderr)
+if importlib.util.find_spec("ray") is not None:
     MP_Evaluators.append("ray")
-except ImportError:
-    pass
-else:
 
-    @ray.remote
-    class RayActor:
-        """
-        Each actor (worker) has a solver instance to overcome the need
-        to serialize solvers which may not be pickable.
-        The solver is not reset before each evaluation.
-        """
 
-        def __init__(self, problem):
-            self.problem = copy.deepcopy(problem)
+class RayActor:
+    """
+    Each actor (worker) has a solver instance to overcome the need
+    to serialize solvers which may not be pickable.
+    The solver is not reset before each evaluation.
+    """
 
-        def evaluate_candidates(self, candidates):
-            """Evaluates a sublist of candidates"""
-            if getattr(self.problem, "evaluator", False):
-                return self.problem.evaluator(candidates, None)
-            else:
-                res = []
-                for candidate in candidates:
-                    res.append(self.problem.evaluate(candidate))
-                return res
+    def __init__(self, problem):
+        self.problem = copy.deepcopy(problem)
 
-    @ray.remote
-    class RayActorF:
-        """
-        Each actor (worker) has a solver instance to overcome the need to
-        serialize solvers which may not be pickable.
-        The solver is not reset before each evaluation.
-        """
-
-        def __init__(self, func):
-            self.func = copy.deepcopy(func)
-
-        def evaluate_candidates(self, candidates):
-            """Evaluates a sublist of candidates"""
+    def evaluate_candidates(self, candidates):
+        """Evaluates a sublist of candidates"""
+        if getattr(self.problem, "evaluator", False):
+            return self.problem.evaluator(candidates, None)
+        else:
             res = []
             for candidate in candidates:
-                res.append(self.func(candidate))
+                res.append(self.problem.evaluate(candidate))
             return res
 
-    class RayEvaluator(Evaluator):
-        def __init__(self, problem, number_of_actors, isfunc=False):
-            """A ray actor responsible for performing evaluations.
 
-            Args:
-                problem: A class implementing an evaluator(list_of_candidates,**kwargs)
-                number_of_actors (int): Number of workers
-            """
-            ray.init(ignore_reinit_error=True)
-            if isfunc:
-                self.actors = [RayActorF.remote(problem) for _ in range(number_of_actors)]
-            else:
-                self.actors = [RayActor.remote(problem) for _ in range(number_of_actors)]
-            self.number_of_actors = len(self.actors)
-            self.__name__ = self.__class__.__name__
-            logger.info(f"Using {self.number_of_actors} workers.")
+class RayActorF:
+    """
+    Each actor (worker) has a solver instance to overcome the need to
+    serialize solvers which may not be pickable.
+    The solver is not reset before each evaluation.
+    """
 
-        def evaluate(self, candidates, args):
-            """
-            Divides the candidates into sublists to be evaluated by each actor
-            """
-            size = len(candidates) // self.number_of_actors
-            n = len(candidates) % self.number_of_actors
-            sub_lists = []
-            p = 0
-            for _ in range(self.number_of_actors):
-                d = size + 1 if n > 0 else size
-                sub_lists.append(candidates[p : p + d])
-                p = p + d
-                n -= 1
-            values = []
-            for i in range(self.number_of_actors):
-                actor = self.actors[i]
-                values.append(actor.evaluate_candidates.remote(sub_lists[i]))
-            r = ray.get(values)
-            result = []
-            for x in r:
-                result += x
-            return result
+    def __init__(self, func):
+        self.func = copy.deepcopy(func)
 
-        def __call__(self, candidates, args):
-            return self.evaluate(candidates, args)
+    def evaluate_candidates(self, candidates):
+        """Evaluates a sublist of candidates"""
+        res = []
+        for candidate in candidates:
+            res.append(self.func(candidate))
+        return res
+
+
+_RAY_ACTOR_CLASSES = {}
+
+
+def _ray_actor_class(cls):
+    """The Ray actor class of RayActor/RayActorF, made on first use."""
+    import ray
+
+    if cls not in _RAY_ACTOR_CLASSES:
+        _RAY_ACTOR_CLASSES[cls] = ray.remote(cls)
+    return _RAY_ACTOR_CLASSES[cls]
+
+
+class RayEvaluator(Evaluator):
+    def __init__(self, problem, number_of_actors, isfunc=False):
+        """A ray actor responsible for performing evaluations.
+
+        Args:
+            problem: A class implementing an evaluator(list_of_candidates,**kwargs)
+            number_of_actors (int): Number of workers
+        """
+        import ray
+
+        ray.init(ignore_reinit_error=True)
+        actor_class = _ray_actor_class(RayActorF if isfunc else RayActor)
+        self.actors = [actor_class.remote(problem) for _ in range(number_of_actors)]
+        self.number_of_actors = len(self.actors)
+        self.__name__ = self.__class__.__name__
+        logger.info("Using %s workers.", self.number_of_actors)
+
+    def evaluate(self, candidates, args):
+        """
+        Divides the candidates into sublists to be evaluated by each actor
+        """
+        import ray
+
+        size = len(candidates) // self.number_of_actors
+        n = len(candidates) % self.number_of_actors
+        sub_lists = []
+        p = 0
+        for _ in range(self.number_of_actors):
+            d = size + 1 if n > 0 else size
+            sub_lists.append(candidates[p : p + d])
+            p = p + d
+            n -= 1
+        values = []
+        for i in range(self.number_of_actors):
+            actor = self.actors[i]
+            values.append(actor.evaluate_candidates.remote(sub_lists[i]))
+        r = ray.get(values)
+        result = []
+        for x in r:
+            result += x
+        return result
+
+    def __call__(self, candidates, args):
+        return self.evaluate(candidates, args)
 
 
 def get_mp_evaluators():

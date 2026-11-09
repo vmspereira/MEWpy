@@ -38,7 +38,7 @@ from mewpy.util.constants import ModelConstants
 
 
 class ModelList(object):
-    """Auxilary class to load predifined ecYeast7 models"""
+    """Auxilary class to load the bundled GECKO models: ecYeastGEM (enzyme-constrained yeast-GEM 8.1.3)"""
 
     def __init__(self):
         self.DATA_FILES = os.path.join(os.path.dirname(__file__), "data")
@@ -101,9 +101,9 @@ class GeckoModel(CBModel):
 
     Implement a model class for Genome-scale model to account for Enzyme Constraints, using Kinetics and Omics [1]_.
 
-    :param model: str, A CBModel to apply protein constraints to. Can be 'single-pool' for the bundled ecYeast7 \
-        model using only a single pool for all proteins, or 'multi-pool' for the model that has separate pools \
-        for all measured proteins.
+    :param model: str, A CBModel to apply protein constraints to. Can be 'single-pool' for the bundled ecYeastGEM \
+        (yeast-GEM 8.1.3, batch) model using only a single pool for all proteins, or 'multi-pool' for the \
+        ecYeastGEM 8.1.3 model that has separate pools for all measured proteins.
     :param protein_properties: pd.DataFrame, A data frame that defined molecular weight (g/mol) 'mw', for 'uniprot' \
         proteins and their average 'abundance' in ppm.
     :param sigma: float, The parameter adjusting how much of a protein pool can take part in reactions. Fitted \

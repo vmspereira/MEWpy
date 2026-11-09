@@ -173,7 +173,10 @@ class RFBA(_RegulatoryAnalysisBase):
         """
         Solve the RFBA problem.
 
-        :param initial_state: Initial regulatory state. If None, all regulators start active.
+        :param initial_state: Initial regulatory state. Regulators not given default to the environment:
+            a metabolite with an exchange reaction is present (|lower bound|) when the medium allows its
+            uptake; any other regulator takes its maximum coefficient. Explicit gene states (e.g. a
+            knockout) override the decoded target states.
         :param dynamic: If True, performs dynamic RFBA (iterative). Default: False
         :param to_solver: If True, returns raw solver solution. Default: False
         :param solver_kwargs: Additional arguments for solver. 'linear' and 'minimize' set a temporary objective.
@@ -186,6 +189,10 @@ class RFBA(_RegulatoryAnalysisBase):
 
         if solver_kwargs is None:
             solver_kwargs = {}
+
+        # Ids may be given in either SBML form or as original TRN ids
+        initial_state = self._ids.keys(initial_state)
+        solver_kwargs = self._ids.solver_kwargs(solver_kwargs)
 
         # Get initial state
         state = self.initial_state(initial_state)

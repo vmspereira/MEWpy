@@ -401,11 +401,12 @@ class RegulatoryExtension:
 
     def set_objective(self, reaction):
         """
-        Set objective function in the underlying simulator.
+        Set (replace) the objective function in the underlying simulator.
 
         :param reaction: Reaction ID or dict of reaction:coefficient
         """
-        return self._simulator.set_objective(reaction)
+        # the simulator objective setter replaces the objective and accepts an id or a dict on every backend
+        self._simulator.objective = reaction
 
     # =========================================================================
     # Regulatory Network Management

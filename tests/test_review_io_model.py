@@ -728,3 +728,43 @@ def test_co_expression_csv_self_regulated_target_is_one_object(tmp_path):
     assert model.regulators["g1"] is target
     assert model.interactions["g1_interaction"].regulators["g1"] is target
     assert model.interactions["g2_interaction"].regulators["g1"] is target
+
+
+# -----------------------------------------------------------------------------
+# N-1: convert_to_irreversible printed a progress bar that could not be turned off
+# -----------------------------------------------------------------------------
+def test_convert_to_irreversible_is_quiet_by_default(capsys):
+    from reframed import load_cbmodel
+
+    from mewpy.cobra.util import convert_to_irreversible
+
+    sim, mapping = convert_to_irreversible(load_cbmodel(EC_CORE))
+    assert "Converting to irreversible" not in capsys.readouterr().err
+    assert mapping and all(rev == f"{r_id}_REV" for r_id, rev in mapping.items())
+
+    convert_to_irreversible(load_cbmodel(EC_CORE), verbose=True)
+    assert "Converting to irreversible" in capsys.readouterr().err
+
+
+# -----------------------------------------------------------------------------
+# N-2: ODEModel.get_ode changed numpy's global floating-point error handling
+# -----------------------------------------------------------------------------
+def test_get_ode_keeps_numpy_error_state(tmp_path):
+    import numpy as np
+
+    from mewpy.io.sbml import load_ODEModel
+
+    model = load_ODEModel(_kinetic_sbml(tmp_path / "div.xml", ["k / A"]))
+    previous = np.seterr(divide="warn", invalid="warn")
+    try:
+        ode = model.get_ode()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            dxdt = ode(0, np.array([0.0, 1.0]))
+        assert np.isinf(dxdt[0])
+        # divisions by zero in the rate laws are silenced while the ODE is evaluated...
+        assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        # ...but numpy's global error handling is left as it was
+        assert np.geterr()["divide"] == "warn" and np.geterr()["invalid"] == "warn"
+    finally:
+        np.seterr(**previous)

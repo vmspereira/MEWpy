@@ -71,8 +71,8 @@ class PROM(_RegulatoryAnalysisBase):
         self._linear_objective = dict(self.model.objective)
         self._minimize = False
 
-    def _max_rates(self, solver_kwargs: Dict[str, Any]):
-        """Compute maximum rates for all reactions using FVA."""
+    def _max_rates(self, solver_kwargs: Dict[str, Any], reactions: Sequence[str] = None):
+        """Compute maximum rates using FVA, for the given reactions (default: all reactions)."""
         # Wild-type reference
         reference = self.solver.solve(
             **{**solver_kwargs, "linear": self._linear_objective, "minimize": self._minimize, "get_values": True}
@@ -84,7 +84,7 @@ class PROM(_RegulatoryAnalysisBase):
 
         # FVA of the reaction at fraction of 0.99 (for wild-type growth rate)
         rates = {}
-        for reaction in self.model.reactions:
+        for reaction in self.model.reactions if reactions is None else reactions:
             min_rxn = _run_and_decode_solver(
                 self,
                 additional_constraints=reference_constraints,
@@ -117,6 +117,13 @@ class PROM(_RegulatoryAnalysisBase):
             rates[reaction] = value
 
         return rates
+
+    def _gene_reactions(self, gene_id: str) -> list:
+        """Reaction ids of a metabolic gene (RegulatoryExtension or legacy GERM model)."""
+        if hasattr(self.model, "get_gene"):
+            return list(self.model.get_gene(gene_id).reactions)
+        gene = self.model.genes[gene_id]
+        return list(gene.reactions) if hasattr(gene, "reactions") else []
 
     def _optimize_ko(
         self,
@@ -287,8 +294,17 @@ class PROM(_RegulatoryAnalysisBase):
             raise RuntimeError("The solver did not find an optimal solution for the wild-type conditions.")
         reference = reference.values.copy()
 
-        # Max and min fluxes of the reactions
-        max_rates = self._max_rates(solver_kwargs=solver_kwargs)
+        # Max and min fluxes, only of the reactions the knockouts can restrict (those of the regulators'
+        # metabolic targets): the other rates are never used, and FVA costs two solves per reaction
+        genes = set(self.model.genes)
+        regulated = {
+            rxn_id
+            for regulator in regulators
+            for target in regulator.yield_targets()
+            if target.id in genes
+            for rxn_id in self._gene_reactions(target.id)
+        }
+        max_rates = self._max_rates(solver_kwargs=solver_kwargs, reactions=sorted(regulated))
 
         # Single regulator knockout
         if len(regulators) == 1:
@@ -340,12 +356,16 @@ class PROM(_RegulatoryAnalysisBase):
         if not initial_state:
             initial_state = {}
 
+        # Ids may be given in either SBML form or as original TRN ids
+        initial_state = self._ids.keys(initial_state)
+
         if not regulators:
             # RegulatoryExtension yields (id, regulator) tuples, legacy models yield regulators
             regulators = [regulator for _, regulator in self._get_regulators()]
         else:
             if isinstance(regulators, str):
                 regulators = [regulators]
+            regulators = self._ids.ids(regulators)
             # Get regulator objects - handle both APIs
             if hasattr(self.model, "get_regulator"):
                 # RegulatoryExtension API
@@ -355,7 +375,7 @@ class PROM(_RegulatoryAnalysisBase):
                 regulators = [self.model.regulators[regulator] for regulator in regulators]
 
         # a copy: the caller's dict is not mutated. 'linear'/'minimize' set a temporary objective
-        solver_kwargs = dict(solver_kwargs) if solver_kwargs else {}
+        solver_kwargs = dict(self._ids.solver_kwargs(solver_kwargs)) if solver_kwargs else {}
         linear, minimize = self._objective_from(solver_kwargs)
         objective, direction = self._linear_objective, self._minimize
         self._linear_objective, self._minimize = linear, minimize

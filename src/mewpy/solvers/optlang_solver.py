@@ -228,7 +228,18 @@ class OptLangSolver(Solver):
                     objective.append(val * self.problem.variables[r_id1] * self.problem.variables[r_id2])
 
             objective_expr = add(objective)
-            self.problem.objective = Objective(objective_expr, direction=("min" if minimize else "max"), sloppy=True)
+            try:
+                self.problem.objective = Objective(
+                    objective_expr, direction=("min" if minimize else "max"), sloppy=True
+                )
+            except ValueError as e:
+                if not quadratic:
+                    raise
+                interface = type(self.problem).__module__
+                raise ValueError(
+                    f"The optlang interface {interface} does not support quadratic objectives; "
+                    "use a QP-capable solver (SCIP, CPLEX or Gurobi)"
+                ) from e
 
     def solve(
         self,

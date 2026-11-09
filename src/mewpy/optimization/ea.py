@@ -205,7 +205,10 @@ class AbstractEA(ABC):
         import pandas as pd
 
         columns = ["Modification", "Size"]
-        columns.extend([obj.short_str() for obj in self.problem.fevaluation])
+        for i, obj in enumerate(self.problem.fevaluation):
+            name = obj.short_str()
+            # e.g. CandidateSize is also named 'Size'
+            columns.append(name if name not in columns else f"{name} (objective {i + 1})")
         df = pd.DataFrame(table, columns=columns)
         return df
 

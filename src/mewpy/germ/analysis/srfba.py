@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Dict, Union
 from warnings import warn
 
 from mewpy.germ.algebra import parse_expression
+from mewpy.germ.analysis.analysis_utils import regulator_exchanges
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.solvers import Solution
@@ -22,6 +23,10 @@ if TYPE_CHECKING:
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
+
+# Margin of the indicator constraints (x > c, metabolite uptake): 10x the default feasibility tolerance of
+# SCIP/CPLEX/Gurobi (1e-6), so that a solution within the solver tolerance cannot flip an indicator
+INDICATOR_TOLERANCE = 1e-5
 
 
 def _finite_bounds(lb: float, ub: float):
@@ -115,9 +120,13 @@ class SRFBA(_RegulatoryAnalysisBase):
             self._bounds[rxn_id] = _finite_bounds(rxn_data["lb"], rxn_data["ub"])
         # Target variable -> switch variable that relaxes its regulatory rule (see _linearize_expression)
         self._overrides = {}
+        # Coefficients of the regulatory variables: RegulatoryExtension GPR symbols carry none, and ko()
+        # fixes them to (0, 0)
+        self._coefficients = self._regulatory_coefficients()
 
         # Build GPR and regulatory interaction constraints
         if self._has_regulatory_network():
+            self._link_metabolite_regulators()
             self._build_gprs()
             self._build_interactions()
 
@@ -140,6 +149,34 @@ class SRFBA(_RegulatoryAnalysisBase):
             return
         self._constraint_names.add(constr_id)
         self.solver.add_constraint(constr_id, lhs, sense, rhs, update=update)
+
+    def _regulatory_coefficients(self) -> Dict[str, tuple]:
+        """Regulator and target id -> (min, max) of its coefficients."""
+        coefficients = {}
+        for variables in (getattr(self.model, "targets", None) or {}, dict(self._get_regulators())):
+            for var_id, variable in variables.items():
+                values = getattr(variable, "coefficients", None)
+                if values:
+                    coefficients[var_id] = (float(min(values)), float(max(values)))
+        return coefficients
+
+    def _link_metabolite_regulators(self):
+        """
+        A metabolite regulator m is 1 iff its exchange reaction v carries uptake (v < -tol):
+        v + (tol + ub) m <= ub      (m = 1 -> v <= -tol)
+        v - (lb + tol) m >= -tol    (m = 0 -> v >= -tol)
+        A regulator fixed by ko() (coefficients (0, 0)) forbids the uptake.
+        """
+        tol = INDICATOR_TOLERANCE
+        for reg_id, (exchange_id, _) in regulator_exchanges(self.model).items():
+            if exchange_id not in self._bounds:
+                continue
+            lb, ub = self._bounds[exchange_id]
+            m_lb, m_ub = self._coefficients.get(reg_id, (0.0, 1.0))
+            fixed = m_lb == m_ub
+            self._add_variable(reg_id, float(fixed and m_lb > 0), float(not fixed or m_ub > 0), VarType.INTEGER)
+            self._add_constraint(f"uptake_{reg_id}_on", {exchange_id: 1.0, reg_id: tol + ub}, "<", ub)
+            self._add_constraint(f"uptake_{reg_id}_off", {exchange_id: 1.0, reg_id: -(lb + tol)}, ">", -tol)
 
     def _build_gprs(self):
         """Build the GPR (Gene-Protein-Reaction) constraints for the solver."""
@@ -280,12 +317,14 @@ class SRFBA(_RegulatoryAnalysisBase):
                 self._add_constraint(f"link_{boolean_variable}", {boolean_variable: 1.0}, "=", float(result))
             return
 
-        # |target - result| <= M * switch; the switch is fixed to 0 unless the target state is set explicitly
+        # |target - result| <= M * switch; the switch is fixed to 0 unless the target state is set explicitly,
+        # through initial_state in optimize or by fixing the target's coefficients (ko())
+        lb, ub = self._bounds.get(boolean_variable, (0.0, 1.0))
         switch = f"override_{boolean_variable}"
-        self._add_variable(switch, 0.0, 0.0, VarType.CONTINUOUS)
+        fixed = float(lb == ub)
+        self._add_variable(switch, fixed, fixed, VarType.CONTINUOUS)
         self._overrides[boolean_variable] = switch
 
-        lb, ub = self._bounds.get(boolean_variable, (0.0, 1.0))
         if isinstance(result, str):
             r_lb, r_ub = self._bounds.get(result, (0.0, 1.0))
             big_m = 1.0 + max(abs(lb), abs(ub), abs(r_lb), abs(r_ub))
@@ -322,8 +361,13 @@ class SRFBA(_RegulatoryAnalysisBase):
 
         if node.is_symbol:
             name = node.key()
-            # an existing variable (e.g. a reaction flux used as regulator) keeps its own bounds
-            lb, ub = self._bounds.get(name) or tuple(float(bound) for bound in node.bounds)
+            # an existing variable (e.g. a reaction flux used as regulator) keeps its own bounds; a regulatory
+            # variable takes its coefficients (fixed to (0, 0) by ko())
+            lb, ub = (
+                self._bounds.get(name)
+                or (None if node.model_variable else self._coefficients.get(name))
+                or tuple(float(bound) for bound in node.bounds)
+            )
             var_type = VarType.INTEGER if (lb, ub) == (0.0, 1.0) else VarType.CONTINUOUS
             self._add_variable(name, lb, ub, var_type)
             return name
@@ -401,7 +445,7 @@ class SRFBA(_RegulatoryAnalysisBase):
             raise ValueError(f"comparison between constants {node.to_string()}")
 
         lb, ub = self._bounds.get(r, (0.0, 1.0))
-        tol = ModelConstants.TOLERANCE
+        tol = INDICATOR_TOLERANCE
 
         if node.is_equal:
             if (lb, ub) != (0.0, 1.0) or c_val not in (0.0, 1.0):
@@ -443,6 +487,9 @@ class SRFBA(_RegulatoryAnalysisBase):
 
         if not initial_state:
             initial_state = {}
+
+        # Ids may be given in either SBML form or as original TRN ids
+        initial_state = self._ids.keys(initial_state)
 
         # Apply regulatory constraints via initial_state (new dicts: the caller's must not be mutated).
         # An explicit state of a regulatory target (e.g. a gene knockout) overrides its regulatory rule.

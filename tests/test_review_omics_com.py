@@ -754,3 +754,191 @@ def test_reaction_expression_exact_gene_id_wins():
     assert gene_to_reaction_expression(sim, {"b4025": 1.0, "G_b4025": 7.0})["R_PGI"] == 7.0
     assert gene_to_reaction_expression(sim, {"G_b4025": 7.0, "b4025": 1.0})["R_PGI"] == 7.0
     assert gene_to_reaction_expression(sim, {"b4025": 3.0})["R_PGI"] == 3.0
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Round 3: community and omics defects found by the notebook reviews and the parity suite
+# ---------------------------------------------------------------------------------------------------------------------
+def _sim_copy(org_id, knockouts=(), loader=cobra_model):
+    sim = get_simulator(loader())
+    for r_id in knockouts:
+        sim.set_reaction_bounds(sim.resolve(r_id, "reaction"), 0, 0)
+    sim.id = org_id
+    return sim
+
+
+def _glc_nh4_community(**kwargs):
+    """glc_ko cannot take up glucose and nh4_ko cannot take up ammonium: they cross-feed."""
+    from mewpy.com import CommunityModel
+
+    members = [_sim_copy("glc_ko", ["GLCpts"]), _sim_copy("nh4_ko", ["NH4t"])]
+    return CommunityModel(members, verbose=False, **kwargs)
+
+
+def _wild_type_medium():
+    from mewpy.simulation import Environment
+
+    return Environment.from_model(get_simulator(cobra_model()))
+
+
+def test_r3_1_regcomfba_splits_growth_evenly():
+    from mewpy.com import regComFBA
+
+    community = _glc_nh4_community(merge_biomasses=False, flavor="cobra")
+    res = regComFBA(community, constraints=_wild_type_medium(), obj_frac=0.9)
+    assert res.status == SStatus.OPTIMAL
+    biomass = community.organisms_biomass
+    growth = [res.fluxes[biomass[org]] for org in ("glc_ko", "nh4_ko")]
+    # an equal split of 0.374 each is feasible (0.41 is not), so the regularized optimum is equal
+    assert growth[0] == pytest.approx(growth[1], abs=1e-4)
+    assert growth[0] > 0.3
+    assert res.objective_value > 0
+
+
+def test_r3_1_regcomfba_clear_error_without_quadratic_solver():
+    from mewpy.com import regComFBA
+    from mewpy.solvers import get_default_solver, set_default_solver
+
+    previous = get_default_solver()
+    set_default_solver("optlang")
+    try:
+        community = _glc_nh4_community(merge_biomasses=False, flavor="cobra")
+        with pytest.raises(RuntimeError, match="quadratic"):
+            regComFBA(community, constraints=_wild_type_medium(), obj_frac=0.9)
+    finally:
+        set_default_solver(previous)
+
+
+def test_r3_2_sc_score_with_positive_lower_bounds():
+    """Two wild types (ATPM lb 8.39) each grow alone, so neither depends on the other."""
+    from mewpy.com import CommunityModel, sc_score
+
+    members = [_sim_copy("a"), _sim_copy("b")]
+    assert members[0].get_reaction_bounds("ATPM")[0] > 0
+    scores = sc_score(CommunityModel(members, flavor="cobra", verbose=False), verbose=False)
+    assert dict(scores) == {"a": {"b": 0.0}, "b": {"a": 0.0}}
+
+
+def test_r3_3_steadycom_resolves_constraint_ids():
+    from mewpy.com import CommunityModel
+    from mewpy.com.steadycom import SteadyCom, SteadyComVA
+    from mewpy.simulation import Environment
+
+    def community():
+        members = [_sim_copy("a", loader=reframed_model), _sim_copy("b", loader=reframed_model)]
+        return CommunityModel(members, flavor="reframed", merge_biomasses=False, verbose=False)
+
+    medium = Environment.from_model(get_simulator(reframed_model()))
+    unprefixed = {r_id[2:]: bounds for r_id, bounds in medium.items()}
+    assert all(r_id.startswith("R_") for r_id in medium)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        growth = SteadyCom(community(), constraints=unprefixed).growth
+        ranges = SteadyComVA(community(), constraints=unprefixed)
+    assert not [w for w in caught if "not previously declared" in str(w.message)]
+    assert growth == pytest.approx(SteadyCom(community(), constraints=medium).growth, rel=1e-6)
+    expected = SteadyComVA(community(), constraints=medium)
+    for org_id in expected:
+        assert ranges[org_id] == pytest.approx(expected[org_id], abs=1e-6)
+    assert growth < 1
+
+
+def test_r3_4_mro_and_mip_use_only_supplied_compounds():
+    from mewpy.com import mip_score, mro_score
+
+    env = _wild_type_medium()
+    supplied = {"glc__D", "nh4", "pi", "o2", "h2o", "h", "co2"}
+    assert {r_id[3:-2] for r_id, (lb, _) in env.items() if lb < 0} == supplied
+    _, extras = mro_score(_glc_nh4_community(flavor="cobra"), environment=env)
+    assert set(extras.community_medium) <= supplied
+    score, extras = mip_score(_glc_nh4_community(flavor="cobra"), environment=env, verbose=False)
+    for medium in (extras or {}).values():
+        assert set(medium) <= supplied
+
+
+def test_r3_5_copy_keeps_settings():
+    community = _glc_nh4_community(abundances=[0.3, 0.7], add_compartments=False, flavor="cobra")
+    clone = community.copy()
+    assert clone.merge_biomasses and clone.organisms_abundance == {"glc_ko": 0.3, "nh4_ko": 0.7}
+    assert clone.add_compartments is False and clone._verbose is False and clone.flavor == "cobra"
+    clone = _glc_nh4_community(merge_biomasses=False).copy()
+    assert clone.merge_biomasses is False
+
+
+def test_r3_6_transport_reactions_have_finite_bounds():
+    from mewpy.util.constants import ModelConstants
+
+    community = _glc_nh4_community(flavor="reframed")
+    sim = community.merged_model
+    transports = [
+        new_id
+        for (org_id, r_id), new_id in community.reaction_map.items()
+        if r_id in community.organisms[org_id].get_exchange_reactions()
+        and len(sim.get_reaction(new_id).stoichiometry) == 2
+    ]
+    assert transports
+    bound = ModelConstants.REACTION_UPPER_BOUND
+    assert {sim.get_reaction_bounds(r_id) for r_id in transports} == {(-bound, bound)}
+
+
+@lru_cache(maxsize=None)
+def _steadycom_unconstrained(loaders):
+    from mewpy.com.steadycom import SteadyCom, SteadyComVA
+
+    community = _community_of(loaders, merge_biomasses=False)
+    growth = SteadyCom(community).growth
+    ranges = SteadyComVA(_community_of(loaders, merge_biomasses=False), obj_frac=0.9)
+    return growth, {org: tuple(bounds) for org, bounds in ranges.items()}
+
+
+@pytest.mark.parametrize("pair", ["reframed+reframed", "cobra+reframed"])
+def test_r3_7_steadycom_bigm_is_backend_independent(pair):
+    loaders = {"cobra": cobra_model, "reframed": reframed_model}
+    expected_growth, expected_ranges = _steadycom_unconstrained((cobra_model, cobra_model))
+    growth, ranges = _steadycom_unconstrained(tuple(loaders[name] for name in pair.split("+")))
+    assert growth == pytest.approx(expected_growth, rel=1e-4)
+    for org_id, bounds in expected_ranges.items():
+        assert ranges[org_id] == pytest.approx(bounds, abs=1e-4)
+
+
+def test_r3_8_steadycom_scales_lower_bounds_by_abundance():
+    """Two copies of one organism grow like the organism alone: each pays its share of ATPM."""
+    from mewpy.com.steadycom import SteadyCom
+
+    single = get_simulator(cobra_model()).simulate().objective_value
+    community = _community_of((cobra_model, cobra_model), merge_biomasses=False)
+    sol = SteadyCom(community, constraints=_glucose_constraints(community))
+    assert sol.growth == pytest.approx(single, rel=1e-3)
+    sim = community.merged_model
+    atpm = {org: sol.values[community.reaction_map[(org, "ATPM")]] for org in community.organisms}
+    for org, flux in atpm.items():
+        assert flux >= 8.39 * sol.values[f"x_{org}"] - 1e-6
+    assert sim.get_reaction_bounds(community.reaction_map[("m1", "ATPM")])[0] == pytest.approx(8.39)
+
+
+def test_r3_9_imat_high_set_is_above_the_high_cutoff():
+    from mewpy.omics import ExpressionSet, Preprocessing, iMAT
+
+    genes = ["b1779", "b4025", "b2926", "b1702", "b0720", "b2914", "b1478", "b3403"]
+    expr = ExpressionSet(genes, ["c1"], np.array([[0.9], [0.8], [0.7], [0.6], [0.5], [0.4], [0.3], [0.2]]))
+    sim = get_simulator(cobra_model())
+    rxn_exp = Preprocessing(sim, expr).reactions_expression(0)
+    low_cut, high_cut = np.percentile(list(rxn_exp.values()), [25, 75])
+    n_low = sum(v < low_cut for v in rxn_exp.values())
+    n_high = sum(v > high_cut for v in rxn_exp.values())
+    res = iMAT(sim, expr)
+    assert res.status == SStatus.OPTIMAL
+    assert res.objective_value <= n_low + n_high + 1e-6
+
+
+def test_r3_10_flux_envelope_on_germ_matches_cobra():
+    from mewpy.io import read_sbml
+    from mewpy.visualization.envelope import flux_envelope
+
+    germ = get_simulator(read_sbml(str(Path(EC_CORE_MODEL).with_suffix("")), metabolic=True, regulatory=False))
+    biomass = next(r for r in germ.objective)
+    x, ymin, ymax = flux_envelope(germ, "EX_glc__D_e", biomass, steps=3)
+    cx, cymin, cymax = flux_envelope(cobra_model(), "EX_glc__D_e", "BIOMASS_Ecoli_core_w_GAM", steps=3)
+    np.testing.assert_allclose(x, cx, atol=1e-6)
+    np.testing.assert_allclose(ymax, cymax, atol=1e-6)
+    np.testing.assert_allclose(ymin, cymin, atol=1e-6)

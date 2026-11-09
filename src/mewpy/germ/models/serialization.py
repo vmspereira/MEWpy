@@ -50,7 +50,11 @@ class Serializer:
 
         if isinstance(obj, set):
 
-            return tuple(obj)
+            # sorted, so the serialized output does not depend on set iteration (PYTHONHASHSEED)
+            try:
+                return tuple(sorted(obj))
+            except TypeError:
+                return tuple(obj)
 
         elif hasattr(obj, "id"):
 

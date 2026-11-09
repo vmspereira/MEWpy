@@ -77,6 +77,10 @@ def kinetic_solve(
             if c < neg_tolerance:
                 return ODEStatus.ERROR, {}, {}, None, None
 
+        # NaN concentrations or rates (e.g. a rate law divided by a zeroed parameter) are not a steady state
+        if np.isnan(np.asarray(C, dtype=float)).any() or np.isnan(np.asarray(list(rates.values()), dtype=float)).any():
+            return ODEStatus.ERROR, {}, {}, None, None
+
         # Values below solver precision will be set to 0
         abs_tol = SolverConfigurations.ABSOLUTE_TOL
         rates.update({k: 0 for k, v in rates.items() if abs(v) < abs_tol})
@@ -219,8 +223,6 @@ class KineticSimulationResult(SimulationResult):
     def plot(self, met: List[str] = None, size: Tuple[int, int] = None):
         import matplotlib.pyplot as plt
 
-        if size:
-            plt.rcParams["figure.figsize"] = size
         if not met:
             _mets = list(self.concentrations.keys())
         elif isinstance(met, str):
@@ -229,7 +231,8 @@ class KineticSimulationResult(SimulationResult):
             _mets = met
         else:
             raise ValueError("fluxes should be a reaction identifier," "a list of reaction identifiers or None.")
-        ax = plt.subplot()
+        # a new figure; the size applies to it only, not to matplotlib's global rcParams
+        _, ax = plt.subplots(figsize=size)
         if len(_mets) != 2:
             for k in _mets:
                 ax.plot(self.t, self.get_y(k), label=k)

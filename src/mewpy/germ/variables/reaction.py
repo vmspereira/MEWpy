@@ -203,7 +203,7 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
 
         # Compartments
         try:
-            comps = list(self.compartments)
+            comps = sorted(self.compartments)
             if comps:
                 comp_str = ", ".join(comps) if len(comps) <= 3 else f"{len(comps)} compartments"
                 rows.append(("Compartments", comp_str))
@@ -224,7 +224,7 @@ class Reaction(Variable, variable_type="reaction", register=True, constructor=Tr
             "Boundary": self.boundary,
             "GPR": self.gene_protein_reaction_rule,
             "Genes": ", ".join(self.genes),
-            "Compartments": ", ".join(self.compartments),
+            "Compartments": ", ".join(sorted(self.compartments)),
             "Charge balance": self.charge_balance,
             "Mass balance": self.mass_balance,
         }

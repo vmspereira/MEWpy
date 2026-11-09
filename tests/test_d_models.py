@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from mewpy.util.constants import ModelConstants
+
 MODELS_PATH = Path(__file__).parent.joinpath("data")
 EC_CORE_MODEL = MODELS_PATH.joinpath("e_coli_core.xml")
 EC_CORE_REG_MODEL = MODELS_PATH.joinpath("e_coli_core_trn.csv")
@@ -258,32 +260,55 @@ class TestGERMModel(unittest.TestCase):
         self.assertEqual(len(model.metabolites), 72)
         self.assertEqual(len(model.genes), 137)
 
-    # @pytest.mark.xfail
     def test_write(self):
         """
-        Tests write model
+        Writing to SBML (metabolic + regulatory) and JSON and reading back keeps the model: reactions with their
+        bounds, GPRs and stoichiometry, the regulatory interactions and their rules, and the FBA optimum
         """
+        import re
+        import tempfile
 
-        import os
-
-        from mewpy.io import Engines, Writer, read_model, write_model
+        from mewpy.io import Engines, Reader, Writer, read_model, write_model
+        from mewpy.simulation import get_simulator
 
         model = read_model(self.regulatory_reader, self.metabolic_reader)
 
-        # to sbml
-        metabolic_writer = Writer(Engines.MetabolicSBML, io=MODELS_PATH.joinpath("e_coli_core_write.xml"), model=model)
+        def rule(expression):
+            # SBML writes numbers as floats: "o2_e > 0" is read back as "o2_e > 0.0"
+            return re.sub(r"(\d+)\.0(?!\d)", r"\1", expression.to_string())
 
-        regulatory_writer = Writer(Engines.RegulatorySBML, io=MODELS_PATH.joinpath("e_coli_lac_write.xml"), model=model)
+        def summary(m):
+            reactions = {
+                r_id: (tuple(r.bounds), r.gpr.to_string(), {k.id: v for k, v in r.stoichiometry.items()})
+                for r_id, r in m.reactions.items()
+            }
+            interactions = {
+                i_id: (i.target.id, {c: rule(e) for c, e in i.regulatory_events.items()})
+                for i_id, i in m.interactions.items()
+            }
+            return reactions, interactions, set(m.genes), set(m.regulators)
 
-        write_model(regulatory_writer, metabolic_writer)
-        os.remove(MODELS_PATH.joinpath("e_coli_core_write.xml"))
-        os.remove(MODELS_PATH.joinpath("e_coli_lac_write.xml"))
+        expected = summary(model)
+        growth = get_simulator(model).simulate().objective_value
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            # to sbml
+            metabolic_writer = Writer(Engines.MetabolicSBML, io=tmp.joinpath("e_coli_core_write.xml"), model=model)
+            regulatory_writer = Writer(Engines.RegulatorySBML, io=tmp.joinpath("e_coli_lac_write.xml"), model=model)
+            write_model(regulatory_writer, metabolic_writer)
+            sbml = read_model(
+                Reader(Engines.RegulatorySBML, tmp.joinpath("e_coli_lac_write.xml")),
+                Reader(Engines.MetabolicSBML, tmp.joinpath("e_coli_core_write.xml")),
+            )
 
-        # to json
-        model_writer = Writer(Engines.JSON, io=MODELS_PATH.joinpath("e_coli_core_write.json"), model=model)
+            # to json
+            model_writer = Writer(Engines.JSON, io=tmp.joinpath("e_coli_core_write.json"), model=model)
+            write_model(model_writer)
+            json = read_model(Reader(Engines.JSON, tmp.joinpath("e_coli_core_write.json")))
 
-        write_model(model_writer)
-        os.remove(MODELS_PATH.joinpath("e_coli_core_write.json"))
+        for written in (sbml, json):
+            self.assertEqual(summary(written), expected)
+            self.assertAlmostEqual(get_simulator(written).simulate().objective_value, growth, places=9)
 
     def test_analysis(self):
         """
@@ -299,34 +324,50 @@ class TestGERMModel(unittest.TestCase):
         # fba - use simulator directly
         from mewpy.simulation import SimulationMethod, get_simulator
 
+        cobra = pytest.importorskip("cobra")
+        from cobra.flux_analysis import pfba
+        from cobra.flux_analysis import single_gene_deletion as cobra_gene_deletion
+        from cobra.flux_analysis import single_reaction_deletion as cobra_reaction_deletion
+
+        cobra_model = cobra.io.read_sbml_model(str(EC_CORE_MODEL))
+
         simulator = get_simulator(model)
         result = simulator.simulate()
-        self.assertGreater(result.objective_value, 0)
+        self.assertAlmostEqual(result.objective_value, cobra_model.slim_optimize(), places=6)
 
-        # pfba - use simulator directly
+        # pfba - use simulator directly: PFBA_OBJ_FRAC of the optimal growth with the least total flux
         result = simulator.simulate(method=SimulationMethod.pFBA)
-        self.assertGreater(result.objective_value, 0)
+        frac = ModelConstants.PFBA_OBJ_FRAC
+        self.assertAlmostEqual(result.fluxes["Biomass_Ecoli_core"], frac * cobra_model.slim_optimize(), places=6)
+        total = pfba(cobra_model, fraction_of_optimum=frac).objective_value
+        self.assertAlmostEqual(sum(abs(v) for v in result.fluxes.values()), total, delta=1e-6 * total)
 
-        # deletions
+        # deletions: the knockout growth of COBRApy
         from mewpy.germ.analysis import single_gene_deletion, single_reaction_deletion
 
-        reactions_deletion = single_reaction_deletion(model=model, reactions=list(model.reactions.keys())[0:10])
-        self.assertGreater(len(reactions_deletion), 0)
+        reactions = list(model.reactions.keys())[0:10]
+        reactions_deletion = single_reaction_deletion(model=model, reactions=reactions)
+        expected = cobra_reaction_deletion(cobra_model, reaction_list=reactions, processes=1)
+        for r_id in reactions:
+            growth = expected.knockout[r_id].growth.iloc[0]
+            self.assertAlmostEqual(reactions_deletion.loc[r_id, "growth"], growth, places=6, msg=r_id)
 
-        genes_deletion = single_gene_deletion(model=model, genes=list(model.genes.keys())[0:10])
-        self.assertGreater(len(genes_deletion), 0)
+        genes = list(model.genes.keys())[0:10]
+        genes_deletion = single_gene_deletion(model=model, genes=genes)
+        expected = cobra_gene_deletion(cobra_model, gene_list=genes, processes=1)
+        for g_id in genes:
+            growth = expected.knockout[g_id].growth.iloc[0]
+            self.assertAlmostEqual(genes_deletion.loc[g_id, "growth"], growth, places=6, msg=g_id)
 
         from mewpy.germ.analysis import fva
 
         fva_reactions = list(model.reactions.keys())[0:10]
         fva_sol = fva(model=model, fraction=0.9, reactions=fva_reactions)
-        self.assertGreater(len(fva_sol), 0)
+        self.assertEqual(list(fva_sol.index), fva_reactions)
 
         # FVA ranges must match COBRApy's (each reaction is minimized/maximized, not the biomass)
-        cobra = pytest.importorskip("cobra")
         from cobra.flux_analysis import flux_variability_analysis
 
-        cobra_model = cobra.io.read_sbml_model(str(EC_CORE_MODEL))
         cobra_fva = flux_variability_analysis(cobra_model, reaction_list=fva_reactions, fraction_of_optimum=0.9)
         for rxn in fva_reactions:
             self.assertAlmostEqual(fva_sol.loc[rxn, "minimum"], cobra_fva.loc[rxn, "minimum"], places=4)
@@ -405,16 +446,30 @@ class TestGERMModel(unittest.TestCase):
         self.assertAlmostEqual(sol.loc["g21", "growth"], 0.0, places=6)
         self.assertAlmostEqual(sol.loc["g22", "growth"], 1000 / 3, places=4)
 
-    # @pytest.mark.xfail
-    @pytest.mark.skip(reason="PROM and CoRegFlux only work with RegulatoryExtension, not legacy models")
     def test_analysis_expression(self):
         """
-        It tests model analysis with methods of expression
-
-        NOTE: This test is deprecated as PROM and CoRegFlux only support RegulatoryExtension.
-        Legacy model support has been removed.
+        PROM on a GERM model: knocking out PdhR (b0113) with interaction probability 0.5 limits pyruvate
+        dehydrogenase (b0114, b0115) to half its maximum flux (COBRApy FVA at 99% growth)
         """
-        pass
+        from cobra.flux_analysis import flux_variability_analysis
+        from cobra.io import read_sbml_model
+
+        from mewpy.germ.analysis import PROM
+        from mewpy.io import read_model
+
+        model = read_model(self.regulatory_reader, self.metabolic_reader)
+        self.assertEqual({t.id for t in model.regulators["b0113"].yield_targets()}, {"b0114", "b0115"})
+        probabilities = {("b0114", "b0113"): 0.5, ("b0115", "b0113"): 0.5}
+        result = PROM(model).build().optimize(initial_state=probabilities, regulators=["b0113"])
+
+        cobra_model = read_sbml_model(str(EC_CORE_MODEL))
+        wild_type = cobra_model.slim_optimize()
+        fva = flux_variability_analysis(cobra_model, reaction_list=["PDH"], fraction_of_optimum=0.99)
+        with cobra_model:
+            cobra_model.reactions.PDH.upper_bound = 0.5 * fva.loc["PDH", "maximum"]
+            expected = cobra_model.slim_optimize()
+        self.assertLess(expected, wild_type - 1e-3)
+        self.assertAlmostEqual(result.solutions["ko_b0113"].objective_value, expected, places=6)
 
     def test_simulation(self):
         """
@@ -462,14 +517,15 @@ class TestGERMModel(unittest.TestCase):
 
         simulator = get_simulator(model)
         result = simulator.simulate()
-        self.assertGreater(result.fluxes.get("r11"), 0)
+        # the FBA optimum of SampleNet (COBRApy: 333.33)
+        self.assertAlmostEqual(result.fluxes.get("r11"), 1000 / 3, places=6)
         self.assertEqual(len(model.simulators), 0)
 
         # pfba - use simulator directly
         from mewpy.simulation import SimulationMethod
 
         result = simulator.simulate(method=SimulationMethod.pFBA)
-        self.assertGreater(result.fluxes.get("r11"), 0)
+        self.assertAlmostEqual(result.fluxes.get("r11"), ModelConstants.PFBA_OBJ_FRAC * 1000 / 3, places=6)
         self.assertEqual(len(model.simulators), 0)
 
         # RFBA
@@ -506,7 +562,8 @@ class TestGERMModel(unittest.TestCase):
 
         srfba = SRFBA(model)
         sol = srfba.optimize()
-        self.assertGreater(sol.x.get("r11"), 0)
+        # regulators are free in SRFBA: the FBA optimum
+        self.assertAlmostEqual(sol.x.get("r11"), 1000 / 3, places=6)
         self.assertEqual(len(model.simulators), 0)
 
         # Test simulator attached to model - using regulatory analysis methods
@@ -600,7 +657,7 @@ class TestGERMModel(unittest.TestCase):
             self.assertGreater(fba_sol.x.get("r16"), 333)
 
             self.assertLess(pfba_sol.x.get("r8"), 333)
-            self.assertGreater(pfba_sol.x.get("r16"), 333)
+            self.assertAlmostEqual(pfba_sol.x.get("r16"), ModelConstants.PFBA_OBJ_FRAC * 1000 / 3, places=6)
 
             self.assertLess(srfba_sol.x.get("r8"), 333)
             self.assertGreater(srfba_sol.x.get("r16"), 333)
@@ -661,7 +718,7 @@ class TestGERMModel(unittest.TestCase):
 
         # if r16 is knocked-out, only r8 can have flux, and vice-versa
         self.assertGreater(fba_sol.x.get("r8"), 333)
-        self.assertGreater(pfba_sol.x.get("r8"), 333)
+        self.assertAlmostEqual(pfba_sol.x.get("r8"), ModelConstants.PFBA_OBJ_FRAC * 1000 / 3, places=6)
         self.assertGreater(srfba_sol.x.get("r8"), 333)
 
     def test_manipulation(self):
@@ -785,7 +842,7 @@ class TestGERMModel(unittest.TestCase):
         # if r16 is knocked-out, only r8 can have flux, and vice-versa.
         # r17, r18 and r19 do not affect the rest of the network
         self.assertGreater(fba_sol.x.get("r8"), 333)
-        self.assertGreater(pfba_sol.x.get("r8"), 333)
+        self.assertAlmostEqual(pfba_sol.x.get("r8"), ModelConstants.PFBA_OBJ_FRAC * 1000 / 3, places=6)
         self.assertGreater(rfba_sol.x.get("r8"), 333)
         self.assertGreater(srfba_sol.x.get("r8"), 333)
 
@@ -829,7 +886,7 @@ class TestGERMModel(unittest.TestCase):
         srfba_sol = srfba.optimize()
 
         self.assertGreater(fba_sol.x.get("r8"), 333)
-        self.assertGreater(pfba_sol.x.get("r8"), 333)
+        self.assertAlmostEqual(pfba_sol.x.get("r8"), ModelConstants.PFBA_OBJ_FRAC * 1000 / 3, places=6)
         self.assertGreater(rfba_sol.x.get("r8"), 333)
         self.assertGreater(srfba_sol.x.get("r8"), 333)
 

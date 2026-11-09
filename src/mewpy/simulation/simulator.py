@@ -60,6 +60,13 @@ def get_simulator(model, envcond=None, constraints=None, reference=None, reset_s
     instance = None
     name = f"{model.__class__.__module__}.{model.__class__.__name__}"
 
+    # a wrapper that holds a simulator, e.g. GERM's RegulatoryExtension: simulate its metabolic model
+    inner = getattr(model, "simulator", None)
+    if name not in map_model_simulator and isinstance(inner, Simulator):
+        return get_simulator(
+            inner.model, envcond=envcond, constraints=constraints, reference=reference, reset_solver=reset_solver
+        )
+
     if name in map_model_simulator:
         module_name, class_name = map_model_simulator[name]
         module = __import__(module_name, fromlist=[None])

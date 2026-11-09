@@ -144,6 +144,32 @@ class TestPrefixAgnosticProblems(unittest.TestCase):
         plain = plain_problem.solution_to_constraints(plain_problem.decode({(idx, 0)}))
         self.assertEqual(plain, expected)
 
+    def test_cofactor_swap_simulate_with_unprefixed_ids(self):
+        from mewpy.problems.cofactor import CofactorSwapProblem
+        from mewpy.simulation import SStatus
+
+        problem = CofactorSwapProblem(load("reframed"), [])
+        self.assertIn("R_MDH", problem.target_list)  # MDH has a NAD/NADP-swapped alternative
+        constraints = problem.solution_to_constraints({"MDH": 0})
+        self.assertEqual(constraints["R_MDH"], (0, 0))
+        self.assertIn("R_MDH" + problem.RX_SUFIX, constraints)
+        self.assertEqual(problem.simulate(solution={"MDH": 0}).status, SStatus.OPTIMAL)
+
+    def test_optram_regulatory_genes_with_sbml_escaped_model_ids(self):
+        from reframed.io.sbml import load_cbmodel
+
+        from mewpy.problems import OptRamProblem, load_optram
+
+        data = Path(__file__).parent.joinpath("data")
+        files = [str(data / f) for f in ("mgene.csv", "TFnames.csv", "regnet.csv")]
+        model = load_cbmodel(str(data / "yeast_7.6-optram.xml"))
+        problem = OptRamProblem(model, [], load_optram(*files, gene_prefix="G_"))
+        genes = set(problem.simulator.genes)
+        mapped = [t for t in problem.target_list if t in problem.regmodel.genes]
+        self.assertEqual(len(mapped), 628)
+        self.assertLessEqual(set(mapped), genes)
+        self.assertIn("G_YCR024C__45__A", mapped)  # G_YCR024C-A in the regulatory network
+
     def test_seed_given_in_the_other_form_is_encoded(self):
         from mewpy.problems import RKOProblem
 

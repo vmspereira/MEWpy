@@ -5,7 +5,14 @@ import pandas as pd
 
 from mewpy.util.constants import ModelConstants
 
-from .analysis_utils import gene_defaults, gpr_gene_ids, reaction_gpr, regulators_initial_state, run_method_and_decode
+from .analysis_utils import (
+    IdResolver,
+    gene_defaults,
+    gpr_gene_ids,
+    reaction_gpr,
+    regulators_initial_state,
+    run_method_and_decode,
+)
 from .coregflux import CoRegFlux
 from .prom import PROM
 from .rfba import RFBA
@@ -496,15 +503,10 @@ def find_conflicts(
     :return: a DataFrame with the conflicts between essential genes and regulatory states, and a DataFrame with the
     conflicts between essential reactions and metabolic states
     """
-    if not constraints:
-        constraints = {}
-    else:
-        constraints = constraints.copy()
-
-    if not initial_state:
-        initial_state = {}
-    else:
-        initial_state = initial_state.copy()
+    # copies, with ids given in either SBML form or as original TRN ids resolved
+    resolver = IdResolver(model)
+    constraints = resolver.keys(constraints) if constraints else {}
+    initial_state = resolver.keys(initial_state) if initial_state else {}
 
     # 1. it performs a FBA simulation to find the optimal growth rate
     from mewpy.germ.analysis.fba import _FBA
@@ -555,7 +557,8 @@ def find_conflicts(
     targets = getattr(model, "targets", {})
 
     repressed_genes = []
-    for gene in gene_conflicts:
+    # sorted: set iteration order depends on PYTHONHASHSEED
+    for gene in sorted(gene_conflicts):
         target = targets.get(gene)
 
         if target is not None:
@@ -571,7 +574,7 @@ def find_conflicts(
 
     if repressed_genes:
         repressed_genes = pd.concat(repressed_genes)
-        cols = ["interaction"] + [col for col in repressed_genes.columns if col != "interaction"]
+        cols = ["interaction"] + sorted(col for col in repressed_genes.columns if col != "interaction")
         repressed_genes = repressed_genes[cols]
     else:
         repressed_genes = pd.DataFrame()
@@ -579,7 +582,7 @@ def find_conflicts(
     genes_state = {**gene_defaults(model), **metabolic_state}
 
     repressed_reactions = []
-    for reaction in reaction_conflicts:
+    for reaction in sorted(reaction_conflicts):
         gpr = reaction_gpr(model, reaction)
 
         repressed_reaction = {gene: genes_state.get(gene) for gene in gpr_gene_ids(gpr)}
@@ -593,7 +596,7 @@ def find_conflicts(
 
     if repressed_reactions:
         repressed_reactions = pd.concat(repressed_reactions)
-        cols = ["gpr"] + [col for col in repressed_reactions.columns if col != "gpr"]
+        cols = ["gpr"] + sorted(col for col in repressed_reactions.columns if col != "gpr")
         repressed_reactions = repressed_reactions[cols]
     else:
         repressed_reactions = pd.DataFrame()

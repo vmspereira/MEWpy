@@ -33,6 +33,7 @@ from tqdm import tqdm
 
 from mewpy.simulation import get_simulator
 from mewpy.util import AttrDict
+from mewpy.util.constants import ModelConstants
 from mewpy.util.parsing import Boolean, build_tree
 
 if TYPE_CHECKING:
@@ -568,12 +569,13 @@ class CommunityModel:
                             r_met(mets[0]): -1,
                             r_met(mets[0], False): 1,
                         }
+                        # finite bounds: hundreds of free transports made SCIP numerically unstable
                         self._comm_model.add_reaction(
                             new_id,
                             name=rxn.name,
                             stoichiometry=new_stoichiometry,
-                            lb=-inf,
-                            ub=inf,
+                            lb=-ModelConstants.REACTION_UPPER_BOUND,
+                            ub=ModelConstants.REACTION_UPPER_BOUND,
                             reaction_type="TRP",
                         )
                         self.reaction_map[(org_id, r_id)] = new_id
@@ -689,6 +691,20 @@ class CommunityModel:
         return self._comm_model
 
     def copy(self, copy_models=False, flavor=None):
+        """A new community of the same organisms and settings (biomass merging, abundances,
+        compartments, exchange balancing, verbosity); the merged model is rebuilt on demand."""
         models = [m.model for m in self.organisms.values()]
         f = flavor if flavor is not None else self.flavor
-        return CommunityModel(models, copy_models=copy_models, flavor=f)
+        community = CommunityModel(
+            models,
+            merge_biomasses=self._merge_biomasses,
+            copy_models=copy_models,
+            add_compartments=self._add_compartments,
+            balance_exchange=self._balance_exchange,
+            flavor=f,
+            verbose=self._verbose,
+        )
+        if self._merge_biomasses:
+            # assigned directly: set abundances may include 0, which the constructor rejects
+            community.organisms_abundance = dict(self.organisms_abundance)
+        return community

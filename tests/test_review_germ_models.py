@@ -574,3 +574,79 @@ def test_minor_reaction_deepcopy_keeps_metabolite_attributes(model):
     assert clone.compartments == pfk.compartments == {"c"}
     formulas = {m.id: m.formula for m in pfk.yield_metabolites()}
     assert {m.id: m.formula for m in clone.yield_metabolites()} == formulas
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Notebook review round: hash-seed independent output and objective replacement
+# ----------------------------------------------------------------------------------------------------------------------
+_SEED_SCRIPT = r'''
+import hashlib, json, sys, warnings
+warnings.filterwarnings("ignore")
+from mewpy.io import Engines, Reader, read_model
+from mewpy.germ.models import Model
+from mewpy.germ.models.unified_factory import load_reframed_model
+from mewpy.germ.variables import Metabolite, Reaction
+
+ecoli, trn = sys.argv[1], sys.argv[2]
+kw = dict(sep=",", id_col=0, rule_col=2, aliases_cols=[1], header=0)
+model = read_model(Reader(Engines.MetabolicSBML, ecoli), Reader(Engines.BooleanRegulatoryCSV, trn, **kw), warnings=False)
+out = {}
+for var_id in ("b0113", "b0114", "ACALDt", "glc__D_e"):
+    var = model.get(var_id)
+    out[var_id] = [type(var).__name__, str(var), repr(var), var._repr_html_(), str(var.to_dict())]
+out["model"] = [type(model).__name__, repr(model), model._repr_html_(), list(model.containers)]
+out["json"] = json.dumps(model.to_dict(variables=True), default=str)
+
+# a boundary reaction with one metabolite in each of two compartments: a tie for the external compartment
+tie = Reaction("tie", stoichiometry={Metabolite("a_c", compartment="c"): -1, Metabolite("a_x", compartment="x"): -1})
+out["tie"] = Model.from_types(["metabolic"], identifier="t", reactions={"tie": tie}).external_compartment
+
+sbm = load_reframed_model(ecoli)
+out["sbm_genes"] = list(sbm.reactions["R_PDH"].genes)
+print(json.dumps({key: hashlib.md5(str(value).encode()).hexdigest() for key, value in out.items()}))
+'''
+
+
+def test_review_output_does_not_depend_on_hash_seed(tmp_path):
+    import json
+    import os
+    import subprocess
+    import sys
+
+    script = tmp_path / "seed_output.py"
+    script.write_text(_SEED_SCRIPT)
+    digests = {}
+    for seed in ("0", "1", "2", "3"):
+        env = dict(os.environ, PYTHONHASHSEED=seed)
+        result = subprocess.run(
+            [sys.executable, str(script), ECOLI, ECOLI_TRN], capture_output=True, text=True, env=env, timeout=300
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        digests[seed] = json.loads(result.stdout.strip().splitlines()[-1])
+    differing = sorted(key for key in digests["0"] if len({digests[s][key] for s in digests}) > 1)
+    assert differing == []
+
+
+@pytest.mark.parametrize("flavor", ["reframed", "cobra"])
+def test_review_set_objective_replaces_the_objective(flavor):
+    from mewpy.germ.models import RegulatoryExtension
+
+    ext = RegulatoryExtension.from_sbml(ECOLI, flavor=flavor)
+    pfk = ext.simulator.resolve("PFK", "reaction")
+    biomass = ext.simulator.resolve("Biomass_Ecoli_core", "reaction")
+
+    ext.set_objective(pfk)
+    assert {k: v for k, v in ext.objective.items() if v} == {pfk: 1}
+    ext.set_objective({pfk: 1.0, biomass: 0.5})
+    assert {k: v for k, v in ext.objective.items() if v} == {pfk: 1.0, biomass: 0.5}
+
+
+@pytest.mark.parametrize("loader", ["load_reframed_model", "load_cobra_model"])
+def test_review_simulator_model_objective_setter_replaces(loader):
+    from mewpy.germ.models import unified_factory
+
+    sbm = getattr(unified_factory, loader)(ECOLI)
+    pfk = sbm.simulator.resolve("PFK", "reaction")
+    sbm.objective = pfk
+    assert {k: v for k, v in sbm.simulator.objective.items() if v} == {pfk: 1}
+    assert {r.id: v for r, v in sbm.objective.items() if v} == {pfk: 1}

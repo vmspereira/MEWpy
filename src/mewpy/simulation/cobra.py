@@ -481,35 +481,6 @@ class Simulation(CobraModelContainer, Simulator):
         ]
         return rxns
 
-    def get_transport_reactions(self):
-        """
-        :returns: The list of transport reactions.
-        """
-        transport_reactions = []
-        for rx in self.reactions:
-            substrate_compartments = set()
-            product_compartments = set()
-            reactants = self.model.reactions.get_by_id(rx).reactants
-            for metabolite in reactants:
-                substrate_compartments.add(metabolite.compartment)
-            products = self.model.reactions.get_by_id(rx).products
-            for metabolite in products:
-                product_compartments.add(metabolite.compartment)
-            # Transport reactions have substrates and products in different compartments
-            if len(product_compartments.intersection(substrate_compartments)) == 0:
-                transport_reactions.append(rx)
-        return transport_reactions
-
-    def get_transport_genes(self):
-        """Returns the list of genes that only catalyze transport reactions."""
-        trp_rxs = self.get_transport_reactions()
-        r_g = self.get_gene_reactions()
-        genes = []
-        for g, rxs in r_g.items():
-            if set(rxs).issubset(set(trp_rxs)):
-                genes.append(g)
-        return genes
-
     def reverse_reaction(self, reaction_id):
         """
         Identify if a reaction is reversible and returns the reverse reaction if it is the case.
@@ -680,12 +651,14 @@ class Simulation(CobraModelContainer, Simulator):
                         # slim_optimize uses the objective direction; set it from maximize (reverted on exit)
                         model.objective_direction = "max" if maximize else "min"
                         solution = model.slim_optimize()
+                        if model.solver.status != "optimal":
+                            solution = None  # the infeasible-result convention (Simulator.simulate)
                     else:
                         solution = model.optimize(objective_sense=objective_sense)
                 # pFBA
                 elif method == SimulationMethod.pFBA:
-                    # make fraction_of_optimum a configurable parameter?
-                    solution = pfba(model)
+                    # the fraction of the optimum kept is shared by every backend
+                    solution = pfba(model, fraction_of_optimum=ModelConstants.PFBA_OBJ_FRAC)
 
                 # MOMA/lMOMA
                 elif method == SimulationMethod.lMOMA or method == SimulationMethod.MOMA:
@@ -706,27 +679,29 @@ class Simulation(CobraModelContainer, Simulator):
                 # pfba, moma and room raise on infeasible problems; report the status like FBA does
                 solution = Solution(None, model.solver.status, None)
 
-        if slim:
+        if slim and method == SimulationMethod.FBA:
             return solution
 
-        else:
-            status = self.__status_mapping[solution.status]
-            solved = status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL)
-            fluxes = solution.fluxes.to_dict(into=OrderedDict) if solution.fluxes is not None else None
-            prices = solution.shadow_prices
-            result = SimulationResult(
-                self,
-                solution.objective_value if solved else None,
-                fluxes=fluxes,
-                status=status,
-                envcond=self.environmental_conditions,
-                model_constraints=self._constraints.copy(),
-                simul_constraints=dict(constraints) if constraints else None,
-                maximize=maximize,
-                method=method,
-                shadow_prices=prices.to_dict(into=OrderedDict) if prices is not None else None,
-            )
-            return result
+        status = self.__status_mapping[solution.status]
+        solved = status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL)
+        if slim:
+            return solution.objective_value if solved else None
+
+        fluxes = solution.fluxes.to_dict(into=OrderedDict) if solved and solution.fluxes is not None else None
+        prices = solution.shadow_prices if solved else None
+        result = SimulationResult(
+            self,
+            solution.objective_value if solved else None,
+            fluxes=fluxes,
+            status=status,
+            envcond=self.environmental_conditions,
+            model_constraints=self._constraints.copy(),
+            simul_constraints=dict(constraints) if constraints else None,
+            maximize=self._optimised_sense(method, maximize),
+            method=method,
+            shadow_prices=prices.to_dict(into=OrderedDict) if prices is not None else None,
+        )
+        return result
 
     def FVA(
         self,
@@ -797,9 +772,8 @@ class Simulation(CobraModelContainer, Simulator):
 
             e = variability.items()
             f = [[a, b, c] for a, [b, c] in e]
-            df = pd.DataFrame(f, columns=["Reaction ID", "Minimum", "Maximum"])
-            df = df.set_index(df.columns[0])
-            return df
+            # the same layout on every backend: 'Reaction ID' is a column, with a default index
+            return pd.DataFrame(f, columns=["Reaction ID", "Minimum", "Maximum"])
         else:
             return variability
 

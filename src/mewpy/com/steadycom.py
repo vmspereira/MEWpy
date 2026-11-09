@@ -29,11 +29,15 @@ from mewpy.util.constants import ModelConstants
 from mewpy.util.utilities import molecular_weight
 
 
-def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=10):
+def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=1):
     """
     Calculate an appropriate BigM value for SteadyCom based on model characteristics.
 
     BigM is used in SteadyCom constraints to handle reactions with infinite bounds.
+    With the default safety_factor of 1, infinite bounds count as the largest finite member bound
+    (at least min_value). REFRAMED reads the SBML default bounds (e.g. +-1000) as +-inf while
+    COBRApy keeps them, so this gives a REFRAMED member the bounds the same model has in COBRApy,
+    whatever the backends of the other members.
     The value must be:
     - Large enough to not artificially constrain fluxes
     - Small enough to avoid numerical instability in LP solvers
@@ -41,21 +45,21 @@ def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=10):
 
     Algorithm:
     1. Find maximum finite flux bound across all organisms
-    2. Apply safety factor (default 10x)
+    2. Apply safety factor (default 1x)
     3. Clamp between min_value and max_value
 
     Args:
         community (CommunityModel): The community model
         min_value (float): Minimum BigM value (default 1000)
         max_value (float): Maximum BigM value to avoid numerical issues (default 1e6)
-        safety_factor (float): Multiplier for max bound (default 10)
+        safety_factor (float): Multiplier for max bound (default 1)
 
     Returns:
         float: Calculated BigM value
 
     Example:
-        If max reaction bound is 100, with safety_factor=10:
-        BigM = min(1000 * 10, 1e6) = min(10000, 1e6) = 10000
+        If the largest finite reaction bound is 1000: BigM = 1000 (10000 with safety_factor=10).
+        If it is 100: BigM = max(1000, 100) = 1000.
     """
     max_bound = 0.0
 
@@ -97,6 +101,8 @@ def SteadyCom(community, constraints=None, solver=None):
     if solver is None:
         solver = build_problem(community)
 
+    # ids may be given with or without the backend prefix (e.g. 'EX_glc__D_e' for 'R_EX_glc__D_e')
+    constraints = community.merged_model.resolve_keys(constraints, "reaction")
     objective = community.biomass
     sol = binary_search(solver, objective, minimize=False, constraints=constraints)
 
@@ -121,6 +127,7 @@ def SteadyComVA(community, obj_frac=1.0, constraints=None, solver=None):
     if solver is None:
         solver = build_problem(community)
 
+    constraints = community.merged_model.resolve_keys(constraints, "reaction")
     objective = {community.biomass: 1}
 
     sol = binary_search(solver, objective, constraints=constraints)
@@ -210,13 +217,13 @@ def build_problem(community, growth=1, bigM=None):
         if r_id in sim.get_exchange_reactions():
             solver.add_variable(r_id, reaction.lb, reaction.ub, update=False)
         else:
-            # For internal reactions, use tighter bounds based on original reaction bounds
-            # Since fluxes are scaled by abundance (v = X * flux) and X <= 1,
-            # we can use the original bounds directly (multiplied by max abundance = 1)
-            # This provides better numerical conditioning than using (-inf, inf)
+            # Internal fluxes are abundance-scaled (v = X * flux, X <= 1): the variable bounds are the
+            # original bounds widened to include 0, and the scaled bounds lb * X <= v <= ub * X are
+            # added below. A bound that excludes 0 (e.g. a positive ATPM lower bound) is therefore
+            # only enforced scaled by the abundance, not in full by every member.
             lb = reaction.lb if not isinf(reaction.lb) else (-bigM if reaction.lb < 0 else 0)
             ub = reaction.ub if not isinf(reaction.ub) else (bigM if reaction.ub > 0 else 0)
-            solver.add_variable(r_id, lb, ub, update=False)
+            solver.add_variable(r_id, min(lb, 0), max(ub, 0), update=False)
 
     solver.update()
 

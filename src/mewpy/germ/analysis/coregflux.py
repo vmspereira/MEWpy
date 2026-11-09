@@ -263,9 +263,17 @@ class CoRegFlux(_RegulatoryAnalysisBase):
         if not solver_kwargs:
             solver_kwargs = {}
 
+        # Ids may be given in either SBML form or as original TRN ids
+        solver_kwargs = self._ids.solver_kwargs(solver_kwargs)
+        if isinstance(initial_state, dict):
+            initial_state = self._ids.keys(initial_state)
+        elif initial_state is not None:
+            initial_state = [self._ids.keys(state) for state in initial_state]
+
         # Build metabolites and biomass objects
         if metabolites is None:
             metabolites = {}
+        metabolites = self._ids.keys(metabolites)
         metabolites = build_metabolites(model=self.model, metabolites=metabolites)
 
         if biomass is None:

@@ -8,6 +8,16 @@ if TYPE_CHECKING:
     from mewpy.germ.models import MetabolicModel, RegulatoryModel
     from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target, Variable
 
+# Base order of multi-type models (dynamic classes), so methods and reprs do not depend on set iteration
+_TYPE_PRECEDENCE = ("metabolic", "regulatory")
+
+
+def _type_order(model_type: str):
+    if model_type in _TYPE_PRECEDENCE:
+        return _TYPE_PRECEDENCE.index(model_type), model_type
+    return len(_TYPE_PRECEDENCE), model_type
+
+
 # containers holding model variables (attribute names)
 _VARIABLE_CONTAINERS = ("_genes", "_metabolites", "_reactions", "_interactions", "_regulators", "_targets")
 
@@ -298,7 +308,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
         containers = class_containers["model"].copy()
 
-        for model_type in self.types:
+        for model_type in sorted(self.types, key=_type_order):
 
             for name, (serialize_name, deserialize_name, pickle_name) in class_containers[model_type].items():
                 containers[name] = (serialize_name, deserialize_name, pickle_name)
@@ -325,7 +335,8 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
         registry = cls.get_registry()
 
-        types = tuple([registry[name] for name in args])
+        # a fixed base order: the same types always build the same class (MRO), whatever the set order
+        types = tuple([registry[name] for name in sorted(set(args), key=_type_order)])
 
         if len(types) == 1:
             return types[0]

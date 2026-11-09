@@ -1048,10 +1048,15 @@ class ODEModel:
         v = self.variable_params.copy()
         r = r_dict if r_dict is not None else dict()
 
-        np.seterr(divide="ignore", invalid="ignore")
         # Use local namespace instead of globals() to prevent pollution and security issues
         local_namespace = dict(ODE_FUNCTIONS)
         exec(self.build_ode(factors), local_namespace)
         ode_func = local_namespace["ode_func"]
 
-        return lambda t, y: ode_func(t, y, r, p, v)
+        def ode(t, y):
+            # divisions by zero (e.g. at null concentrations) are expected while integrating: they are silenced
+            # only during the evaluation, leaving numpy's global error handling unchanged
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return ode_func(t, y, r, p, v)
+
+        return ode

@@ -14,7 +14,7 @@ Or use COBRApy/reframed FBA implementations directly:
 
 from typing import Dict, Union
 
-from mewpy.germ.analysis.analysis_utils import gene_defaults
+from mewpy.germ.analysis.analysis_utils import IdResolver, gene_defaults
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import Solution
@@ -72,6 +72,14 @@ class _RegulatoryAnalysisBase:
     def update(self):
         """Called by the model when it changes: the problem is rebuilt on the next optimize."""
         self._synchronized = False
+
+    @property
+    def _ids(self) -> IdResolver:
+        """Resolves user ids given in the other SBML form or as original TRN ids (rebuilt by build())."""
+        resolver = getattr(self, "_id_resolver", None)
+        if resolver is None:
+            resolver = self._id_resolver = IdResolver(self.model)
+        return resolver
 
     def __str__(self):
         """Simple string representation."""
@@ -324,6 +332,23 @@ class _RegulatoryAnalysisBase:
         # No GPR available
         return Expression(Symbol("true"), {})
 
+    def _new_solver(self, simulator) -> Solver:
+        """
+        A new solver problem for the simulator, from the solver given at construction (a name or a Solver
+        instance, whose class is used) or the default solver.
+        """
+        if self.solver_name is None:
+            return solver_instance(simulator)
+        if isinstance(self.solver_name, Solver):
+            return type(self.solver_name)(simulator)
+
+        from mewpy import solvers
+
+        available = solvers.__MEWPY_solvers__
+        if self.solver_name not in available:
+            raise ValueError(f"Unknown solver '{self.solver_name}'. Available: {sorted(available)}")
+        return available[self.solver_name](simulator)
+
     def _closed_reactions(self) -> set:
         """
         Reactions closed by legacy GERM gene coefficients. gene.ko() sets a gene's coefficients to 0 without
@@ -400,7 +425,8 @@ class _RegulatoryAnalysisBase:
                 simulator = self.model
 
         # Create solver directly from simulator
-        self._solver = solver_instance(simulator)
+        self._solver = self._new_solver(simulator)
+        self._id_resolver = None
         self._close_reactions(self._solver)
 
         # Set up objective
@@ -471,8 +497,8 @@ class _RegulatoryAnalysisBase:
         if not solver_kwargs:
             solver_kwargs = {}
 
-        # Make a copy to avoid modifying the original
-        solver_kwargs_copy = solver_kwargs.copy()
+        # Make a copy to avoid modifying the original; ids may be given in either form
+        solver_kwargs_copy = self._ids.solver_kwargs(solver_kwargs)
 
         # A temporary objective/direction in solver_kwargs (e.g. FVA per-reaction objectives) wins
         linear, minimize = self._objective_from(solver_kwargs_copy)

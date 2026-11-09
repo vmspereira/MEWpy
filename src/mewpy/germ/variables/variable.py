@@ -15,6 +15,16 @@ if TYPE_CHECKING:
     from .regulator import Regulator
     from .target import Target
 
+# Base order of multi-type variables (dynamic classes), so methods and reprs do not depend on set iteration
+# (PYTHONHASHSEED). E.g. a target-regulator is printed as a target (its interaction).
+_TYPE_PRECEDENCE = ("reaction", "metabolite", "gene", "target", "regulator", "interaction")
+
+
+def _type_order(variable_type: str):
+    if variable_type in _TYPE_PRECEDENCE:
+        return _TYPE_PRECEDENCE.index(variable_type), variable_type
+    return len(_TYPE_PRECEDENCE), variable_type
+
 
 class MetaVariable(type):
     """
@@ -285,7 +295,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
 
         attributes = class_attributes["variable"].copy()
 
-        for variable_type in self.types:
+        for variable_type in sorted(self.types, key=_type_order):
 
             for name, (serialize_name, deserialize_name, pickle_name) in class_attributes[variable_type].items():
                 attributes[name] = (serialize_name, deserialize_name, pickle_name)
@@ -322,7 +332,8 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
 
         registry = cls.get_registry()
 
-        types = tuple([registry[name] for name in args])
+        # a fixed base order: the same types always build the same class (MRO), whatever the set order
+        types = tuple([registry[name] for name in sorted(set(args), key=_type_order)])
 
         if len(types) == 1:
             return types[0]
@@ -471,9 +482,9 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         html_dict = {
             "Identifier": self.id,
             "Name": self.name,
-            "Aliases": ", ".join(self.aliases),
+            "Aliases": ", ".join(sorted(self.aliases)),
             "Model": self.model.id if self.model else None,
-            "Types": ", ".join(self.types),
+            "Types": ", ".join(sorted(self.types, key=_type_order)),
         }
         return html_dict
 
@@ -483,7 +494,7 @@ class Variable(Serializer, metaclass=MetaVariable, factory=True):
         """
         html_dict = self._variable_to_html()
 
-        for type_ in self.types:
+        for type_ in sorted(self.types, key=_type_order):
             method = getattr(self, f"_{type_}_to_html", lambda: {})
             html_dict.update(method())
 

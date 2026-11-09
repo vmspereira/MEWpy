@@ -1,6 +1,10 @@
 import unittest
 from pathlib import Path
 
+# the GERM problems run the checks of the REFRAMED ones (test_b_problem), with GERM models and COBRApy oracles.
+# A module import: pytest collects every TestCase class in this module's namespace, so the classes are not imported.
+import test_b_problem as b
+
 EC_CORE_MODEL = Path(__file__).parent.joinpath("data", "e_coli_core.xml")
 
 MIN_GROWTH = 0.1
@@ -8,7 +12,9 @@ MIN_GROWTH = 0.1
 MAX_TRIES = 3
 
 
-class TestRKOP(unittest.TestCase):
+class TestRKOP(b.TestRKOP):
+
+    MODEL_FILE = EC_CORE_MODEL
 
     def setUp(self):
         from mewpy.io import read_sbml
@@ -18,50 +24,10 @@ class TestRKOP(unittest.TestCase):
 
         self.problem = RKOProblem(model, [])
 
-    def test_targets(self):
-        target = self.problem.target_list
-        self.assertGreater(len(target), 0)
 
-    def test_generator(self):
-        import random
+class TestROUP(b.TestROUP):
 
-        candidate = self.problem.generator(random)
-        self.assertGreater(len(candidate), 0)
-
-    def test_decode(self):
-        import random
-
-        candidate = self.problem.generator(random)
-        solution = self.problem.decode(candidate)
-        n_candidate = self.problem.encode(solution)
-        self.assertEqual(candidate, n_candidate)
-
-    def test_to_constraints(self):
-        """ """
-        import random
-
-        ispass = False
-        tries = 0
-        constraints = []
-        while not ispass and tries < MAX_TRIES:
-            tries += 1
-            candidate = self.problem.generator(random)
-            solution = self.problem.decode(candidate)
-            constraints = self.problem.solution_to_constraints(solution)
-            if len(constraints) > 0:
-                ispass = True
-        self.assertGreater(len(constraints), 0)
-
-    def test_simul_constraints(self):
-        import random
-
-        candidate = self.problem.generator(random)
-        solution = self.problem.decode(candidate)
-        constraints = self.problem.solution_to_constraints(solution)
-        self.problem.simulator.simulate(constraints=constraints)
-
-
-class TestROUP(TestRKOP):
+    MODEL_FILE = EC_CORE_MODEL
 
     def setUp(self):
         from mewpy.io import read_sbml
@@ -72,7 +38,9 @@ class TestROUP(TestRKOP):
         self.problem = ROUProblem(model, [])
 
 
-class TestGKOP(TestRKOP):
+class TestGKOP(b.TestGKOP):
+
+    MODEL_FILE = EC_CORE_MODEL
 
     def setUp(self):
         from mewpy.io import read_sbml
@@ -82,8 +50,14 @@ class TestGKOP(TestRKOP):
 
         self.problem = GKOProblem(model, [])
 
+    def test_targets(self):
+        """Tests the target list"""
+        super().test_targets()
 
-class TestGOUP(TestRKOP):
+
+class TestGOUP(b.TestGOUP):
+
+    MODEL_FILE = EC_CORE_MODEL
 
     def setUp(self):
         from mewpy.io import read_sbml
@@ -92,6 +66,10 @@ class TestGOUP(TestRKOP):
         from mewpy.problems import GOUProblem
 
         self.problem = GOUProblem(model, [])
+
+    def test_targets(self):
+        """Tests the target list"""
+        super().test_targets()
 
 
 if __name__ == "__main__":
