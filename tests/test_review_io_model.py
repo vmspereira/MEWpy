@@ -395,10 +395,10 @@ def test_f9_gecko_adjust_pool_bounds():
 # -----------------------------------------------------------------------------
 def test_f10_convert_gpr_to_dnf_updates_model():
     from reframed import load_cbmodel
+    from reframed.io.sbml import parse_gpr_rule
 
     from mewpy.cobra.util import convert_gpr_to_dnf
     from mewpy.simulation import get_simulator
-    from reframed.io.sbml import parse_gpr_rule
 
     model = load_cbmodel(EC_CORE)
     model.reactions["R_PFK"].gpr = parse_gpr_rule("(G_b3916 or G_b1723) and G_b0001")

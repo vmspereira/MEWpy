@@ -11,11 +11,11 @@ import warnings
 
 from cobra.io.sbml import read_sbml_model
 
-from mewpy.com import CommunityModel
-from mewpy.com.steadycom import SteadyCom, build_problem, calculate_bigM
-
 # the community oracle: identical members grow as one alone in the open community medium
 from test_g_com import check_steadycom
+
+from mewpy.com import CommunityModel
+from mewpy.com.steadycom import SteadyCom, build_problem, calculate_bigM
 
 MODELS_PATH = "tests/data/"
 EC_CORE_MODEL = MODELS_PATH + "e_coli_core.xml.gz"

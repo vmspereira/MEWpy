@@ -18,10 +18,25 @@ SUCC_ID = "R_EX_succ_e"
 
 
 class TestReviewCoreRegressions(unittest.TestCase):
-    def test_model_package_imports_without_six(self):
-        code = "import sys; sys.modules['six'] = None; import mewpy.model"
-        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+    def test_package_does_not_import_six(self):
+        # A scan of the source, because blocking six at run time also blocks dependencies that
+        # import it (python-dateutil < 4, installed on Python <= 3.10).
+        import ast
+
+        import mewpy
+
+        found = []
+        for path in sorted(Path(mewpy.__file__).parent.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), str(path))):
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                    names = [node.module]
+                else:
+                    continue
+                if any(name == "six" or name.startswith("six.") for name in names):
+                    found.append("%s:%d" % (path, node.lineno))
+        self.assertEqual(found, [])
 
     def test_cobra_simulator_with_solver_unknown_to_optlang(self):
         from cobra.io import read_sbml_model
