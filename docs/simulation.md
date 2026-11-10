@@ -424,3 +424,46 @@ result.dataframe.iloc[[0, 30, 60, 75, 90]]
 ```
 
 `result.plot()` draws biomass and concentrations over time. An uptake rate can be any callable that takes the compound's concentration (mM) and returns its maximal uptake rate (mmol/gDW/h), e.g. to add inhibition.
+
+### Community dynamic FBA
+
+`CommunityDynamicFBA` simulates members that share the medium, each with its own biomass, model, uptake kinetics and constraints. In each step every member is simulated on its own. When the members together would take more of a compound than what is left, each member gets a share proportional to its demand. A member without a feasible solution in a step, e.g. one that cannot cover its maintenance, does not grow in that step, and the simulation stops when no member has one. Members interact only through the medium: what one member secretes is available to the others from the next step. The members can be a `CommunityModel` or a dict, and may use different backends; compounds are keyed by the exchange id without the SBML prefix.
+
+Here a producer takes up glucose and secretes acetate, and a specialist without glucose transport grows on that acetate:
+
+```python
+from mewpy.simulation import CommunityDynamicFBA
+
+o2 = {'EX_o2_e': (-15, 1000)}
+producer = get_simulator(read_sbml_model('e_coli_core.xml'), envcond=o2)
+specialist = get_simulator(read_sbml_model('e_coli_core.xml'), envcond=o2)
+
+community = CommunityDynamicFBA({'producer': producer, 'specialist': specialist},
+                                initial_biomass={'producer': 0.01, 'specialist': 0.01},
+                                initial_concentrations={'EX_glc__D_e': 10, 'EX_ac_e': 0},
+                                uptake={'producer': {'EX_glc__D_e': MichaelisMenten(vmax=10, km=0.015)},
+                                        'specialist': {'EX_ac_e': MichaelisMenten(vmax=3, km=0.5)}},
+                                constraints={'producer': {'EX_ac_e': (0, 1000)},    # no acetate uptake
+                                             'specialist': {'GLCpts': 0}})          # no glucose transport
+result = community.simulate(t_end=24, dt=0.1)
+result
+```
+
+```
+CommunityDFBAResult(status='completed', time 0-24 h, steps=240, biomass producer 0.01 -> 0.730284, specialist 0.01 -> 0.0140559 gDW/L)
+```
+
+```python
+result.dataframe.iloc[[0, 34, 60, 120, 240]]
+```
+
+```
+     time  producer  specialist  EX_glc__D_e   EX_ac_e
+0     0.0  0.010000    0.010000    10.000000  0.000000
+34    3.4  0.114245    0.010000     8.547183  0.990994
+60    6.0  0.730284    0.010278     0.000434  6.614942
+120  12.0  0.730284    0.011417     0.000434  6.433791
+240  24.0  0.730284    0.014056     0.000434  6.010896
+```
+
+The specialist cannot cover its maintenance, and so does not grow, until acetate reaches about 1 mM at 3.4 h. The producer stops growing at 6 h: the glucose left is too little to cover its maintenance. `result.growth_rate` and `result.exchange_fluxes` hold each member's growth rate and exchange fluxes per step.
