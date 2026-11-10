@@ -78,6 +78,7 @@ the 0.1.36 and 1.0.0 release dates. "Not checked" means the earlier behaviour wa
 - `EA(..., seed=)`, `iMAT(..., biomass=, growth_frac=)`, `RegulatoryExtension.get()`, `.id_map`, `.attach()`/`.detach()`, and `decode_solver_solution(..., minimize=)`.
 - `ModelConstants.PFBA_OBJ_FRAC`, and quadratic objectives in the SCIP solver interface.
 - Dynamic FBA: `mewpy.simulation.DynamicFBA` (static optimisation, Michaelis-Menten or custom uptake kinetics, exact integration for the growth rate of each step) and `CommunityDynamicFBA` (members with their own biomass on a shared medium, which they share out when together they would overdraw it; members may use different backends), on COBRApy, REFRAMED and GERM models.
+- Batch strain design objectives: `BatchTiter`, `BatchYield` and `BatchProductivity` score the end of a batch culture of each candidate (`BatchCulture`, simulated by dynamic FBA under the candidate's modifications), as defined by DySScO; objectives that share a `BatchCulture` simulate each candidate once.
 - The example notebooks `GERM_Models.ipynb` and `GERM_Models_analysis.ipynb` are now `12-GERM_Models.ipynb` and `13-GERM_Models_analysis.ipynb`.
 - An optional dependency group `mewpy[examples]` (geckopy, escher), and the notebook `examples/11-omics.ipynb` (eFlux, GIMME and iMAT on yeast transcriptomics; context-specific models; COBRApy and REFRAMED).
 
