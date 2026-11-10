@@ -17,29 +17,29 @@ mewpy.model.gecko module
 
 .. automodule:: mewpy.model.gecko
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.model.kinetic module
 --------------------------
 
 .. automodule:: mewpy.model.kinetic
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.model.smoment module
 --------------------------
 
 .. automodule:: mewpy.model.smoment
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 Module contents
 ---------------
 
 .. automodule:: mewpy.model
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

@@ -6,5 +6,5 @@ Module contents
 
 .. automodule:: mewpy.model.data
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

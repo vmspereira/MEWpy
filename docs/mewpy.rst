@@ -20,10 +20,21 @@ Subpackages
    mewpy.util
    mewpy.visualization
 
+Submodules
+----------
+
+mewpy.logger module
+-------------------
+
+.. automodule:: mewpy.logger
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Module contents
 ---------------
 
 .. automodule:: mewpy
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
