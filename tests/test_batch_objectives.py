@@ -74,7 +74,8 @@ def test_objectives_that_share_a_culture_simulate_each_candidate_once(monkeypatc
     assert len(calls) == 1
     wild_type = problem.evaluate_solution({}, decode=False)
     assert len(calls) == 2 and wild_type != first
-    assert problem.evaluate_solution(SUCCINATE_KO, decode=False) == first
+    # simulated again: on x86_64 the result can differ in the last bits
+    assert problem.evaluate_solution(SUCCINATE_KO, decode=False) == pytest.approx(first, rel=1e-9)
 
 
 def test_an_infeasible_candidate_gets_the_worst_fitness():
