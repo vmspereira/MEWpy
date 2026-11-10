@@ -78,7 +78,7 @@ dev = [
     "pyscipopt>=5.0.0",
     "tox",
     "flake8",
-    "black",
+    "black<26",
     "isort",
     "scikit-learn>=1.0.0",
     "scipy>=1.7.0",

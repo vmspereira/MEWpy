@@ -36,8 +36,8 @@ from tqdm import tqdm
 
 from mewpy.model.kinetic import ODEModel
 from mewpy.simulation import Simulator, get_simulator
-from mewpy.simulation.simulation import current_bounds
 from mewpy.simulation.kinetic import KineticSimulation
+from mewpy.simulation.simulation import current_bounds
 from mewpy.solvers import KineticConfigurations, solver_instance
 from mewpy.solvers.solution import Status
 from mewpy.util.utilities import AttrDict

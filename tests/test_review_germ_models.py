@@ -484,9 +484,7 @@ def test_f11_shared_regulator_events():
 def test_f12_load_integrated_model():
     from mewpy.germ.models import load_integrated_model
 
-    integrated = load_integrated_model(
-        ECOLI, ECOLI_TRN, backend="reframed", regulatory_kwargs=TRN_KW
-    )
+    integrated = load_integrated_model(ECOLI, ECOLI_TRN, backend="reframed", regulatory_kwargs=TRN_KW)
     assert len(integrated.interactions) == 159
     assert "G_b0351" in integrated.targets
 
@@ -579,7 +577,7 @@ def test_minor_reaction_deepcopy_keeps_metabolite_attributes(model):
 # ----------------------------------------------------------------------------------------------------------------------
 # Notebook review round: hash-seed independent output and objective replacement
 # ----------------------------------------------------------------------------------------------------------------------
-_SEED_SCRIPT = r'''
+_SEED_SCRIPT = r"""
 import hashlib, json, sys, warnings
 warnings.filterwarnings("ignore")
 from mewpy.io import Engines, Reader, read_model
@@ -604,7 +602,7 @@ out["tie"] = Model.from_types(["metabolic"], identifier="t", reactions={"tie": t
 sbm = load_reframed_model(ecoli)
 out["sbm_genes"] = list(sbm.reactions["R_PDH"].genes)
 print(json.dumps({key: hashlib.md5(str(value).encode()).hexdigest() for key, value in out.items()}))
-'''
+"""
 
 
 def test_review_output_does_not_depend_on_hash_seed(tmp_path):

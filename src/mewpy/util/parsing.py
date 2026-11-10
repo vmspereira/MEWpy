@@ -88,6 +88,7 @@ def _ensure_recursion_limit(size: int) -> None:
     if sys.getrecursionlimit() < required:
         sys.setrecursionlimit(required)
 
+
 # latex #############################################
 
 

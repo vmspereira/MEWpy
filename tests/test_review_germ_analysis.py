@@ -348,7 +348,6 @@ def test_f11_fva_default_objective_regulatory_extension(re_model, cobra_fva):
 
 def test_f11_pfba_regulatory_extension(re_model, wt_growth):
     from mewpy.germ.analysis.pfba import _pFBA
-
     from mewpy.util.constants import ModelConstants
 
     solution = _pFBA(re_model).optimize()

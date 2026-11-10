@@ -3,8 +3,8 @@ from typing import Dict, Union
 from mewpy.germ.analysis.fba import _FBA
 from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
 from mewpy.solvers.solution import Solution, Status
-from mewpy.util.constants import ModelConstants
 from mewpy.solvers.solver import Solver
+from mewpy.util.constants import ModelConstants
 
 
 class _pFBA(_FBA):

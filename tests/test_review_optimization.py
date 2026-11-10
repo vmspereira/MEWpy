@@ -288,7 +288,7 @@ class TestCandidateSize(unittest.TestCase):
             self.assertGreater(len(ea.run(simplify=False)), 0)
 
     def test_l4_max_candidate_size_alias_is_honoured(self):
-        from mewpy.problems import GKOProblem, ROUProblem, RKOProblem
+        from mewpy.problems import GKOProblem, RKOProblem, ROUProblem
 
         model = load_ecoli()
         for cls in (RKOProblem, ROUProblem, GKOProblem):
@@ -450,7 +450,7 @@ class TestOperators(unittest.TestCase):
             self.assertEqual(results[1], results[2], op.__name__)
 
     def test_f11_target_lists_are_sorted(self):
-        from mewpy.problems import GKOProblem, ROUProblem, RKOProblem
+        from mewpy.problems import GKOProblem, RKOProblem, ROUProblem
 
         model = load_ecoli()
         for cls in (RKOProblem, ROUProblem, GKOProblem):
@@ -547,6 +547,8 @@ def run_python(code, env=None, timeout=300):
     return out.stdout.strip().splitlines()
 
 
+ECOLI_XML = str(DATA / "e_coli_core.xml")
+
 SEEDED_RAY_EA = """
 import warnings, logging
 warnings.filterwarnings("ignore"); logging.disable(logging.WARNING)
@@ -564,7 +566,7 @@ for _ in range(2):
     problem = RKOProblem(model, fevaluation, target=targets, candidate_max_size=3)
     ea = EA(problem, max_generations=3, mp=True, population_size=8, seed=5, algorithm="GA")
     print(sorted(str(s) for s in ea.run(simplify=False)))
-""" % str(Path(__file__).parent.joinpath("data", "e_coli_core.xml"))
+"""
 
 HASHED_FITNESS = """
 import warnings, logging
@@ -579,7 +581,7 @@ targets = ["b0902", "b3951", "b1241", "b2296", "b1380"]
 problem = GKOProblem(model, fevaluation, target=targets, envcond={"EX_o2_e": (0, 1000)})
 problem.pre_process()
 print(repr(problem.evaluate_solution(problem.encode(["b0902", "b3951"]))))
-""" % str(Path(__file__).parent.joinpath("data", "e_coli_core.xml"))
+"""
 
 
 class TestRound3(unittest.TestCase):
@@ -590,11 +592,11 @@ class TestRound3(unittest.TestCase):
         self.assertEqual(lines[-1], "False")
 
     def test_r2_seeded_jmetal_ea_with_ray_is_reproducible_in_one_process(self):
-        first, second = run_python(SEEDED_RAY_EA)[-2:]
+        first, second = run_python(SEEDED_RAY_EA % ECOLI_XML)[-2:]
         self.assertEqual(first, second)
 
     def test_r3_fitness_does_not_depend_on_the_hash_seed(self):
-        values = [run_python(HASHED_FITNESS, env={"PYTHONHASHSEED": h})[-1] for h in ("1", "2")]
+        values = [run_python(HASHED_FITNESS % ECOLI_XML, env={"PYTHONHASHSEED": h})[-1] for h in ("1", "2")]
         self.assertEqual(values[0], values[1])
 
     def test_r3_simulations_run_in_evaluation_function_order(self):

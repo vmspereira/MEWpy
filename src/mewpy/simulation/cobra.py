@@ -401,8 +401,10 @@ class Simulation(CobraModelContainer, Simulator):
             linear_coef = {self.model.reactions.get_by_id(r_id): v for r_id, v in objective.items()}
             set_objective(self.model, linear_coef)
         else:
-            raise ValueError("The objective must be a reaction identifier or a dictionary of \
-                reaction identifier with respective coeficients.")
+            raise ValueError(
+                "The objective must be a reaction identifier or a dictionary of \
+                reaction identifier with respective coeficients."
+            )
 
     def add_compartment(self, comp_id, name=None, external=False):
         """Adds a compartment

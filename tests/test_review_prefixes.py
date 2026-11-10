@@ -284,8 +284,10 @@ def test_pfba_keeps_the_shared_fraction_on_every_backend():
 
     assert ModelConstants.PFBA_OBJ_FRAC == 0.999
     results = {name: sim.simulate(method="pFBA") for name, sim in all_backends().items()}
-    growth = {name: res.fluxes[native("reframed" if name == "reframed" else "cobra", "Biomass_Ecoli_core")]
-              for name, res in results.items()}
+    growth = {
+        name: res.fluxes[native("reframed" if name == "reframed" else "cobra", "Biomass_Ecoli_core")]
+        for name, res in results.items()
+    }
     for name in results:
         assert growth[name] == pytest.approx(ModelConstants.PFBA_OBJ_FRAC * 0.8739215, abs=1e-6), name
         assert results[name].objective_value == pytest.approx(results["cobra"].objective_value, abs=1e-5), name
