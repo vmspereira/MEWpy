@@ -509,9 +509,14 @@ class TestProcess(unittest.TestCase):
         self.assertIsInstance(evaluator, process.MultiProcessorEvaluator)
 
     def test_f12_pool_evaluators(self):
-        # run in a fresh interpreter: forking this process, which may run Ray threads, is unsafe
-        cmd = [sys.executable, "-c", POOL_SCRIPT]
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        import tempfile
+
+        # run in a fresh interpreter: forking this process, which may run Ray threads, is unsafe.
+        # A real file: spawned workers (Windows) import Doubler from __main__'s file, which python -c lacks
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pool_evaluators.py"
+            path.write_text(POOL_SCRIPT)
+            out = subprocess.run([sys.executable, str(path)], capture_output=True, text=True, timeout=120)
         self.assertEqual(out.returncode, 0, out.stderr[-2000:])
         lines = out.stdout.splitlines()
         for kind in ("mp", "nodaemon"):
@@ -559,7 +564,7 @@ from mewpy.optimization.jmetal.ea import EA
 from mewpy.problems import RKOProblem
 
 ModelConstants.MP_EVALUATOR, EAConstants.NUM_CPUS = "ray", 2
-model = load_cbmodel("%s")
+model = load_cbmodel(%r)
 targets = ["PFL", "ACKr", "LDH_D", "ALCD2x", "PTAr", "PGI", "PFK", "FUM"]
 for _ in range(2):
     fevaluation = [BPCY("Biomass_Ecoli_core", "EX_succ_e")]
@@ -575,7 +580,7 @@ from cobra.io import read_sbml_model
 from mewpy.optimization.evaluation import BPCY, WYIELD
 from mewpy.problems import GKOProblem
 
-model = read_sbml_model("%s")
+model = read_sbml_model(%r)
 fevaluation = [BPCY("Biomass_Ecoli_core", "EX_succ_e"), WYIELD("Biomass_Ecoli_core", "EX_succ_e")]
 targets = ["b0902", "b3951", "b1241", "b2296", "b1380"]
 problem = GKOProblem(model, fevaluation, target=targets, envcond={"EX_o2_e": (0, 1000)})
