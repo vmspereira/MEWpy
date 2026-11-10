@@ -17,53 +17,53 @@ mewpy.io.builder module
 
 .. automodule:: mewpy.io.builder
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.io.director module
 ------------------------
 
 .. automodule:: mewpy.io.director
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.io.dto module
 -------------------
 
 .. automodule:: mewpy.io.dto
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.io.reader module
 ----------------------
 
 .. automodule:: mewpy.io.reader
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.io.sbml module
 --------------------
 
 .. automodule:: mewpy.io.sbml
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.io.writer module
 ----------------------
 
 .. automodule:: mewpy.io.writer
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 Module contents
 ---------------
 
 .. automodule:: mewpy.io
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

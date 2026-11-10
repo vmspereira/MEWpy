@@ -17,13 +17,13 @@ mewpy.omics.expression module
 
 .. automodule:: mewpy.omics.expression
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 Module contents
 ---------------
 
 .. automodule:: mewpy.omics
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

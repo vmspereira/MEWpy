@@ -11,6 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.abspath('../src/'))
@@ -18,8 +19,16 @@ sys.path.insert(0, os.path.abspath('../src/'))
 # -- Project information -----------------------------------------------------
 
 project = 'MEWpy'
-copyright = '2020, Centre of Biological Engineering, University of Minho'
-author = 'Centre of Biological Engineering, University of Minho'
+copyright = '2019-2026, Vítor Pereira and Centre of Biological Engineering, University of Minho'
+author = 'Vítor Pereira and Centre of Biological Engineering, University of Minho'
+
+# the version of the package, read without importing it
+with open(os.path.abspath('../src/mewpy/__init__.py'), encoding='utf-8') as _init:
+    release = re.search(r"__version__ = ['\"]([^'\"]+)['\"]", _init.read()).group(1)
+version = release
+
+# optional solvers that Read the Docs does not install
+autodoc_mock_imports = ['cplex', 'gurobipy', 'odespy', 'scikits']
 
 # -- General configuration ---------------------------------------------------
 

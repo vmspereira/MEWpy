@@ -19,21 +19,21 @@ mewpy.optimization.ea module
 
 .. automodule:: mewpy.optimization.ea
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 mewpy.optimization.settings module
 ----------------------------------
 
 .. automodule:: mewpy.optimization.settings
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 
 Module contents
 ---------------
 
 .. automodule:: mewpy.optimization
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
