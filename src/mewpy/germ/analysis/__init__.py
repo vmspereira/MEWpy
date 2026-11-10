@@ -1,6 +1,7 @@
 from enum import Enum
 
 from .coregflux import CoRegFlux, predict_gene_expression
+from .dynamic_rfba import DynamicRFBA, DynamicRFBAResult
 from .integrated_analysis import (
     find_conflicts,
     ifva,

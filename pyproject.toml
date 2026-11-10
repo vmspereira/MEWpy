@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mewpy"
-version = "1.0.0"
+version = "1.1.0"
 description = "MEWpy - Metabolic Engineering in Python"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -87,10 +87,13 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
 ]
-# Optional packages used by some examples (GECKO with geckopy, Escher maps in the community notebook)
+# Optional packages used by some examples (GECKO with geckopy, Escher maps in the community notebook, and the
+# Excel files of measured data that the case-study notebook reads)
 examples = [
     "geckopy",
     "escher",
+    "openpyxl",
+    "xlrd",
 ]
 
 [project.urls]

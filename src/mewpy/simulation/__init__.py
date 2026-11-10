@@ -24,6 +24,7 @@ Author: Vítor Pereira
 from .simulator import get_container, get_simulator
 from .simulation import SimulationMethod, SimulationResult, Simulator, SStatus
 from .environment import Environment
+from .dfba import CommunityDFBAResult, CommunityDynamicFBA, DFBAResult, DynamicFBA, MichaelisMenten
 from .sglobal import __MEWPY_sim_solvers__
 
 # isort: on

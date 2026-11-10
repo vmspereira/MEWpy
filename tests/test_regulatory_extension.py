@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 TRN_CSV = dict(regulatory_format="csv", sep=",", id_col=0, rule_col=2, aliases_cols=[1], header=0)
 # Orth et al. (2010): e_coli_core grows at 0.8739 /h on 10 mmol/gDW/h glucose, aerobic
 AEROBIC_GROWTH = 0.8739
-# RFBA growth on E. coli core with the default regulatory state (CHANGELOG, "as in the documentation")
-RFBA_GROWTH = 0.8514
+# RFBA growth on E. coli core with the default regulatory state (docs/germ.md): the FBA optimum
+RFBA_GROWTH = 0.8739
 # e_coli_core and its TRN: reactions, genes, interactions (one per target), regulators
 N_REACTIONS, N_GENES, N_INTERACTIONS, N_REGULATORS = 95, 137, 159, 45
 
@@ -170,7 +170,7 @@ class TestRegulatoryExtensionWithAnalysis:
         rfba = RFBA(integrated_model)
         solution = rfba.optimize()
 
-        # the default regulatory state represses some aerobic routes: the documented 0.8514
+        # the settled default regulatory state closes no reaction the aerobic optimum uses: the FBA optimum
         assert solution.status == Status.OPTIMAL
         assert solution.objective_value == pytest.approx(RFBA_GROWTH, abs=1e-4)
 

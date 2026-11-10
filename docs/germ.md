@@ -855,10 +855,10 @@ model.undo()
 print('RFBA WT growth rate:', rfba.optimize().objective_value)
 print('SRFBA WT growth rate:', srfba.optimize().objective_value)
 ```
-    RFBA KO growth rate: 0.8513885233462086
+    RFBA KO growth rate: 0.8739215069684303
     SRFBA KO growth rate: 0.21166294973531047
     
-    RFBA WT growth rate: 0.8513885233462086
+    RFBA WT growth rate: 0.8739215069684303
     SRFBA WT growth rate: 0.8739215066796725
 
 FBA and pFBA have no attachable analysis class; see the FBA and pFBA section below.
@@ -937,10 +937,12 @@ regulatory_truth_table(model)
 
 ## RFBA
 **`RFBA`** is a phenotype simulation method based on the integration of a GEM model with a TRN at the genome-scale. 
-**`RFBA`** performs first a synchronous evaluation of all regulatory interactions in the regulatory model. 
-This simulation is used to retrieve the regulatory state (regulators' coefficients). 
+**`RFBA`** first evaluates the regulatory interactions of the regulators that are also targets (e.g. Crp, whose rule depends on 
+the glucose signal) synchronously, until their states no longer change: a regulator at the end of a chain of regulators 
+gets the state that the chain implies. 
+This gives the regulatory state (regulators' coefficients). 
 Then, the regulatory state is translated into a metabolic state (metabolic genes' coefficients) 
-by performing a second synchronous evaluation of all regulatory interactions in the regulatory model. 
+by evaluating the regulatory interactions of the metabolic genes. 
 Finally, the resulting metabolic state is used to decode metabolic constraints upon evaluation of the reactions' GPRs 
 with the targets' state.
 
@@ -994,7 +996,10 @@ Even so, this initial state is likely to yield infeasible solutions.
 To mitigate conflicts between the regulatory and metabolic states, 
 one can use the **`mewpy.germ.analysis.find_conflicts()`** method. 
 This method can find regulatory states that lead to knockouts of essential genes and deletion of essential reactions.
-Note that, **`find_conflicts()`** results should be carefully analyzed, as this method does not detect indirect conflicts. 
+By default (`strategy='settle'`), it decodes the regulatory state as **`RFBA`** does: the regulators that follow rules settle from the initial state. 
+The `'one-step'` and `'two-step'` strategies evaluate the rules once or twice instead. 
+Note that, **`find_conflicts()`** results should be carefully analyzed, as this method does not detect indirect conflicts, 
+such as a conflict caused by a wrong initial state of an environmental stimulus or of a reaction regulator. 
 Please consult the method for more details and the example bellow.
 
 ```python
@@ -1037,8 +1042,56 @@ solution = rfba.optimize(initial_state=initial_state)
 solution
 ```
 <table>
-<tr><td>Method</td><td>RFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.8517832768455648</td></tr><tr><th>Status</th><td>optimal</td></tr>
+<tr><td>Method</td><td>RFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.9205101727032998</td></tr><tr><th>Status</th><td>optimal</td></tr>
 </table>
+
+### Dynamic RFBA in batch culture
+
+**`DynamicRFBA`** simulates a batch culture over time (dynamic FBA, see the simulation docs), with the TRN switching reactions off at each time step ([Covert _et al_, 2001](https://doi.org/10.1006/jtbi.2001.2405)). At the start of each step:
+- a metabolite regulator whose exchange is tracked is present while its concentration exceeds `threshold` (1e-3 mM by default), and one whose exchange is not tracked is present when the medium allows its uptake;
+- a reaction regulator takes the flux of the previous step;
+- the other regulators follow their rules, evaluated until they no longer change, as in **`RFBA.optimize()`**.
+
+The target genes are then decoded, and the reactions whose GPR is false cannot carry flux in the step. `initial_state` fixes regulators for the whole simulation, and replaces the decoded state of the genes it names (e.g. a knockout).
+
+Here _E. coli_ core with its TRN ([Orth _et al_, 2010](https://doi.org/10.1128/ecosalplus.10.2.1)), available at _examples/models/germ/e_coli_core.xml_ and _examples/models/germ/e_coli_core_trn.csv_, grows on glucose with oxygen limited to 15 mmol/gDW/h:
+
+```python
+import pandas as pd
+from mewpy.germ.analysis import DynamicRFBA
+from mewpy.germ.models import RegulatoryExtension
+from mewpy.simulation import MichaelisMenten
+
+model = RegulatoryExtension.from_sbml('e_coli_core.xml', 'e_coli_core_trn.csv', flavor='reframed',
+                                      regulatory_format='csv', sep=',', id_col=0, rule_col=2,
+                                      aliases_cols=[1], header=0)
+drfba = DynamicRFBA(model,
+                    initial_biomass=0.01,
+                    initial_concentrations={'EX_glc__D_e': 10, 'EX_ac_e': 0},
+                    uptake={'EX_glc__D_e': MichaelisMenten(vmax=10, km=0.015),
+                            'EX_ac_e': MichaelisMenten(vmax=3, km=0.5)},
+                    constraints={'EX_o2_e': (-15, 1000)})
+result = drfba.simulate(t_end=12, dt=0.1)
+
+steps = pd.DataFrame({'time': result.time[:-1],
+                      'glucose': result.concentrations['R_EX_glc__D_e'][:-1],
+                      'acetate': result.concentrations['R_EX_ac_e'][:-1],
+                      'growth': result.growth_rate,
+                      'FadR': [state['b1187'] for state in result.regulatory_states],
+                      'IclR': [state['b4018'] for state in result.regulatory_states],
+                      'ICL off': ['R_ICL' in off for off in result.inactive]})
+steps.iloc[[0, 59, 60, 89]].round(4)
+```
+
+```
+    time  glucose  acetate  growth  FadR  IclR  ICL off
+0    0.0  10.0000   0.0000  0.7164   1.0   1.0     True
+59   5.9   0.6198   6.3707  0.6604   1.0   1.0     True
+60   6.0   0.0004   6.6796  0.0182   0.0   0.0    False
+89   8.9   0.0000   1.0656  0.0015   0.0   0.0    False
+```
+
+While glucose is present, FadR activates IclR, which represses isocitrate lyase (ICL, _aceA_). At 6 h glucose falls below the threshold, the glyoxylate shunt opens, and the culture grows on the acetate it secreted until 9 h, when the acetate left can no longer cover maintenance. In this medium the trajectory is the same as dynamic FBA without regulation, as the reactions the TRN switches off are not used by the optimum at those times. With FadR fixed on (`initial_state={'b1187': 1}`) the shunt stays closed, and the culture stops growing when glucose runs out. With less oxygen (`constraints={'EX_o2_e': (-5, 1000)}`) the TRN keeps pyruvate formate-lyase (PFL) off, and the culture grows more slowly than without regulation. `result.regulatory_states` and `result.inactive` hold the regulators' states and the reactions switched off in each step.
 
 ## SRFBA
 **`SRFBA`** is a phenotype simulation method based on the integration of a GEM model with a TRN at the genome-scale. 

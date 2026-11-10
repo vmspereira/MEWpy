@@ -469,7 +469,7 @@ def _decode_gprs(
 
 def find_conflicts(
     model: Union["Model", "MetabolicModel", "RegulatoryModel"],
-    strategy: str = "two-step",
+    strategy: str = "settle",
     constraints: Dict[str, Tuple[float, float]] = None,
     initial_state: Dict[str, float] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -479,7 +479,11 @@ def find_conflicts(
     the initial state is not known and hinders feasible solutions during simulation.
     This method can be used to find regulatory states that affect the growth of the cell.
 
-    One can use two strategies to find conflicts:
+    One can use three strategies to find conflicts:
+        - Settle strategy (default): the regulatory state is decoded as in RFBA. The regulators that follow rules are
+        evaluated from the initial state until they no longer change, the metabolic state is decoded from them, and
+        the states given in initial_state win over the decoded ones. It checks if the metabolic state violates
+        essential genes and reactions.
         - One-step strategy: it simulates the model with the initial state of the regulators and
         checks if the metabolic state violates essential genes and reactions.
         - Two-step strategy: it simulates the model with the initial state of the regulators to retrieve the regulatory
@@ -487,7 +491,8 @@ def find_conflicts(
         the metabolic state. Finally, it checks if the metabolic state violates essential genes and reactions.
 
     NOTE: Although this method finds direct conflicts between regulators and genes affecting cellular growth,
-    it might not detect indirect conflicts.
+    it might not detect indirect conflicts (with the one-step and two-step strategies, also those through chains of
+    regulators).
     For example, an active regulator can repress an essential metabolic gene and thus being reported as a conflict.
     However, this regulator can only be active due to an erroneous initial state of another regulator or environmental
     stimuli, metabolite or reaction. That is, this active regulator is also a target being affected by other regulators.
@@ -496,13 +501,17 @@ def find_conflicts(
     of the regulators to find all conflicts!!!
 
     :param model: a metabolic-regulatory model to be simulated
-    :param strategy: the strategy to be used to find conflicts. Available strategies: 'one-step', 'two-step'.
-    one-step performs a single regulatory simulation. two-step performs two simulations. Default: 'two-step'
+    :param strategy: the strategy to be used to find conflicts. Available strategies: 'settle', 'one-step',
+    'two-step'. settle decodes the regulatory state as RFBA does. one-step performs a single regulatory simulation.
+    two-step performs two simulations. Default: 'settle'
     :param constraints: additional constraints to be added to the model. If None, no additional constraints are added
     :param initial_state: the initial state of the model. If None, the default initial state is used (default: None)
     :return: a DataFrame with the conflicts between essential genes and regulatory states, and a DataFrame with the
     conflicts between essential reactions and metabolic states
     """
+    if strategy not in ("settle", "one-step", "two-step"):
+        raise ValueError(f"Unknown strategy {strategy!r}: use 'settle', 'one-step' or 'two-step'")
+
     # copies, with ids given in either SBML form or as original TRN ids resolved
     resolver = IdResolver(model)
     constraints = resolver.keys(constraints) if constraints else {}
@@ -532,10 +541,16 @@ def find_conflicts(
 
     state = _decode_initial_state(model, initial_state)
 
-    # noinspection PyTypeChecker
-    regulatory_state = _decode_interactions(model, state)
+    if strategy == "settle":
+        from mewpy.germ.analysis.rfba import RFBA
 
-    if strategy == "two-step":
+        rfba = RFBA(model)
+        regulatory_state = rfba.settle_regulatory_state(state, fixed=initial_state)
+        metabolic_state = {**rfba.decode_metabolic_state({**regulatory_state, **initial_state}), **initial_state}
+
+    elif strategy == "two-step":
+        # noinspection PyTypeChecker
+        regulatory_state = _decode_interactions(model, state)
         regulators = model.regulators
         regulatory_state = {gene: value for gene, value in regulatory_state.items() if gene in regulators}
         regulatory_state = {**state, **regulatory_state}
@@ -543,6 +558,8 @@ def find_conflicts(
         metabolic_state = _decode_interactions(model, regulatory_state)
 
     else:
+        # noinspection PyTypeChecker
+        regulatory_state = _decode_interactions(model, state)
         metabolic_state = regulatory_state.copy()
 
     deleted_genes = set(gene for gene, val in metabolic_state.items() if val < ModelConstants.TOLERANCE)

@@ -568,7 +568,7 @@ def test_attached_srfba_sees_regulator_knockout_regulatory_extension():
 # ----------------------------------------------------------------------------------------------------------------------
 EXAMPLES = Path(__file__).parent.parent.joinpath("examples", "models", "germ")
 # documented RFBA wild-type growth for e_coli_core + e_coli_core_trn (docs/germ.md)
-RFBA_DOCS_WT = 0.8513885233462081
+RFBA_DOCS_WT = 0.8739215069684303
 
 
 def test_rfba_wild_type_matches_documented_growth_legacy():
@@ -772,3 +772,77 @@ def test_prom_max_rates_only_for_regulated_reactions(re_model):
     solution = prom.optimize(initial_state=_all_zero_probabilities(re_model), regulators=["b4401"])
     assert calls and calls[0] < len(re_model.reactions) / 2
     assert next(iter(solution.solutions.values())).objective_value < 0.874 - 1e-3
+
+
+# ======================================================================================================================
+# Chains of regulators: find_conflicts and OptORF decode them as RFBA does (the regulators settle)
+# ======================================================================================================================
+def _legacy_integrated(trn_path=EC_CORE_TRN):
+    from mewpy.io import Engines, Reader, read_model
+
+    return read_model(
+        Reader(Engines.MetabolicSBML, str(EC_CORE)), Reader(Engines.BooleanRegulatoryCSV, str(trn_path), **TRN_KWARGS)
+    )
+
+
+def _chain_trn(tmp_path):
+    """The core TRN plus a chain to gapA (b1779, the only GAPD gene, essential): regA = no glucose, regB = regA,
+    gapA = NOT regB. With glucose in the medium the chain settles to gapA active"""
+    rows = list(csv.reader(open(EC_CORE_TRN)))
+    path = tmp_path.joinpath("trn_chain.csv")
+    with open(path, "w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(rows[0])
+        writer.writerows(["b1779", "b1779", "NOT regB"] if row[0] == "b1779" else row for row in rows[1:])
+        writer.writerow(["regA", "regA", "NOT (glc__D_e > 0)"])
+        writer.writerow(["regB", "regB", "regA"])
+    return path
+
+
+@pytest.mark.parametrize("loader", ["legacy", "regulatory_extension"])
+def test_find_conflicts_settles_chains_of_regulators(tmp_path, loader):
+    """The default strategy decodes as RFBA: no conflict on gapA. 'two-step' leaves regB at regA's initial (maximum)
+    state and reports a conflict the medium does not cause"""
+    from mewpy.germ.analysis import find_conflicts
+
+    path = _chain_trn(tmp_path)
+    model = _legacy_integrated(path) if loader == "legacy" else _regulatory_extension(path)
+
+    def gapA(genes):
+        return [g for g in genes.index if g.endswith("b1779")]
+
+    settled, _ = find_conflicts(model)
+    assert gapA(settled) == []
+    two_step, _ = find_conflicts(model, strategy="two-step")
+    assert len(gapA(two_step)) == 1
+
+
+def test_find_conflicts_rejects_an_unknown_strategy(re_model):
+    from mewpy.germ.analysis import find_conflicts
+
+    with pytest.raises(ValueError, match="Unknown strategy"):
+        find_conflicts(re_model, strategy="two_step")
+
+
+def test_optorf_candidates_are_decoded_as_rfba(cobra_model):
+    """A candidate's constraints are the reactions RFBA closes with the knockouts as initial state. Knockouts of
+    regulators and genes that are targets of the TRN apply: pgi (b4025, rule TRUE) closes PGI, and the candidate grows
+    as COBRApy's PGI knockout. The wild type does not close GLUDy: Nac settles inactive with ammonium present"""
+    from mewpy.germ.analysis import RFBA
+    from mewpy.optimization.evaluation import TargetFlux
+    from mewpy.problems import OptORFProblem
+
+    model = _legacy_integrated()
+    problem = OptORFProblem(model, [TargetFlux("Biomass_Ecoli_core", method="FBA")])
+    problem.pre_process()
+    rfba = RFBA(model)
+    for knockouts in ({}, {"b4025": 0}, {"b1988": 0}, {"b3261": 0}, {"b4025": 0, "b3261": 0}):
+        assert problem.solution_to_constraints(knockouts) == rfba.regulatory_constraints(knockouts), knockouts
+    assert "PGI" in problem.solution_to_constraints({"b4025": 0})
+    assert "GLUDy" not in problem.solution_to_constraints({})
+
+    with cobra_model:
+        cobra_model.reactions.PGI.knock_out()
+        pgi_growth = cobra_model.slim_optimize()
+    candidate = {problem.target_list.index("b4025")}
+    assert problem.evaluate_solution(candidate) == pytest.approx([pgi_growth], abs=TOL)

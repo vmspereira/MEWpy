@@ -116,6 +116,49 @@ from mewpy.optimization.evaluation import MolecularWeight
 fevaluation =  MolecularWeight([r_id_1,r_id_2,...])
 ```
 
+**Batch titer, yield and productivity**
+
+These objectives simulate a batch culture of each candidate by dynamic FBA (`mewpy.simulation.DynamicFBA`, see the simulation docs), with the candidate's modifications as constraints, and score the end of the batch, as in DySScO ([Zhuang et al., 2013](https://doi.org/10.1186/1472-6750-13-8)):
+
+- `BatchTiter`: the product concentration at the end of the batch (mM);
+- `BatchYield`: the product formed per substrate consumed (mol/mol);
+- `BatchProductivity`: the product formed per batch time, `t_end` (mM/h), also when growth stops earlier.
+
+A `BatchCulture` describes the batch, and objectives that share it simulate each candidate once. The product and the substrate must be among its tracked compounds. Here is DySScO's batch (0.01 gDW/L of biomass, 20 mM glucose, glucose uptake with vmax 20 mmol/gDW/h and Km 1 mM, no oxygen), for succinate in E. coli core:
+
+```python
+import pandas as pd
+from cobra.io import read_sbml_model
+from mewpy.optimization.evaluation import BatchCulture, BatchTiter, BatchYield, BatchProductivity
+from mewpy.problems import RKOProblem
+from mewpy.simulation import MichaelisMenten
+
+model = read_sbml_model('e_coli_core.xml')
+culture = BatchCulture(initial_biomass=0.01,
+                       initial_concentrations={'EX_glc__D_e': 20, 'EX_succ_e': 0},
+                       uptake={'EX_glc__D_e': MichaelisMenten(vmax=20, km=1)},
+                       t_end=24)
+objectives = [BatchTiter(culture, 'EX_succ_e'),
+              BatchYield(culture, 'EX_succ_e', 'EX_glc__D_e'),
+              BatchProductivity(culture, 'EX_succ_e')]
+problem = RKOProblem(model, objectives, envcond={'EX_o2_e': (0, 1000)}, candidate_max_size=4)
+
+knockouts = {'wild type': {},
+             'ACALD LDH_D': {'ACALD': 0, 'LDH_D': 0},
+             'ACALD LDH_D PTAr': {'ACALD': 0, 'LDH_D': 0, 'PTAr': 0}}
+pd.DataFrame({name: problem.evaluate_solution(ko, decode=False) for name, ko in knockouts.items()},
+             index=['titer (mM)', 'yield (mol/mol)', 'productivity (mM/h)']).T.round(3)
+```
+
+```
+                  titer (mM)  yield (mol/mol)  productivity (mM/h)
+wild type              0.000            0.000                0.000
+ACALD LDH_D           17.306            0.877                0.721
+ACALD LDH_D PTAr      18.299            0.946                0.762
+```
+
+Without acetaldehyde dehydrogenase and lactate dehydrogenase, succinate is a main fermentation product. Removing phosphotransacetylase as well raises the titer and the yield, but the culture is slower: growth stops at 20.8 h instead of 12.1 h. Both cultures stop within the 24 h batch, so the productivity ranks them as the titer does. `culture.simulate(simulator, constraints)` gives the trajectory of a candidate, and an `EA` on the problem searches for knockouts.
+
 
 
 **Combining two or more objectives**

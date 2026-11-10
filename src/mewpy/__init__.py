@@ -19,7 +19,7 @@ from .simulation import get_simulator
 
 __author__ = "Vitor Pereira (2019-) and CEB University of Minho (2019-2023)"
 __email__ = "vpereira@ceb.uminho.pt"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 def info():

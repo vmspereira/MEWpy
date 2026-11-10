@@ -289,6 +289,23 @@ class ModelContainer(ABC):
         raise NotImplementedError
 
 
+def current_bounds(simulator, r_id, constraints=None):
+    """A reaction's bounds now: its constraint in constraints (e.g. those of a simulate call), else the simulator's
+    constraint or medium, else the model's bounds.
+
+    :param simulator: a Simulator.
+    :param r_id: a native reaction id.
+    :param constraints: constraints {id: value or (lb, ub)} that take precedence, or None.
+    :returns: a value or a (lb, ub) tuple.
+    """
+    simulator_constraints = getattr(simulator, "_constraints", None)
+    medium = getattr(simulator, "environmental_conditions", None)
+    for source in (constraints, simulator_constraints, medium):
+        if source and r_id in source:
+            return source[r_id]
+    return simulator.get_reaction_bounds(r_id)
+
+
 class Simulator(ModelContainer, SimulationInterface):
     """
     Interface for simulators
