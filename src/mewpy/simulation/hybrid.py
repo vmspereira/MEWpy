@@ -22,6 +22,7 @@ Contributors: Mariana Pereira
 ##############################################################################
 """
 import itertools
+import logging
 import warnings
 from collections import OrderedDict
 from math import inf
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
 
 
 warnings.filterwarnings("ignore", "Timeout")
+
+logger = logging.getLogger(__name__)
 
 
 def _partial_lMOMA(model, reactions: dict, biomass: str, constraints=None):
@@ -177,6 +180,32 @@ def enzyme_usage_constraints(
     return constraints
 
 
+def merge_kinetic_constraints(constraints, kinetic):
+    """The user's constraints plus kinetic flux bounds.
+
+    For a reaction in both, the bounds are intersected. If they do not overlap, the user's constraint is kept, so
+    that e.g. a knockout of a mapped reaction holds.
+
+    :param constraints: constraint-based constraints {id: value or (lb, ub)}, or None.
+    :param kinetic: kinetic flux bounds {id: value or (lb, ub)}.
+    :returns: a new dictionary.
+    """
+    merged = dict(constraints or {})
+    for r_id, bounds in kinetic.items():
+        k_lb, k_ub = bounds if isinstance(bounds, (tuple, list)) else (bounds, bounds)
+        if r_id not in merged:
+            merged[r_id] = (k_lb, k_ub)
+            continue
+        user = merged[r_id]
+        u_lb, u_ub = user if isinstance(user, (tuple, list)) else (user, user)
+        lower, upper = max(u_lb, k_lb), min(u_ub, k_ub)
+        if lower <= upper:
+            merged[r_id] = (lower, upper)
+        else:
+            logger.debug("The kinetic bounds of %s do not overlap its constraint; the constraint is kept", r_id)
+    return merged
+
+
 def _check_unused_dilution(D):
     if D is not None:
         warn("D is not used: kinetic rates (mM/s) are converted as rate x 3600 / gDW", DeprecationWarning, stacklevel=3)
@@ -262,6 +291,22 @@ class HybridSimulation:
 
         return True
 
+    def _current_bounds(self, r_id, constraints):
+        """A reaction's bounds now: the call's constraint, else the simulator's constraint or medium, else the model's"""
+        simulator_constraints = getattr(self.sim, "_constraints", None)
+        medium = getattr(self.sim, "environmental_conditions", None)
+        for source in (constraints, simulator_constraints, medium):
+            if source and r_id in source:
+                return source[r_id]
+        return self.sim.get_reaction_bounds(r_id)
+
+    def _with_kinetic(self, constraints, kinetic):
+        """The call's constraints plus kinetic bounds, intersected with each mapped reaction's current bounds"""
+        current = {r_id: self._current_bounds(r_id, constraints) for r_id in kinetic}
+        merged = dict(constraints or {})
+        merged.update(merge_kinetic_constraints(current, kinetic))
+        return merged
+
     def unit_conv(self, value):
         return kinetic_to_cb_flux(value, self.gDW)
 
@@ -346,6 +391,10 @@ class HybridSimulation:
         :param amplitude: the amplitude range centered in the flux value. Default None, in which case
             partial lMOMA is applied
         :type amplitude: float
+
+        A kinetic flux or range is intersected with the reaction's current bounds (a constraint of this call, else
+        of the simulator, else the model's bounds); if they do not overlap, those bounds are kept, so e.g. a
+        knockout of a mapped reaction holds (see merge_kinetic_constraints).
         :param method: the phenotype simulation method
         :type method: str. Default 'pFBA'
         :returns: Returns the solution of the hibridization.
@@ -381,7 +430,7 @@ class HybridSimulation:
                 biomass = [*self.sim.objective][0]
                 s = _partial_lMOMA(self.sim, _fluxes, biomass, constraints=constraints)
                 c = {k: s.values[k] for k in _fluxes.keys()}
-            constraints.update(c)
+            constraints = self._with_kinetic(constraints, c)
         else:
             raise ValueError("Could not mapp reactions.")
 
@@ -398,28 +447,19 @@ class HybridSimulation:
         from the kinetic model.
         The kinetic flux distributions are provided as panda dataframes.
 
-        :param df: _description_
-        :type df: _type_
-        :param q1: _description_, defaults to 0.1
-        :type q1: float, optional
-        :param q2: _description_, defaults to 0.9
-        :type q2: float, optional
-        :param objective: _description_, defaults to None
-        :type objective: _type_, optional
-        :param method: _description_, defaults to 'pFBA'
-        :type method: str, optional
-        :param constraints: _description_, defaults to None
-        :type constraints: _type_, optional
-        :return: _description_
-        :rtype: _type_
+        :param df: sampled kinetic fluxes, one column per kinetic reaction (e.g. from nsamples).
+        :param q1: the lower percentile, defaults to 0.1
+        :param q2: the upper percentile, defaults to 0.9
+        :param objective: the constraint-based objective, defaults to the model's
+        :param method: the phenotype simulation method, defaults to 'pFBA'
+        :param constraints: constraint-based constraints. A kinetic range is intersected with the reaction's current
+            bounds (as in simulate); if they do not overlap, those bounds are kept.
+        :return: the simulation result, with the kinetic ranges in its kinetic_constraints attribute
         """
-        const = dict()
         lbs = df.quantile(q1, axis=0).to_dict()
         ubs = df.quantile(q2, axis=0).to_dict()
-        if constraints:
-            const.update(constraints)
         k_const = self.mapping_bounds(lbs, ubs)
-        const.update(k_const)
+        const = self._with_kinetic(constraints, k_const)
         if objective:
             solution = self.sim.simulate(method=method, constraints=const, objective=objective, **kwargs)
         else:

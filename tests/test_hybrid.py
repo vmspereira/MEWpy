@@ -37,7 +37,7 @@ class _RecordingSimulator:
 
     def simulate(self, objective=None, method=None, constraints=None, **kwargs):
         self.constraints.append(dict(constraints or {}))
-        return constraints
+        return SimpleNamespace(constraints=dict(constraints or {}))
 
 
 def _mapping():
@@ -83,6 +83,21 @@ def test_kinetic_rates_convert_to_mmol_per_gdw_per_hour():
     assert hybrid.mapping_conversion({"vPTS": 0.2004}) == {"GLCpts": pytest.approx(1.2791, abs=1e-4)}
     with pytest.warns(DeprecationWarning):
         HybridSimulation(kmodel, cbmodel, mapping={"vPTS": ("GLCpts", 1)}, D=0.278e-4)
+
+
+def test_chemostat_glucose_uptake_supports_growth():
+    """Chassagnole's steady state is a glucose-limited chemostat at D = 0.1 1/h: its PTS rate, as the glucose
+    uptake of E. coli core, gives a growth rate of that order (0.0743 1/h; ATPM maintenance takes the rest)"""
+    from mewpy.io.sbml import load_ODEModel
+    from mewpy.simulation import get_simulator
+    from mewpy.simulation.hybrid import HybridSimulation
+
+    cobra = pytest.importorskip("cobra")
+    kmodel = load_ODEModel(str(DATA.joinpath("chassagnole2002.xml")))
+    sim = get_simulator(cobra.io.read_sbml_model(str(DATA.joinpath("e_coli_core.xml"))))
+    result = HybridSimulation(kmodel, sim, mapping={"vPTS": ("EX_glc__D_e", -1)}).simulate(method="pFBA")
+    assert result.fluxes["EX_glc__D_e"] == pytest.approx(-1.279, abs=1e-3)
+    assert 0.05 < result.fluxes["Biomass_Ecoli_core"] < 0.12
 
 
 def test_gecko_simulation_enzyme_bounds(monkeypatch):
@@ -160,5 +175,54 @@ def test_hybrid_simulation_projection_uses_the_constraints(monkeypatch):
     user = {"PGI": 0}
     sim.simulate(constraints=user)
     assert seen["constraints"] == {"PGI": 0}
-    assert sim.sim.constraints[-1] == {"PGI": 0, "GLCpts": pytest.approx(0.5 * 0.2004 * TO_CB)}
+    projected = 0.5 * 0.2004 * TO_CB
+    assert sim.sim.constraints[-1] == {"PGI": 0, "GLCpts": pytest.approx((projected, projected))}
     assert user == {"PGI": 0}
+
+
+def _range_hybrid(monkeypatch, rate):
+    from mewpy.simulation import hybrid
+
+    monkeypatch.setattr(hybrid, "KineticSimulation", _FakeKineticSimulation)
+    _FakeKineticSimulation.fluxes = {"vPGI": rate}
+    sim = object.__new__(hybrid.HybridSimulation)
+    sim.__dict__.update(
+        kmodel=SimpleNamespace(ratelaws={"vPGI": None}),
+        sim=_RecordingSimulator(reactions=["PGI"], objective={"Biomass": 1}),
+        mapping={"vPGI": ("PGI", 1)},
+        t_points=[0, 1e9],
+        timeout=0,
+        gDW=GDW,
+    )
+    return sim
+
+
+def _bounds(value):
+    return tuple(value) if isinstance(value, (tuple, list)) else (value, value)
+
+
+@pytest.mark.parametrize("user, expected", [(0, (0, 0)), ((0, 0.5), (0.1 * TO_CB - 0.25, 0.5))])
+def test_amplitude_ranges_respect_the_constraints(monkeypatch, user, expected):
+    """A kinetic range is intersected with the user's bound on the same reaction; a knockout (0) has no overlap
+    with it and holds"""
+    sim = _range_hybrid(monkeypatch, 0.1)  # 0.638 mmol/gDW/h, so the range is 0.388 to 0.888
+    sim.simulate(constraints={"PGI": user}, amplitude=0.5)
+    assert _bounds(sim.sim.constraints[-1]["PGI"]) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("user, expected", [(0, (0, 0)), ((0, 0.7), (0.1 * TO_CB, 0.7))])
+def test_sampled_ranges_respect_the_constraints(monkeypatch, user, expected):
+    import pandas as pd
+
+    sim = _range_hybrid(monkeypatch, 0.1)
+    samples = pd.DataFrame({"vPGI": [0.1, 0.1, 0.12, 0.14]})  # 10th-90th percentiles: 0.638 to 0.855 mmol/gDW/h
+    sim.simulate_distribution(samples, constraints={"PGI": user})
+    assert _bounds(sim.sim.constraints[-1]["PGI"]) == pytest.approx(expected)
+
+
+def test_kinetic_ranges_respect_the_simulators_own_constraints(monkeypatch):
+    """A knockout given to the simulator (not to simulate) also holds against a kinetic range"""
+    sim = _range_hybrid(monkeypatch, 0.1)
+    sim.sim._constraints = {"PGI": 0}
+    sim.simulate(amplitude=0.5)
+    assert _bounds(sim.sim.constraints[-1]["PGI"]) == (0, 0)
