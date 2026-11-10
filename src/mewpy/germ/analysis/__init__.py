@@ -16,6 +16,7 @@ from .metabolic_analysis import fva, single_gene_deletion, single_reaction_delet
 from .prom import PROM, target_regulator_interaction_probability
 from .regulatory_analysis import regulatory_truth_table
 from .rfba import RFBA
+from .dynamic_rfba import DynamicRFBA, DynamicRFBAResult
 from .srfba import SRFBA
 
 

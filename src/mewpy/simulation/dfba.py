@@ -97,15 +97,23 @@ def _biomass_reaction(simulator, biomass):
 
 class _Member:
     """An organism of a dFBA: its simulator, the native exchange id of each tracked compound, its uptake kinetics
-    {compound: callable}, biomass reaction and constraints"""
+    {compound: callable}, biomass reaction and constraints.
 
-    def __init__(self, simulator, exchanges, uptake, biomass, constraints, method):
+    regulation, if given, is called at the start of each step with the member's tracked concentrations
+    {compound: mM} and the fluxes of its previous step (None in the first step, {} after a step without a feasible
+    solution); it returns {reaction: bounds} for the step, applied after the uptake caps (e.g. regulatory knockouts).
+    """
+
+    def __init__(self, simulator, exchanges, uptake, biomass, constraints, method, regulation=None):
         self.simulator = simulator
         self.exchanges = exchanges
         self.uptake = uptake
         self.biomass = biomass
         self.constraints = constraints
         self.method = method
+        self.regulation = regulation
+        self.step_constraints = {}
+        self.last_fluxes = None
 
     def _current_bounds(self, compound):
         return _bounds(current_bounds(self.simulator, self.exchanges[compound], self.constraints))
@@ -120,7 +128,8 @@ class _Member:
     def solve(self, caps):
         """Simulates the member with the uptake of each tracked exchange capped at caps {compound: mmol/gDW/h}.
 
-        :returns: ((growth rate, {compound: exchange flux}) or None if there is no feasible solution, the status)
+        :returns: ((growth rate, {compound: exchange flux}, all fluxes) or None if there is no feasible solution,
+            the status)
         """
         bounds = dict(self.constraints)
         for compound, cap in caps.items():
@@ -128,12 +137,13 @@ class _Member:
             # kinetics replace the uptake bound; a compound without kinetics that cannot be taken up keeps its bounds
             lower = -cap if (compound in self.uptake or lb < 0) else lb
             bounds[self.exchanges[compound]] = (lower, max(ub, lower))
+        bounds.update(self.step_constraints)
         result = self.simulator.simulate(method=self.method, constraints=bounds)
         if not _solved(result):
             return None, result.status
         mu = result.fluxes[self.biomass]
         fluxes = {compound: result.fluxes[r_id] for compound, r_id in self.exchanges.items()}
-        return (mu if mu > GROWTH_TOLERANCE else 0.0, fluxes), result.status
+        return (mu if mu > GROWTH_TOLERANCE else 0.0, fluxes, result.fluxes), result.status
 
 
 def _solve_step(members, biomass, concentrations, dt):
@@ -143,7 +153,7 @@ def _solve_step(members, biomass, concentrations, dt):
     over the step (growth included) exceeds what is left of a compound, each consumer's cap on it is cut to its
     share, proportional to its demand, and the members whose caps changed are solved again. Caps only decrease.
 
-    :returns: ({member: (growth rate, fluxes) or None}, {member: status})
+    :returns: ({member: (growth rate, exchange fluxes, all fluxes) or None}, {member: status})
     """
     caps = {
         m: {
@@ -200,13 +210,17 @@ def _integrate(members, initial_biomass, initial_concentrations, t_end, dt):
         stopped=None,
     )
     for step in range(int(round(t_end / dt))):
+        for member in members.values():
+            if member.regulation is not None:
+                member_conc = {c: conc[c] for c in member.exchanges}
+                member.step_constraints = member.regulation(member_conc, member.last_fluxes)
         solutions, statuses = _solve_step(members, biomass, conc, dt)
         if all(s is None for s in solutions.values()):
             run.stopped = statuses
             break
         change = dict.fromkeys(conc, 0.0)
         for m, member in members.items():
-            mu, fluxes = solutions[m] or (0.0, dict.fromkeys(member.exchanges, 0.0))
+            mu, fluxes, member.last_fluxes = solutions[m] or (0.0, dict.fromkeys(member.exchanges, 0.0), {})
             # exact integration over the step for a constant growth rate (Varma & Palsson 1994)
             exposure = _exposure(biomass[m], mu, dt)
             for c, v in fluxes.items():
@@ -271,7 +285,7 @@ class DFBAResult:
 
     def __repr__(self):
         return (
-            f"DFBAResult(status={self.status!r}, time 0-{self.time[-1]:g} h, steps={len(self.growth_rate)}, "
+            f"{type(self).__name__}(status={self.status!r}, time 0-{self.time[-1]:g} h, steps={len(self.growth_rate)}, "
             f"biomass {self.biomass[0]:g} -> {self.biomass[-1]:g} gDW/L)"
         )
 
@@ -395,9 +409,7 @@ class DynamicFBA:
         :returns: a DFBAResult.
         """
         one = self._ORGANISM
-        exchanges = {r_id: r_id for r_id in self.initial_concentrations}
-        member = _Member(self.simulator, exchanges, self.uptake, self.biomass, self.constraints, self.method)
-        run = _integrate({one: member}, {one: self.initial_biomass}, self.initial_concentrations, t_end, dt)
+        run = _integrate({one: self._member()}, {one: self.initial_biomass}, self.initial_concentrations, t_end, dt)
         status = "completed"
         if run.stopped:
             status = f"stopped at t = {run.time[-1]:g} h: {run.stopped[one].name}"
@@ -405,6 +417,10 @@ class DynamicFBA:
         return DFBAResult(
             run.time, run.biomass[one], run.concentrations, run.growth_rate[one], run.exchange_fluxes[one], status
         )
+
+    def _member(self, regulation=None):
+        exchanges = {r_id: r_id for r_id in self.initial_concentrations}
+        return _Member(self.simulator, exchanges, self.uptake, self.biomass, self.constraints, self.method, regulation)
 
 
 class CommunityDynamicFBA:
