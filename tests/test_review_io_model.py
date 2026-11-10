@@ -646,13 +646,19 @@ def test_pa_boolean_and_binds_tighter_than_or():
 
 
 def test_pc_recursion_limit_not_raised_on_import():
+    # the deep evaluation runs in a thread with a large stack: Python 3.10 recurses on the C stack, and the 2 MB
+    # main-thread stack of python.exe on Windows overflows (0xC00000FD) on 3000 nested nodes
     code = (
-        "import importlib.util, sys\n"
+        "import importlib.util, sys, threading\n"
         f"spec = importlib.util.spec_from_file_location('parsing', {str(PARSING_PY)!r})\n"
         "mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)\n"
         "assert sys.getrecursionlimit() < 100000, sys.getrecursionlimit()\n"
         "gpr = ' or '.join('g%d' % i for i in range(3000))\n"
-        "assert mod.evaluate_expression(gpr, ['g2999']) is True\n"
+        "result = []\n"
+        "threading.stack_size(32 * 2**20)\n"
+        "worker = threading.Thread(target=lambda: result.append(mod.evaluate_expression(gpr, ['g2999'])))\n"
+        "worker.start(); worker.join()\n"
+        "assert result == [True], result\n"
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-2000:]
