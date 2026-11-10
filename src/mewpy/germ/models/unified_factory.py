@@ -44,6 +44,8 @@ def load_integrated_model(
     regulatory_path: Optional[str] = None,
     backend: str = "cobra",
     identifier: Optional[str] = None,
+    regulatory_format: Optional[str] = None,
+    regulatory_kwargs: Optional[dict] = None,
     **kwargs,
 ) -> Union["Simulator", "RegulatoryExtension"]:
     """
@@ -53,6 +55,8 @@ def load_integrated_model(
     :param regulatory_path: Optional path to regulatory network file
     :param backend: 'cobra' or 'reframed'
     :param identifier: Optional model identifier
+    :param regulatory_format: 'csv', 'sbml' or 'json'. If None, it is inferred from the file extension
+    :param regulatory_kwargs: Additional arguments for the regulatory reader (e.g. sep, id_col, rule_col)
     :param kwargs: Additional arguments for simulator creation
     :return: Simulator (if no regulatory network) or RegulatoryExtension
     """
@@ -81,9 +85,15 @@ def load_integrated_model(
 
     # Add regulatory network if provided
     if regulatory_path:
-        from .regulatory import RegulatoryModel
+        from .regulatory_extension import RegulatoryExtension
 
-        reg_network = RegulatoryModel.from_file(regulatory_path)
+        if regulatory_format is None:
+            suffix = str(regulatory_path).lower().rsplit(".", 1)[-1]
+            regulatory_format = {"xml": "sbml", "sbml": "sbml", "json": "json"}.get(suffix, "csv")
+
+        reg_network = RegulatoryExtension._load_regulatory_from_file(
+            regulatory_path, regulatory_format, **(regulatory_kwargs or {})
+        )
         return create_regulatory_extension(simulator, reg_network, identifier)
 
     return simulator

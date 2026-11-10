@@ -26,8 +26,10 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
+import pandas as pd
 from cobra.core.model import Model
 from cobra.core.solution import Solution
+from cobra.exceptions import OptimizationError, SolverNotFound
 from cobra.flux_analysis import moma, pfba, room
 from tqdm import tqdm
 
@@ -76,6 +78,7 @@ class CobraModelContainer(ModelContainer):
         :return: A dictionary of properties
         :rtype: AttrDict
         """
+        r_id = self.resolve(r_id, "reaction")
         rxn = self.model.reactions.get_by_id(r_id)
         stoichiometry = {met.id: val for met, val in rxn.metabolites.items()}
         res = {
@@ -99,6 +102,7 @@ class CobraModelContainer(ModelContainer):
         return [gene.id for gene in self.model.genes]
 
     def get_gene(self, g_id):
+        g_id = self.resolve(g_id, "gene")
         g = self.model.genes.get_by_id(g_id)
         gr = self.get_gene_reactions()
         r = gr[g_id]
@@ -122,6 +126,7 @@ class CobraModelContainer(ModelContainer):
         :return: A dictionary of properties
         :rtype: Dict[str,Any]
         """
+        m_id = self.resolve(m_id, "metabolite")
         met = self.model.metabolites.get_by_id(m_id)
         res = {"id": m_id, "name": met.name, "compartment": met.compartment, "formula": met.formula}
         return AttrDict(res)
@@ -166,7 +171,8 @@ class CobraModelContainer(ModelContainer):
         :returns: A string representation of the GPR rule.
 
         """
-        if reaction_id not in self.reactions:
+        reaction_id = self.resolve(reaction_id, "reaction")
+        if reaction_id not in self._native_ids("reaction"):
             raise ValueError(f"Reactions {reaction_id} does not exist")
         reaction = self.model.reactions.get_by_id(reaction_id)
         if reaction.gene_reaction_rule:
@@ -237,8 +243,15 @@ class Simulation(CobraModelContainer, Simulator):
             raise ValueError("Model is incompatible or inexistent")
 
         self.model = model
-        self.model.solver = get_default_solver()
-        self._environmental_conditions = OrderedDict() if envcond is None else envcond
+        solver_name = get_default_solver()
+        try:
+            self.model.solver = solver_name
+        except SolverNotFound:
+            # mewpy names such as 'scip' or 'optlang' have no optlang interface
+            interface = self.model.solver.interface.__name__
+            LOGGER.debug("No optlang interface for %s; keeping %s", solver_name, interface)
+        self._environmental_conditions = OrderedDict() if envcond is None else self._resolve_mapping(envcond)
+        constraints = self._resolve_mapping(constraints)
         self._constraints = (
             dict()
             if constraints is None
@@ -247,7 +260,7 @@ class Simulation(CobraModelContainer, Simulator):
 
         self.solver = solver
         self._gene_to_reaction = None
-        self._reference = reference
+        self._reference = self._resolve_mapping(reference)
         self.__status_mapping = {
             "optimal": SStatus.OPTIMAL,
             "unbounded": SStatus.UNBOUNDED,
@@ -308,6 +321,7 @@ class Simulation(CobraModelContainer, Simulator):
 
     @objective.setter
     def objective(self, objective):
+        objective = self._resolve_objective(objective)
         if isinstance(objective, str):
             self.model.objective = objective
         elif isinstance(objective, dict):
@@ -335,6 +349,7 @@ class Simulation(CobraModelContainer, Simulator):
 
         meta = Metabolite(id, formula=formula, name=name, compartment=compartment)
         self.model.add_metabolites([meta])
+        self._invalidate_id_cache()
 
     def add_gene(self, id, name):
         pass
@@ -379,7 +394,7 @@ class Simulation(CobraModelContainer, Simulator):
         reaction = Reaction(rxn_id)
 
         reaction.name = name if name else rxn_id
-        stoich = {self.model.metabolites.get_by_id(k): v for k, v in stoichiometry.items()}
+        stoich = {self.model.metabolites.get_by_id(self.resolve(k, "metabolite")): v for k, v in stoichiometry.items()}
         reaction.add_metabolites(stoich)
 
         # in cobrapy reversibility is ignored for compatibility reasons
@@ -394,6 +409,7 @@ class Simulation(CobraModelContainer, Simulator):
             self.remove_reaction(rxn_id)
 
         self.model.add_reactions([reaction])
+        self._invalidate_id_cache()
         if objective != 0:
             set_objective(self.model, {reaction: objective})
 
@@ -403,7 +419,8 @@ class Simulation(CobraModelContainer, Simulator):
         Args:
             r_id (str): The reaction identifier.
         """
-        self.model.remove_reactions([r_id])
+        self.model.remove_reactions([self.resolve(r_id, "reaction")])
+        self._invalidate_id_cache()
 
     def remove_reactions(self, rxn_ids: List[str]):
         """_summary_
@@ -411,7 +428,8 @@ class Simulation(CobraModelContainer, Simulator):
         Args:
             rxn_ids (List[str]): _description_
         """
-        self.model.remove_reactions(rxn_ids)
+        self.model.remove_reactions(self.resolve_many(rxn_ids, "reaction"))
+        self._invalidate_id_cache()
 
     def update_stoichiometry(self, rxn_id, stoichiometry):
         """Updates the stoichiometry of a reaction by creating a
@@ -422,6 +440,7 @@ class Simulation(CobraModelContainer, Simulator):
         :param stoichiometry: the new stoichiometry
         :type stoichiometry: dict[str:float]
         """
+        rxn_id = self.resolve(rxn_id, "reaction")
         rxn = self.model.reactions.get_by_id(rxn_id)
         objective = self.objective.get(rxn_id, 0)
         self.add_reaction(
@@ -462,35 +481,6 @@ class Simulation(CobraModelContainer, Simulator):
         ]
         return rxns
 
-    def get_transport_reactions(self):
-        """
-        :returns: The list of transport reactions.
-        """
-        transport_reactions = []
-        for rx in self.reactions:
-            substrate_compartments = set()
-            product_compartments = set()
-            reactants = self.model.reactions.get_by_id(rx).reactants
-            for metabolite in reactants:
-                substrate_compartments.add(metabolite.compartment)
-            products = self.model.reactions.get_by_id(rx).products
-            for metabolite in products:
-                product_compartments.add(metabolite.compartment)
-            # Transport reactions have substrates and products in different compartments
-            if len(product_compartments.intersection(substrate_compartments)) == 0:
-                transport_reactions.append(rx)
-        return transport_reactions
-
-    def get_transport_genes(self):
-        """Returns the list of genes that only catalyze transport reactions."""
-        trp_rxs = self.get_transport_reactions()
-        r_g = self.get_gene_reactions()
-        genes = []
-        for g, rxs in r_g.items():
-            if set(rxs).issubset(set(trp_rxs)):
-                genes.append(g)
-        return genes
-
     def reverse_reaction(self, reaction_id):
         """
         Identify if a reaction is reversible and returns the reverse reaction if it is the case.
@@ -499,6 +489,7 @@ class Simulation(CobraModelContainer, Simulator):
         :returns: A reaction identifier or None.
 
         """
+        reaction_id = self.resolve(reaction_id, "reaction")
         rxn = self.model.reactions.get_by_id(reaction_id)
         reactions = self.reactions
         if rxn.lower_bound < 0:
@@ -523,7 +514,7 @@ class Simulation(CobraModelContainer, Simulator):
         return self._m_r_lookup
 
     def metabolite_elements(self, metabolite_id):
-        return self.model.metabolites.get_by_id(metabolite_id).elements
+        return self.model.metabolites.get_by_id(self.resolve(metabolite_id, "metabolite")).elements
 
     def get_reaction_bounds(self, reaction_id):
         """
@@ -533,7 +524,7 @@ class Simulation(CobraModelContainer, Simulator):
         :return: lb(s), ub(s), tuple
 
         """
-        lb, ub = self.model.reactions.get_by_id(reaction_id).bounds
+        lb, ub = self.model.reactions.get_by_id(self.resolve(reaction_id, "reaction")).bounds
         # return lb if lb > -np.inf else ModelConstants.REACTION_LOWER_BOUND,\
         #    ub if ub < np.inf else ModelConstants.REACTION_UPPER_BOUND
         return lb, ub
@@ -546,6 +537,7 @@ class Simulation(CobraModelContainer, Simulator):
         :param float ub: upper bound
         :param bool track: if the changes are to be logged. Default True
         """
+        reaction_id = self.resolve(reaction_id, "reaction")
         if track:
             if reaction_id in self.get_uptake_reactions():
                 self._environmental_conditions[reaction_id] = (lb, ub)
@@ -603,6 +595,11 @@ class Simulation(CobraModelContainer, Simulator):
         :param float scalefactor: A positive scaling factor for the solver. Default None.
 
         """
+        # ids may be given with or without the SBML prefix
+        objective = self._resolve_objective(objective)
+        constraints = self.resolve_keys(constraints)
+        reference = self._resolve_mapping(reference)
+
         if callable(method):
             return self._simulate_callable(
                 method, objective=objective, maximize=maximize, constraints=constraints, **kwargs
@@ -610,9 +607,14 @@ class Simulation(CobraModelContainer, Simulator):
 
         if not objective:
             objective = self.model.objective
-        elif isinstance(objective, dict) and len(objective) > 0:
-            # Extract first reaction ID from objective dictionary as COBRApy expects a reaction ID string
-            objective = next(iter(objective.keys()))
+
+        # MOMA, lMOMA and ROOM compare against the wild type, so the reference is computed
+        # before the simulation constraints are applied (cobra would otherwise use the mutant's pFBA).
+        ref_solution = None
+        if method in (SimulationMethod.lMOMA, SimulationMethod.MOMA, SimulationMethod.ROOM):
+            if reference is None:
+                reference = self.reference
+            ref_solution = Solution(None, "optimal", fluxes=pd.Series(reference, dtype=float))
 
         simul_constraints = {}
         if constraints:
@@ -624,7 +626,10 @@ class Simulation(CobraModelContainer, Simulator):
                 simul_constraints.update(constraints)
 
         with self.model as model:
-            model.objective = objective
+            if isinstance(objective, dict):
+                model.objective = {model.reactions.get_by_id(r_id): coef for r_id, coef in objective.items()}
+            else:
+                model.objective = objective
             for rxn in list(simul_constraints.keys()):
                 reac = model.reactions.get_by_id(rxn)
 
@@ -639,54 +644,64 @@ class Simulation(CobraModelContainer, Simulator):
             # such is the case with pytfa.core.Model.
             objective_sense = self._MAX_STR if maximize else self._MIN_STR
 
-            # FBA
-            if method == SimulationMethod.FBA:
-                if slim:
-                    solution = model.slim_optimize()
+            try:
+                # FBA
+                if method == SimulationMethod.FBA:
+                    if slim:
+                        # slim_optimize uses the objective direction; set it from maximize (reverted on exit)
+                        model.objective_direction = "max" if maximize else "min"
+                        solution = model.slim_optimize()
+                        if model.solver.status != "optimal":
+                            solution = None  # the infeasible-result convention (Simulator.simulate)
+                    else:
+                        solution = model.optimize(objective_sense=objective_sense)
+                # pFBA
+                elif method == SimulationMethod.pFBA:
+                    # the fraction of the optimum kept is shared by every backend
+                    solution = pfba(model, fraction_of_optimum=ModelConstants.PFBA_OBJ_FRAC)
+
+                # MOMA/lMOMA
+                elif method == SimulationMethod.lMOMA or method == SimulationMethod.MOMA:
+                    linear = True if method == SimulationMethod.lMOMA else False
+                    solution = moma(model, solution=ref_solution, linear=linear)
+
+                # ROOM
+                elif method == SimulationMethod.ROOM:
+                    solution = room(model, solution=ref_solution)
+
+                # Special case in which only the simulation context is required without any simulation result
+                elif method == SimulationMethod.NONE:
+                    solution = Solution(None, "unknown", None)
+
                 else:
-                    solution = model.optimize(objective_sense=objective_sense)
-            # pFBA
-            elif method == SimulationMethod.pFBA:
-                # make fraction_of_optimum a configurable parameter?
-                solution = pfba(model)
+                    raise Exception("Unknown method to perform the simulation.")
+            except OptimizationError:
+                # pfba, moma and room raise on infeasible problems; report the status like FBA does
+                solution = Solution(None, model.solver.status, None)
 
-            # MOMA/lMOMA
-            elif method == SimulationMethod.lMOMA or method == SimulationMethod.MOMA:
-                s = None
-                if not maximize:
-                    s = model.optimize(objective_sense=objective_sense)
-                linear = True if method == SimulationMethod.lMOMA else False
-                solution = moma(model, solution=s, linear=linear)
-
-            # ROOM
-            elif method == SimulationMethod.ROOM:
-                solution = room(model)
-
-            # Special case in which only the simulation context is required without any simulation result
-            elif method == SimulationMethod.NONE:
-                solution = Solution(None, "unknown", None)
-
-            else:
-                raise Exception("Unknown method to perform the simulation.")
-
-        if slim:
+        if slim and method == SimulationMethod.FBA:
             return solution
 
-        else:
-            status = self.__status_mapping[solution.status]
-            result = SimulationResult(
-                self,
-                solution.objective_value,
-                fluxes=solution.fluxes.to_dict(into=OrderedDict),
-                status=status,
-                envcond=self.environmental_conditions,
-                model_constraints=self._constraints.copy(),
-                simul_constraints=constraints,
-                maximize=maximize,
-                method=method,
-                shadow_prices=solution.shadow_prices.to_dict(into=OrderedDict),
-            )
-            return result
+        status = self.__status_mapping[solution.status]
+        solved = status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL)
+        if slim:
+            return solution.objective_value if solved else None
+
+        fluxes = solution.fluxes.to_dict(into=OrderedDict) if solved and solution.fluxes is not None else None
+        prices = solution.shadow_prices if solved else None
+        result = SimulationResult(
+            self,
+            solution.objective_value if solved else None,
+            fluxes=fluxes,
+            status=status,
+            envcond=self.environmental_conditions,
+            model_constraints=self._constraints.copy(),
+            simul_constraints=dict(constraints) if constraints else None,
+            maximize=self._optimised_sense(method, maximize),
+            method=method,
+            shadow_prices=prices.to_dict(into=OrderedDict) if prices is not None else None,
+        )
+        return result
 
     def FVA(
         self,
@@ -696,10 +711,14 @@ class Simulation(CobraModelContainer, Simulator):
         loopless: bool = False,
         solver=None,
         format: str = "dict",
+        processes: int = 1,
     ) -> Union[dict, "DataFrame"]:
         """ Flux Variability Analysis (FVA).
 
         :param model: An instance of a constraint-based model.
+        :param int processes: Worker processes for cobra's FVA (default 1, no pool). With the 'spawn' start method
+            (the macOS/Windows default) a value > 1 needs the calling script to use an ``if __name__ == "__main__":``
+            guard, otherwise it hangs.
         :param float obj_frac: The minimum fraction of the maximum growth rate (default 0.9). Requires that the \
             objective value is at least the fraction times maximum objective value. A value of 0.85 for instance \
             means that the objective has to be at least at 85% percent of its maximum.
@@ -714,6 +733,7 @@ class Simulation(CobraModelContainer, Simulator):
         """
         from cobra.flux_analysis.variability import flux_variability_analysis
 
+        constraints = self.resolve_keys(constraints)
         simul_constraints = {}
         if constraints:
             simul_constraints.update(
@@ -723,9 +743,9 @@ class Simulation(CobraModelContainer, Simulator):
         if reactions is None:
             _reactions = self.reactions
         elif isinstance(reactions, str):
-            _reactions = [reactions]
+            _reactions = [self.resolve(reactions, "reaction")]
         elif isinstance(reactions, list):
-            _reactions = reactions
+            _reactions = self.resolve_many(reactions, "reaction")
         else:
             raise ValueError("Invalid reactions.")
 
@@ -740,7 +760,7 @@ class Simulation(CobraModelContainer, Simulator):
                         reac.bounds = (simul_constraints.get(rxn), simul_constraints.get(rxn))
 
             df = flux_variability_analysis(
-                model, reaction_list=_reactions, loopless=loopless, fraction_of_optimum=obj_frac
+                model, reaction_list=_reactions, loopless=loopless, fraction_of_optimum=obj_frac, processes=processes
             )
 
         variability = {}
@@ -752,14 +772,13 @@ class Simulation(CobraModelContainer, Simulator):
 
             e = variability.items()
             f = [[a, b, c] for a, [b, c] in e]
-            df = pd.DataFrame(f, columns=["Reaction ID", "Minimum", "Maximum"])
-            df = df.set_index(df.columns[0])
-            return df
+            # the same layout on every backend: 'Reaction ID' is a column, with a default index
+            return pd.DataFrame(f, columns=["Reaction ID", "Minimum", "Maximum"])
         else:
             return variability
 
     def set_objective(self, reaction_id: str):
-        self.model.objective = reaction_id
+        self.model.objective = self.resolve(reaction_id, "reaction")
 
     def create_empty_model(self, model_id: str):
         return Simulation(Model(model_id))
@@ -789,7 +808,7 @@ class GeckoSimulation(Simulation):
             raise RuntimeError("The geckopy package is not installed.")
 
         super(GeckoSimulation, self).__init__(model, envcond, constraints, solver, reference, reset_solver)
-        self.protein_prefix = protein_prefix if protein_prefix else "draw_prot_"
+        self.protein_prefix = protein_prefix if protein_prefix else self.to_native("draw_prot_", "reaction")
         self._essential_proteins = None
         self._protein_rev_reactions = None
         self._prot_react = None
@@ -969,7 +988,7 @@ class GeckoSimulation(Simulation):
         if kcat <= 0:
             raise ValueError("kcat value needs to be positive.")
 
-        rxn = self.model.reactions.get_by_id(reaction)
+        rxn = self.model.reactions.get_by_id(self.resolve(reaction, "reaction"))
         m = None
         for met in rxn.metabolites:
             if protein in met.id:

@@ -21,6 +21,7 @@ Authors: Vitor Pereira
 ##############################################################################
 """
 import copy
+import importlib.util
 import logging
 from abc import ABC, abstractmethod
 
@@ -30,31 +31,16 @@ logger = logging.getLogger(__name__)
 
 MP_Evaluators = []
 
-# Set multiprocessing start method to 'fork' BEFORE any multiprocessing imports
-# This is needed for Python 3.8+ on macOS where 'spawn' became the default
-# 'spawn' requires pickling all objects which fails with CPLEX/REFRAMED
-# 'fork' copies process memory and works with unpicklable objects
 import multiprocessing
-
-try:
-    if "fork" in multiprocessing.get_all_start_methods():
-        # Only set if not already configured
-        current_method = multiprocessing.get_start_method(allow_none=True)
-        if current_method is None:
-            multiprocessing.set_start_method("fork", force=False)
-            logger.debug("Set multiprocessing start method to 'fork'")
-        elif current_method != "fork":
-            logger.warning(
-                f"Multiprocessing start method is '{current_method}'. "
-                "For best compatibility with CPLEX/REFRAMED, use 'fork'. "
-                "Call multiprocessing.set_start_method('fork', force=True) before importing mewpy."
-            )
-except RuntimeError:
-    # start method already set, that's fine
-    pass
-
 from multiprocessing import Process
 from multiprocessing.pool import Pool as MPPool
+
+# MEWpy pools use a local 'fork' context: 'spawn' (the default on macOS since Python 3.8) requires
+# pickling all objects, which fails with CPLEX/REFRAMED, while 'fork' copies the process memory.
+# The user's global start method is left untouched.
+_FORK_CONTEXT = None
+if "fork" in multiprocessing.get_all_start_methods():
+    _FORK_CONTEXT = multiprocessing.get_context("fork")
 
 MP_Evaluators.append("nodaemon")
 
@@ -98,8 +84,30 @@ class NoDaemonProcess(Process):
     daemon = property(_get_daemon, _set_daemon)
 
 
+if _FORK_CONTEXT is not None:
+
+    class NoDaemonForkProcess(_FORK_CONTEXT.Process):
+        daemon = property(NoDaemonProcess._get_daemon, NoDaemonProcess._set_daemon)
+
+
 class NoDaemonProcessPool(MPPool):
-    Process = NoDaemonProcess
+    """A pool whose workers are not daemonic, so that they can start their own processes."""
+
+    @staticmethod
+    def Process(ctx, *args, **kwds):
+        # Pool creates its workers with Process(ctx, ...) since Python 3.8
+        if _FORK_CONTEXT is not None and ctx is _FORK_CONTEXT:
+            return NoDaemonForkProcess(*args, **kwds)
+        return NoDaemonProcess(*args, **kwds)
+
+
+def _new_pool(n_processes, pool_class=None):
+    """A process pool using the local 'fork' context when the standard library pool is used."""
+    if pool_class is None:
+        pool_class = Pool
+    if isinstance(pool_class, type) and issubclass(pool_class, MPPool):
+        return pool_class(n_processes, context=_FORK_CONTEXT)
+    return pool_class(n_processes)
 
 
 def cpu_count():
@@ -111,7 +119,7 @@ def cpu_count():
         return EAConstants.NUM_CPUS
     else:
         try:
-            return multiprocessing.cpu_count() // 2
+            return max(1, multiprocessing.cpu_count() // 2)
         except (ImportError, NotImplementedError):
             return 1
 
@@ -157,10 +165,13 @@ class MultiProcessorEvaluator(Evaluator):
         """
         Values in args will be ignored and not passed to the evaluator to avoid unnecessary pickling in inspyred.
         """
-        pool = Pool(self.mp_num_cpus)
-        results = pool.map(self.evaluator, candidates)
-        pool.close()
-        return results
+        pool = _new_pool(self.mp_num_cpus)
+        try:
+            return pool.map(self.evaluator, candidates)
+        finally:
+            # close, not terminate: terminate sends SIGTERM to workers, which may carry signal
+            # handlers inherited from the parent (e.g. Ray's)
+            pool.close()
 
     def __call__(self, candidates, args):
         return self.evaluate(candidates, args)
@@ -185,10 +196,11 @@ class NoDaemonMultiProcessorEvaluator(Evaluator):
         Values in args will be ignored and not passed to the evaluator
         to avoid unnecessary pickling in inspyred.
         """
-        pool = NoDaemonProcessPool(self.mp_num_cpus)
-        results = pool.map(self.evaluator, candidates)
-        pool.close()
-        return results
+        pool = _new_pool(self.mp_num_cpus, NoDaemonProcessPool)
+        try:
+            return pool.map(self.evaluator, candidates)
+        finally:
+            pool.close()
 
     def __call__(self, candidates, args):
         return self.evaluate(candidates, args)
@@ -236,96 +248,106 @@ class SparkEvaluator(Evaluator):
         return self.evaluate(candidates, args)
 
 
-# ray
-try:
-    import ray
-
+# ray: imported when a Ray evaluator is created, not with mewpy (it is slow and writes to stderr)
+if importlib.util.find_spec("ray") is not None:
     MP_Evaluators.append("ray")
-except ImportError:
-    pass
-else:
 
-    @ray.remote
-    class RayActor:
-        """
-        Each actor (worker) has a solver instance to overcome the need
-        to serialize solvers which may not be pickable.
-        The solver is not reset before each evaluation.
-        """
 
-        def __init__(self, problem):
-            self.problem = copy.deepcopy(problem)
+class RayActor:
+    """
+    Each actor (worker) has a solver instance to overcome the need
+    to serialize solvers which may not be pickable.
+    The solver is not reset before each evaluation.
+    """
 
-        def evaluate_candidates(self, candidates):
-            """Evaluates a sublist of candidates"""
-            if getattr(self.problem, "evaluator", False):
-                return self.problem.evaluator(candidates, None)
-            else:
-                res = []
-                for candidate in candidates:
-                    res.append(self.problem.evaluate(candidate))
-                return res
+    def __init__(self, problem):
+        self.problem = copy.deepcopy(problem)
 
-    @ray.remote
-    class RayActorF:
-        """
-        Each actor (worker) has a solver instance to overcome the need to
-        serialize solvers which may not be pickable.
-        The solver is not reset before each evaluation.
-        """
-
-        def __init__(self, func):
-            self.func = copy.deepcopy(func)
-
-        def evaluate_candidates(self, candidates):
-            """Evaluates a sublist of candidates"""
+    def evaluate_candidates(self, candidates):
+        """Evaluates a sublist of candidates"""
+        if getattr(self.problem, "evaluator", False):
+            return self.problem.evaluator(candidates, None)
+        else:
             res = []
             for candidate in candidates:
-                res.append(self.func(candidate))
+                res.append(self.problem.evaluate(candidate))
             return res
 
-    class RayEvaluator(Evaluator):
-        def __init__(self, problem, number_of_actors, isfunc=False):
-            """A ray actor responsible for performing evaluations.
 
-            Args:
-                problem: A class implementing an evaluator(list_of_candidates,**kwargs)
-                number_of_actors (int): Number of workers
-            """
-            ray.init(ignore_reinit_error=True)
-            if isfunc:
-                self.actors = [RayActorF.remote(problem) for _ in range(number_of_actors)]
-            else:
-                self.actors = [RayActor.remote(problem) for _ in range(number_of_actors)]
-            self.number_of_actors = len(self.actors)
-            self.__name__ = self.__class__.__name__
-            logger.info(f"Using {self.number_of_actors} workers.")
+class RayActorF:
+    """
+    Each actor (worker) has a solver instance to overcome the need to
+    serialize solvers which may not be pickable.
+    The solver is not reset before each evaluation.
+    """
 
-        def evaluate(self, candidates, args):
-            """
-            Divides the candidates into sublists to be evaluated by each actor
-            """
-            size = len(candidates) // self.number_of_actors
-            n = len(candidates) % self.number_of_actors
-            sub_lists = []
-            p = 0
-            for _ in range(self.number_of_actors):
-                d = size + 1 if n > 0 else size
-                sub_lists.append(candidates[p : p + d])
-                p = p + d
-                n -= 1
-            values = []
-            for i in range(self.number_of_actors):
-                actor = self.actors[i]
-                values.append(actor.evaluate_candidates.remote(sub_lists[i]))
-            r = ray.get(values)
-            result = []
-            for x in r:
-                result += x
-            return result
+    def __init__(self, func):
+        self.func = copy.deepcopy(func)
 
-        def __call__(self, candidates, args):
-            return self.evaluate(candidates, args)
+    def evaluate_candidates(self, candidates):
+        """Evaluates a sublist of candidates"""
+        res = []
+        for candidate in candidates:
+            res.append(self.func(candidate))
+        return res
+
+
+_RAY_ACTOR_CLASSES = {}
+
+
+def _ray_actor_class(cls):
+    """The Ray actor class of RayActor/RayActorF, made on first use."""
+    import ray
+
+    if cls not in _RAY_ACTOR_CLASSES:
+        _RAY_ACTOR_CLASSES[cls] = ray.remote(cls)
+    return _RAY_ACTOR_CLASSES[cls]
+
+
+class RayEvaluator(Evaluator):
+    def __init__(self, problem, number_of_actors, isfunc=False):
+        """A ray actor responsible for performing evaluations.
+
+        Args:
+            problem: A class implementing an evaluator(list_of_candidates,**kwargs)
+            number_of_actors (int): Number of workers
+        """
+        import ray
+
+        ray.init(ignore_reinit_error=True)
+        actor_class = _ray_actor_class(RayActorF if isfunc else RayActor)
+        self.actors = [actor_class.remote(problem) for _ in range(number_of_actors)]
+        self.number_of_actors = len(self.actors)
+        self.__name__ = self.__class__.__name__
+        logger.info("Using %s workers.", self.number_of_actors)
+
+    def evaluate(self, candidates, args):
+        """
+        Divides the candidates into sublists to be evaluated by each actor
+        """
+        import ray
+
+        size = len(candidates) // self.number_of_actors
+        n = len(candidates) % self.number_of_actors
+        sub_lists = []
+        p = 0
+        for _ in range(self.number_of_actors):
+            d = size + 1 if n > 0 else size
+            sub_lists.append(candidates[p : p + d])
+            p = p + d
+            n -= 1
+        values = []
+        for i in range(self.number_of_actors):
+            actor = self.actors[i]
+            values.append(actor.evaluate_candidates.remote(sub_lists[i]))
+        r = ray.get(values)
+        result = []
+        for x in r:
+            result += x
+        return result
+
+    def __call__(self, candidates, args):
+        return self.evaluate(candidates, args)
 
 
 def get_mp_evaluators():
@@ -333,22 +355,24 @@ def get_mp_evaluators():
     return MP_Evaluators
 
 
-def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR):
+def get_evaluator(problem, n_mp=None, evaluator=None):
     """Returns a multiprocessing evaluator
 
     Args:
         problem: a class implementing an evaluate(candidate) function
         n_mp (int, optional): The number of cpus. Defaults to cpu_count().
         evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.
-            Defaults to ModelConstants.MP_EVALUATOR.
+            Defaults to ModelConstants.MP_EVALUATOR, read when the function is called.
 
     Returns:
         Evaluator: A multiprocessing evaluator instance based on the specified evaluator type
     """
+    n_mp = cpu_count() if n_mp is None else n_mp
+    evaluator = ModelConstants.MP_EVALUATOR if evaluator is None else evaluator
     if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(problem, n_mp)
     elif evaluator == "nodaemon" and "nodaemon" in MP_Evaluators:
-        return NoDaemonMultiProcessorEvaluator(problem, n_mp)
+        return NoDaemonMultiProcessorEvaluator(problem.evaluate, n_mp)
     elif evaluator == "dask" and "dask" in MP_Evaluators:
         return DaskEvaluator(problem.evaluate, n_mp)
     elif evaluator == "spark" and "spark" in MP_Evaluators:
@@ -357,18 +381,20 @@ def get_evaluator(problem, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUAT
         return MultiProcessorEvaluator(problem.evaluate, n_mp)
 
 
-def get_fevaluator(func, n_mp=cpu_count(), evaluator=ModelConstants.MP_EVALUATOR):
+def get_fevaluator(func, n_mp=None, evaluator=None):
     """Returns a multiprocessing evaluator
 
     Args:
         func: an evaluation function
         n_mp (int, optional): The number of cpus. Defaults to cpu_count().
         evaluator (str, optional): The evaluator name: options 'ray','dask','spark'.
-            Defaults to ModelConstants.MP_EVALUATOR.
+            Defaults to ModelConstants.MP_EVALUATOR, read when the function is called.
 
     Returns:
         Evaluator: A multiprocessing evaluator instance based on the specified evaluator type
     """
+    n_mp = cpu_count() if n_mp is None else n_mp
+    evaluator = ModelConstants.MP_EVALUATOR if evaluator is None else evaluator
     if evaluator == "ray" and "ray" in MP_Evaluators:
         return RayEvaluator(func, n_mp, isfunc=True)
     elif evaluator == "nodaemon" and "nodaemon" in MP_Evaluators:

@@ -91,7 +91,7 @@ class MultiSolution:
         return "\n".join(lines)
 
     def __str__(self):
-        return "MultiSolution:" ",".join([method for method in self._solutions])
+        return f"MultiSolution: {','.join(map(str, self._solutions))}"
 
 
 # TODO: methods stubs and type hinting
@@ -199,7 +199,7 @@ class DynamicSolution:
         return "\n".join(lines)
 
     def __str__(self):
-        return "DynamicSolution:" ",".join([time for time in self._solutions])
+        return f"DynamicSolution: {','.join(map(str, self._solutions))}"
 
 
 # TODO: methods stubs and type hinting
@@ -314,4 +314,4 @@ class KOSolution:
         return "\n".join(lines)
 
     def __str__(self):
-        return "KOSolution:" ",".join([time for time in self._solutions])
+        return f"KOSolution: {','.join(map(str, self._solutions))}"

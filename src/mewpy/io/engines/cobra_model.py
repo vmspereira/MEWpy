@@ -40,14 +40,17 @@ class CobraModel(Engine):
 
         if hasattr(objective, "expression"):
 
-            for arg in objective.expression.args:
+            # GERM objectives are maximized: a minimization objective is encoded with negated coefficients,
+            # as done by the SBML reader
+            sign = -1.0 if getattr(objective, "direction", "max") == "min" else 1.0
 
-                coef, reaction = str(arg).split("*")
+            # the forward variable of a cobra reaction is named after the reaction; reverse variables are skipped
+            for variable, coef in objective.expression.as_coefficients_dict().items():
 
-                reaction = model.get(reaction, None)
+                reaction = model.get(getattr(variable, "name", str(variable)), None)
 
                 if reaction is not None:
-                    res[reaction] = coef
+                    res[reaction] = sign * float(coef)
 
         return res
 

@@ -47,8 +47,8 @@ def get_shared_metabolites_counts(
     sim1 = get_simulator(model1)
     sim2 = get_simulator(model2)
 
-    met1 = set([x[len(sim1._m_prefix) :] for x in sim1.metabolites])
-    met2 = set([x[len(sim2._m_prefix) :] for x in sim2.metabolites])
+    met1 = {sim1.to_canonical(x, "metabolite") for x in sim1.metabolites}
+    met2 = {sim2.to_canonical(x, "metabolite") for x in sim2.metabolites}
     met_ids = set(met1)
     met_ids = met_ids.union(set(met2))
     common_met_ids = met1.intersection(met2)
@@ -72,8 +72,8 @@ def get_shared_reactions_counts(
     sim1 = get_simulator(model1)
     sim2 = get_simulator(model2)
 
-    rec1 = set([x[len(sim1._r_prefix) :] for x in sim1.reactions if sim1.get_reaction_bounds(x) != (0, 0)])
-    rec2 = set([x[len(sim2._r_prefix) :] for x in sim2.reactions if sim2.get_reaction_bounds(x) != (0, 0)])
+    rec1 = {sim1.to_canonical(x, "reaction") for x in sim1.reactions if sim1.get_reaction_bounds(x) != (0, 0)}
+    rec2 = {sim2.to_canonical(x, "reaction") for x in sim2.reactions if sim2.get_reaction_bounds(x) != (0, 0)}
     rec_ids = set(rec1)
     rec_ids = rec_ids.union(set(rec2))
     common_rec_ids = rec1.intersection(rec2)
@@ -157,12 +157,12 @@ def resource_overlap(
     sim1 = get_simulator(model1)
     sim2 = get_simulator(model2)
 
-    in_ex1 = set(
-        [x[len(sim1._r_prefix) :] for x in sim1.get_uptake_reactions() if sim1.get_reaction_bounds(x) != (0, 0)]
-    )
-    in_ex2 = set(
-        [x[len(sim2._r_prefix) :] for x in sim2.get_uptake_reactions() if sim2.get_reaction_bounds(x) != (0, 0)]
-    )
+    in_ex1 = {
+        sim1.to_canonical(x, "reaction") for x in sim1.get_uptake_reactions() if sim1.get_reaction_bounds(x) != (0, 0)
+    }
+    in_ex2 = {
+        sim2.to_canonical(x, "reaction") for x in sim2.get_uptake_reactions() if sim2.get_reaction_bounds(x) != (0, 0)
+    }
 
     common = in_ex1.intersection(in_ex2)
     union = in_ex1.union(in_ex2)
@@ -185,10 +185,11 @@ def write_out_common_metabolites(
 
     sims = [get_simulator(model) for model in models]
     model = sims[0]
+    canonical = [{m.to_canonical(a, "metabolite") for a in m.metabolites} for m in sims]
     common_metabolits = [
         model.get_metabolite(rec)
         for rec in model.metabolites
-        if all([rec[len(model._m_prefix) :] in [a[len(m._m_prefix) :] for a in m.metabolites] for m in sims])
+        if all(model.to_canonical(rec, "metabolite") in ids for ids in canonical)
     ]
     # Write csv
     df_dict = {"ID": [], "NAME": [], "FORMULA": [], "COMPARTMENT": []}
@@ -213,8 +214,15 @@ def write_out_common_reactions(
 
     :return: DataFrame
     """
-    model = get_simulator(models[0])
-    common_reactions = [model.get_reaction(rec) for rec in model.reactions if all([rec in m.reactions for m in models])]
+    sims = [get_simulator(model) for model in models]
+    model = sims[0]
+    # compare backend-independent ids, so COBRApy and REFRAMED models of the same network match
+    canonical = [{m.to_canonical(r, "reaction") for r in m.reactions} for m in sims]
+    common_reactions = [
+        model.get_reaction(rec)
+        for rec in model.reactions
+        if all(model.to_canonical(rec, "reaction") in ids for ids in canonical)
+    ]
     # Write csv
     df_dict = {
         "ID": [],

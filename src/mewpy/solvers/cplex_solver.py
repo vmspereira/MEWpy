@@ -71,8 +71,8 @@ class CplexSolver(Solver):
             Parameter.FEASIBILITY_TOL: self.problem.parameters.simplex.tolerances.feasibility,
             Parameter.OPTIMALITY_TOL: self.problem.parameters.simplex.tolerances.optimality,
             Parameter.INT_FEASIBILITY_TOL: self.problem.parameters.mip.tolerances.integrality,
-            Parameter.MIP_ABS_GAP: self.problem.parameters.mip.tolerances.mipgap,
-            Parameter.MIP_REL_GAP: self.problem.parameters.mip.tolerances.absmipgap,
+            Parameter.MIP_ABS_GAP: self.problem.parameters.mip.tolerances.absmipgap,
+            Parameter.MIP_REL_GAP: self.problem.parameters.mip.tolerances.mipgap,
             Parameter.POOL_SIZE: self.problem.parameters.mip.limits.populate,
             Parameter.POOL_GAP: self.problem.parameters.mip.pool.relgap,
         }
@@ -138,9 +138,10 @@ class CplexSolver(Solver):
             lb (float): lower bound
             ub (float): upper bound
         """
-        if lb:
+        # None keeps the current value; a bound of 0 must still be applied
+        if lb is not None:
             self.problem.variables.set_lower_bounds(var_id, lb)
-        if ub:
+        if ub is not None:
             self.problem.variables.set_upper_bounds(var_id, ub)
 
     def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
@@ -357,6 +358,10 @@ class CplexSolver(Solver):
             self.build_problem(model)
 
         problem = self.problem
+
+        # rows added with update=False must reach CPLEX before solving
+        if self._cached_vars or self._cached_constrs:
+            self.update()
 
         if constraints:
             changed_lb, changed_ub = self.temporary_bounds(constraints)

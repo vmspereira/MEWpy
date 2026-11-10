@@ -6,6 +6,7 @@ simulators (COBRApy, reframed) to provide the same API as GERM MetabolicModel
 but sourcing ALL data directly from the simulator interface (not the underlying model).
 """
 
+import copy
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Set, Tuple, Union
 
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
 
 # Import these for runtime use
 from mewpy.germ.algebra import Expression, parse_expression
+
+
+def _rebuild_simulator_model(simulator, identifier, name):
+    """Pickle helper: a SimulatorBasedMetabolicModel is fully defined by its simulator."""
+    return SimulatorBasedMetabolicModel(simulator, identifier=identifier, name=name)
 
 
 class SimulatorBasedMetabolicModel(
@@ -58,6 +64,8 @@ class SimulatorBasedMetabolicModel(
         self._germ_metabolites_cache = {}
         self._germ_reactions_cache = {}
         self._germ_compartments_cache = {}
+        # bounds last synchronized with the simulator, per cached GERM reaction
+        self._synced_bounds = {}
 
         # Initialize parent
         super().__init__(identifier, **kwargs)
@@ -77,6 +85,32 @@ class SimulatorBasedMetabolicModel(
         self._germ_metabolites_cache.clear()
         self._germ_reactions_cache.clear()
         self._germ_compartments_cache.clear()
+        self._synced_bounds.clear()
+
+    # -----------------------------------------------------------------------------
+    # Copy and pickle: the model is fully defined by its simulator
+    # -----------------------------------------------------------------------------
+    def __reduce__(self):
+        return _rebuild_simulator_model, (self._simulator, self._id, self._name)
+
+    def __copy__(self):
+        return SimulatorBasedMetabolicModel(self._simulator, identifier=self._id, name=self._name)
+
+    def __deepcopy__(self, memo):
+        simulator = copy.deepcopy(self._simulator, memo)
+        return SimulatorBasedMetabolicModel(simulator, identifier=self._id, name=self._name)
+
+    def notify(self):
+        """
+        It pushes the bounds changed on cached GERM reactions to the simulator and notifies the observers.
+        """
+        for rxn_id, reaction in self._germ_reactions_cache.items():
+            bounds = tuple(reaction.bounds)
+            if self._synced_bounds.get(rxn_id) != bounds:
+                self._simulator.set_reaction_bounds(rxn_id, bounds[0], bounds[1])
+                self._synced_bounds[rxn_id] = bounds
+
+        super().notify()
 
     # -----------------------------------------------------------------------------
     # GERM Variable Creation from Simulator Data
@@ -145,7 +179,7 @@ class SimulatorBasedMetabolicModel(
 
                 # Create gene variables dictionary
                 genes = {}
-                for gene_id in self._extract_genes_from_gpr(gpr_str):
+                for gene_id in dict.fromkeys(symbol.name for symbol in parsed_gpr.atoms(symbols_only=True)):
                     germ_gene = self._create_germ_gene(gene_id)
                     genes[gene_id] = germ_gene
 
@@ -169,19 +203,16 @@ class SimulatorBasedMetabolicModel(
             gpr=gpr,
         )
 
+        # attached to this model, so bounds changes (bounds, ko, undo) are pushed to the simulator by notify
+        germ_rxn.model = self
+        self._synced_bounds[rxn_id] = tuple(germ_rxn.bounds)
+
         self._germ_reactions_cache[rxn_id] = germ_rxn
         return germ_rxn
 
     def _extract_genes_from_gpr(self, gpr_str: str) -> Set[str]:
-        """Extract gene identifiers from GPR string."""
-        # Simple extraction - in practice might need more sophisticated parsing
-        import re
-
-        # Find all identifiers that look like genes (alphanumeric + underscore)
-        genes = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", gpr_str))
-        # Filter out logical operators
-        logical_ops = {"and", "or", "not", "AND", "OR", "NOT", "(", ")"}
-        return genes - logical_ops
+        """Extract gene identifiers from GPR string (the symbols of the parsed GPR expression)."""
+        return {symbol.name for symbol in parse_expression(gpr_str).atoms(symbols_only=True)}
 
     # -----------------------------------------------------------------------------
     # MetabolicModel-compatible interface
@@ -199,7 +230,7 @@ class SimulatorBasedMetabolicModel(
     # Core properties - route to simulator
     # -----------------------------------------------------------------------------
 
-    @serialize("genes", "genes", "_genes")
+    @serialize("genes", "genes", None)
     @property
     def genes(self) -> Dict[str, "Gene"]:
         """
@@ -211,7 +242,7 @@ class SimulatorBasedMetabolicModel(
             genes[gene_id] = self._create_germ_gene(gene_id)
         return genes
 
-    @serialize("metabolites", "metabolites", "_metabolites")
+    @serialize("metabolites", "metabolites", None)
     @property
     def metabolites(self) -> Dict[str, "Metabolite"]:
         """
@@ -223,7 +254,7 @@ class SimulatorBasedMetabolicModel(
             metabolites[met_id] = self._create_germ_metabolite(met_id)
         return metabolites
 
-    @serialize("reactions", "reactions", "_reactions")
+    @serialize("reactions", "reactions", None)
     @property
     def reactions(self) -> Dict[str, "Reaction"]:
         """
@@ -235,7 +266,7 @@ class SimulatorBasedMetabolicModel(
             reactions[rxn_id] = self._create_germ_reaction(rxn_id)
         return reactions
 
-    @serialize("objective", "objective", "_objective")
+    @serialize("objective", "objective", None)
     @property
     def objective(self) -> Dict["Reaction", Union[float, int]]:
         """
@@ -284,26 +315,19 @@ class SimulatorBasedMetabolicModel(
     # -----------------------------------------------------------------------------
 
     @compartments.setter
-    @recorder
     def compartments(self, value: Dict[str, str]):
-        """Set compartments - not directly supported for simulator models."""
-        # Simulator compartments are typically read-only
-        # Could potentially add compartments to simulator if it supports it
-        self._invalidate_caches()
+        """Set compartments - not supported for simulator models."""
+        raise NotImplementedError("Compartments of a SimulatorBasedMetabolicModel cannot be set; edit the simulator")
 
     @genes.setter
-    @recorder
     def genes(self, value: Dict[str, "Gene"]):
-        """Set genes - not directly supported for simulator models."""
-        # Genes are typically derived from reactions in simulators
-        self._invalidate_caches()
+        """Set genes - not supported for simulator models."""
+        raise NotImplementedError("Genes of a SimulatorBasedMetabolicModel cannot be set; edit the simulator")
 
     @metabolites.setter
-    @recorder
     def metabolites(self, value: Dict[str, "Metabolite"]):
-        """Set metabolites - not directly supported for simulator models."""
-        # Metabolites are typically derived from reactions in simulators
-        self._invalidate_caches()
+        """Set metabolites - not supported for simulator models."""
+        raise NotImplementedError("Metabolites of a SimulatorBasedMetabolicModel cannot be set; edit the simulator")
 
     @objective.setter
     @recorder
@@ -329,18 +353,15 @@ class SimulatorBasedMetabolicModel(
             else:
                 linear_obj[str(var)] = coef
 
-        # Set objective on simulator
-        if hasattr(self._simulator, "set_objective"):
-            self._simulator.set_objective(linear=linear_obj, minimize=False)
+        # Replace the objective on the simulator (its objective setter replaces on every backend)
+        self._simulator.objective = linear_obj
 
         self._invalidate_caches()
 
     @reactions.setter
-    @recorder
     def reactions(self, value: Dict[str, "Reaction"]):
-        """Set reactions - not directly supported for simulator models."""
-        # Adding/removing reactions from simulators is complex
-        self._invalidate_caches()
+        """Set reactions - not supported for simulator models."""
+        raise NotImplementedError("Reactions of a SimulatorBasedMetabolicModel cannot be set; edit the simulator")
 
     # -----------------------------------------------------------------------------
     # Dynamic attributes (same logic as MetabolicModel)
@@ -500,25 +521,19 @@ class SimulatorBasedMetabolicModel(
         # Fall back to parent
         return super().get(identifier=identifier, default=default)
 
-    def add(self, *variables, comprehensive: bool = True, history: bool = True):
+    def add(self, *variables, comprehensive: bool = True, history: bool = True, **kwargs):
         """
-        Add variables to the simulator model.
-        Note: Adding to simulator models is limited compared to GERM models.
+        Adding variables is not supported: the metabolic data lives in the simulator.
+        Add reactions, metabolites or genes to the simulator (or its underlying model) instead.
         """
-        # For simulator models, adding variables is typically not supported
-        # or requires complex simulator-specific operations
-        self._invalidate_caches()
-        return super().add(*variables, comprehensive=comprehensive, history=history)
+        raise NotImplementedError("Variables cannot be added to a SimulatorBasedMetabolicModel; edit the simulator")
 
-    def remove(self, *variables, remove_orphans: bool = False, history: bool = True):
+    def remove(self, *variables, remove_orphans: bool = False, history: bool = True, **kwargs):
         """
-        Remove variables from the simulator model.
-        Note: Removing from simulator models is limited compared to GERM models.
+        Removing variables is not supported: the metabolic data lives in the simulator.
+        Remove reactions, metabolites or genes from the simulator (or its underlying model) instead.
         """
-        # For simulator models, removing variables is typically not supported
-        # or requires complex simulator-specific operations
-        self._invalidate_caches()
-        return super().remove(*variables, remove_orphans=remove_orphans, history=history)
+        raise NotImplementedError("Variables cannot be removed from a SimulatorBasedMetabolicModel; edit the simulator")
 
     def update(self, compartments=None, objective=None, variables=None, **kwargs):
         """

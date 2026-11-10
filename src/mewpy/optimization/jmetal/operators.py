@@ -84,7 +84,10 @@ class GrowMutationKO(Mutation[KOSolution]):
         :returns: A mutated solution.
 
         """
-        if random.random() <= self.probability and len(solution.variables) < self.max_size:
+        # the solution may already hold every target when there are fewer targets than max_size
+        n_targets = solution.upper_bound - solution.lower_bound + 1
+        can_grow = len(solution.variables) < min(self.max_size, n_targets)
+        if random.random() <= self.probability and can_grow:
             mutant = copy.copy(solution.variables)
             idx = random.randint(solution.lower_bound, solution.upper_bound)
             while idx in mutant:
@@ -120,7 +123,10 @@ class GrowMutationOU(Mutation[OUSolution]):
         :returns: A mutated solution.
 
         """
-        if random.random() <= self.probability and len(solution.variables) < self.max_size:
+        # the solution may already hold every target when there are fewer targets than max_size
+        n_targets = solution.upper_bound[0] - solution.lower_bound[0] + 1
+        can_grow = len(solution.variables) < min(self.max_size, n_targets)
+        if random.random() <= self.probability and can_grow:
             mutant = copy.copy(solution.variables)
             idx = random.randint(solution.lower_bound[0], solution.upper_bound[0])
             idxs = [a for (a, b) in mutant]
@@ -235,36 +241,32 @@ class UniformCrossoverOU(Crossover[OUSolution, OUSolution]):
         offspring = [copy.deepcopy(parents[0]), copy.deepcopy(parents[1])]
 
         if random.random() <= self.probability and (len(offspring[0].variables) > 1 or len(offspring[1].variables) > 1):
-            mom = set(copy.copy(offspring[0].variables))
-            dad = set(copy.copy(offspring[1].variables))
-
-            intersection = mom & dad
-            otherElems = list((mom | dad).difference(intersection))
-            child1 = copy.copy(intersection)
-            child2 = copy.copy(intersection)
+            # parents are matched by target index, so that no child holds two levels for one target
+            mom = dict(offspring[0].variables)
+            dad = dict(offspring[1].variables)
+            child1 = dict()
+            child2 = dict()
+            for idx in mom.keys() & dad.keys():
+                levels = [mom[idx], dad[idx]]
+                random.shuffle(levels)
+                child1[idx], child2[idx] = levels
+            otherElems = [(i, lv) for i, lv in mom.items() if i not in dad]
+            otherElems += [(i, lv) for i, lv in dad.items() if i not in mom]
 
             while len(otherElems) > 0:
-                elem = otherElems.pop()
+                idx, lv = otherElems.pop()
                 if len(child1) == self.max_size or len(child2) == 0:
-                    child2.add(elem)
+                    child2[idx] = lv
                 elif len(child2) == self.max_size or len(child1) == 0:
-                    child1.add(elem)
+                    child1[idx] = lv
+                elif random.random() <= 0.5:
+                    child1[idx] = lv
                 else:
-                    r = random.random()
-                    if r <= 0.5:
-                        if elem[0] not in [x[0] for x in child1]:
-                            child1.add(elem)
-                        else:
-                            child2.add(elem)
-                    else:
-                        if elem[0] not in [x[0] for x in child2]:
-                            child2.add(elem)
-                        else:
-                            child1.add(elem)
+                    child2[idx] = lv
 
-            offspring[0].variables = list(child1)
+            offspring[0].variables = list(child1.items())
             # Variable count is now implicit from len(offspring[0].variables)
-            offspring[1].variables = list(child2)
+            offspring[1].variables = list(child2.items())
             # Variable count is now implicit from len(offspring[1].variables)
         return offspring
 

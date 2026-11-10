@@ -21,7 +21,6 @@ Author: Vitor Pereira
 Contributors: Paulo Carvalhais
 ##############################################################################
 """
-from copy import deepcopy
 from math import inf
 
 from mewpy.cobra.util import convert_to_irreversible
@@ -30,6 +29,19 @@ from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import to_simulation_result
 
 from .. import ExpressionSet, Preprocessing
+
+
+def _split_constraints(constraints, irrev_map):
+    """Translate constraints on reversible reactions to their forward/reverse halves."""
+    split = {}
+    for r_id, bounds in constraints.items():
+        lb, ub = bounds if isinstance(bounds, tuple) else (bounds, bounds)
+        if r_id in irrev_map:
+            split[r_id] = (max(lb, 0), max(ub, 0))
+            split[irrev_map[r_id]] = (max(-ub, 0), max(-lb, 0))
+        else:
+            split[r_id] = (lb, ub)
+    return split
 
 
 def GIMME(
@@ -79,10 +91,8 @@ def GIMME(
            PLoS Computational Biology, 4(5), e1000082.
            doi:10.1371/journal.pcbi.1000082
     """
-    if not build_model:
-        sim = get_simulator(model)
-    else:
-        sim = get_simulator(deepcopy(model))
+    # build_model=True works on the irreversible copy returned by convert_to_irreversible
+    sim = get_simulator(model)
 
     if isinstance(expr, ExpressionSet):
         pp = Preprocessing(sim, expr)
@@ -90,8 +100,6 @@ def GIMME(
     else:
         coeffs = expr
         threshold = cutoff
-
-    solver = solver_instance(sim)
 
     if biomass is None:
         biomass = sim.biomass_reaction
@@ -118,6 +126,7 @@ def GIMME(
     #   - Reactions can be deleted without affecting constraint definitions
     #   - Used when building a tissue-specific model for further analysis
     if not build_model:
+        solver = solver_instance(sim)
         for r_id in sim.reactions:
             lb, _ = sim.get_reaction_bounds(r_id)
             if lb < 0:
@@ -135,13 +144,20 @@ def GIMME(
         solver.update()
 
     else:
-        convert_to_irreversible(sim, inline=True)
+        sim, irrev_map = convert_to_irreversible(sim)
+        constraints = _split_constraints(constraints, irrev_map)
+        solver = solver_instance(sim)
 
     # define the objective
     objective = dict()
     for r_id, val in coeffs.items():
+        if build_model:
+            objective[r_id] = val
+            if r_id in irrev_map:
+                objective[irrev_map[r_id]] = val
+            continue
         lb, _ = sim.get_reaction_bounds(r_id)
-        if not build_model and lb < 0:
+        if lb < 0:
             pos, neg = r_id + "_p", r_id + "_n"
             objective[pos] = val
             objective[neg] = val
@@ -183,6 +199,8 @@ def GIMME(
             # If expr is already coefficients, we need the original expression
             # This is a limitation - coeffs don't contain original expression values
             rxn_exp = {}
+        # the reverse half of a split reaction has the expression of the original reaction
+        rxn_exp.update({rev: rxn_exp[r_id] for r_id, rev in irrev_map.items() if r_id in rxn_exp})
 
         activity = dict()
         for rx_id in sim.reactions:

@@ -85,18 +85,93 @@ def _get_original_metabolite_id(community: CommunityModel, met_id: str) -> Optio
     return None
 
 
+def _apply_environment(environment: Environment, sim) -> None:
+    """
+    Apply an environment, in place, to a community simulator.
+
+    Environment.apply resolves a Simulator through get_simulator, which returns a copy,
+    so the environment is applied to the simulator's underlying model instead.
+
+    Args:
+        environment: Environment to apply (exclusive)
+        sim: Simulator instance to modify
+    """
+    environment.apply(sim.model, inplace=True, warning=False)
+
+
+def _supplied_exchanges(environment: Environment, sim) -> set:
+    """
+    Exchange reactions through which the environment supplies a compound (lower bound < 0).
+
+    Closed exchanges (lower bound 0) are left out, so minimal media are searched only among
+    compounds the environment provides, as in mp_score.
+
+    Args:
+        environment: Environment
+        sim: Simulator whose reaction ids the result uses
+
+    Returns:
+        set of reaction ids
+    """
+    return {sim.resolve(r_id, "reaction") for r_id, (lb, _) in environment.items() if lb < 0}
+
+
 def _trim_metabolite_prefix(sim, met_id: str) -> str:
     """
-    Trim metabolite ID prefix and extract base name.
+    Trim the metabolite ID prefix and the external compartment suffix.
 
     Args:
         sim: Simulator instance
         met_id: Metabolite ID
 
     Returns:
-        Trimmed metabolite ID (first part after prefix)
+        Trimmed metabolite ID (e.g. 'M_lac__D_e' -> 'lac__D')
     """
-    return met_id[len(sim._m_prefix) :].split("_")[0]
+    base = sim.to_canonical(met_id, "metabolite")
+    suffix = "_" + CommunityModel.EXT_COMP
+    return base[: -len(suffix)] if base.endswith(suffix) else base
+
+
+def _noninteracting_model(community: CommunityModel):
+    """
+    Build a community model whose organisms share the medium but cannot feed each other.
+
+    Each organism keeps its uptake from the shared pool, while its secretions go to an
+    organism-specific sink instead of the shared pool.
+
+    Args:
+        community: CommunityModel instance
+
+    Returns:
+        Simulator of the non-interacting community model
+    """
+    noninteracting = community.copy()
+    noninteracting._verbose = community._verbose
+    noninteracting.add_compartments = True
+    sim = noninteracting.get_community_model()
+    ext_mets = set(noninteracting.ext_mets)
+
+    for (org_id, r_id), new_id in noninteracting.reaction_map.items():
+        if r_id not in noninteracting.organisms[org_id].get_exchange_reactions():
+            continue
+        stoichiometry = sim.get_reaction(new_id).stoichiometry
+        shared = [m_id for m_id in stoichiometry if m_id in ext_mets]
+        own = [m_id for m_id in stoichiometry if m_id not in ext_mets]
+        if len(shared) != 1 or len(own) != 1:
+            # organism-specific sinks do not touch the shared pool
+            continue
+        # transport stoichiometry is {own: -1, shared: 1}: positive flux secretes into the pool
+        lb, _ = sim.get_reaction_bounds(new_id)
+        sim.set_reaction_bounds(new_id, lb, 0, False)
+        sim.add_reaction(
+            f"{new_id}_secretion",
+            name=f"Secretion {own[0]}",
+            stoichiometry={own[0]: -1},
+            lb=0,
+            ub=inf,
+            reaction_type="SINK",
+        )
+    return sim
 
 
 def sc_score(
@@ -125,10 +200,29 @@ def sc_score(
     community.add_compartments = True
     comm_model = community.get_community_model()
     if environment:
-        environment.apply(comm_model, inplace=True, warning=False)
+        _apply_environment(environment, comm_model)
 
     for b in community.organisms_biomass.values():
         comm_model.set_reaction_bounds(b, 0, ModelConstants.REACTION_UPPER_BOUND, False)
+
+    bigM = ModelConstants.REACTION_UPPER_BOUND
+    switched = []
+    for org_id, sim in community.organisms.items():
+        rxns = set(sim.reactions) - set(sim.get_exchange_reactions())
+        for rxn in rxns:
+            r_id = community.reaction_map[(org_id, rxn)]
+            if r_id == community.organisms_biomass[org_id]:
+                continue
+
+            # Get original reaction bounds from the organism model, with bigM for infinite bounds
+            original_rxn = sim.get_reaction(rxn)
+            lb = max(original_rxn.lb, -bigM)
+            ub = min(original_rxn.ub, bigM)
+            switched.append((org_id, r_id, lb, ub))
+            # an absent organism carries no flux, so v = 0 must stay feasible: bounds that exclude 0
+            # (e.g. a positive ATPM lower bound) move to the constraints below
+            if lb > 0 or ub < 0:
+                comm_model.set_reaction_bounds(r_id, min(lb, 0), max(ub, 0), False)
 
     solver = solver_instance(comm_model)
 
@@ -138,38 +232,16 @@ def sc_score(
 
     solver.update()
 
-    bigM = ModelConstants.REACTION_UPPER_BOUND
-    for org_id, sim in community.organisms.items():
+    # Big-M constraints turn off reactions when the organism is absent:
+    # lb * y_k <= v <= ub * y_k, so y_k = 0 forces v = 0 and y_k = 1 restores [lb, ub]
+    for org_id, r_id, lb, ub in switched:
         org_var = "y_{}".format(org_id)
-        rxns = set(sim.reactions) - set(sim.get_exchange_reactions())
-        for rxn in rxns:
-            r_id = community.reaction_map[(org_id, rxn)]
-            if r_id == community.organisms_biomass[org_id]:
-                continue
-
-            # Get original reaction bounds from the organism model
-            original_rxn = sim.get_reaction(rxn)
-            lb = original_rxn.lb
-            ub = original_rxn.ub
-
-            # Use bigM if bounds are infinite
-            if isinf(lb) or lb < -bigM:
-                lb = -bigM
-            if isinf(ub) or ub > bigM:
-                ub = bigM
-
-            # Add Big-M constraints to turn off reactions when organism is absent
-            # Formulation: lb * y_k <= v <= ub * y_k
-            # When y_k = 0: forces v = 0 (reaction off)
-            # When y_k = 1: allows v in [lb, ub] (reaction on)
-
-            if lb < 0:  # Can have negative flux
-                # v >= lb * y_k  =>  v - lb * y_k >= 0
-                solver.add_constraint("c_{}_lb".format(r_id), {r_id: 1, org_var: -lb}, ">", 0, update=False)
-
-            if ub > 0:  # Can have positive flux
-                # v <= ub * y_k  =>  v - ub * y_k <= 0
-                solver.add_constraint("c_{}_ub".format(r_id), {r_id: 1, org_var: -ub}, "<", 0, update=False)
+        if lb != 0:
+            # v >= lb * y_k  =>  v - lb * y_k >= 0
+            solver.add_constraint("c_{}_lb".format(r_id), {r_id: 1, org_var: -lb}, ">", 0, update=False)
+        if ub != 0:
+            # v <= ub * y_k  =>  v - ub * y_k <= 0
+            solver.add_constraint("c_{}_ub".format(r_id), {r_id: 1, org_var: -ub}, "<", 0, update=False)
 
     solver.update()
 
@@ -180,7 +252,16 @@ def sc_score(
         solver.add_constraint("COM_Biomass", {biomass_id: 1}, ">", min_growth)
         objective = {"y_{}".format(o): 1.0 for o in other}
 
-        if not use_pool:
+        sols = None
+        if use_pool:
+            sols = solver.solve(
+                objective, minimize=True, get_values=list(objective.keys()), pool_size=n_solutions, pool_gap=0.5
+            )
+            if not isinstance(sols, list):
+                # only solvers with a solution pool (e.g. CPLEX) return a list; enumerate alternatives instead
+                sols = None
+
+        if sols is None:
             previous_constraints = []
             donors_list = []
             failed = False
@@ -212,9 +293,6 @@ def sc_score(
                 scores[org_id] = None
 
         else:
-            sols = solver.solve(
-                objective, minimize=True, get_values=list(objective.keys()), pool_size=n_solutions, pool_gap=0.5
-            )
             solver.remove_constraint("COM_Biomass")
 
             if len(sols) == 0:
@@ -269,7 +347,7 @@ def mu_score(
             return met
 
     if environment:
-        environment.apply(sim, inplace=True, warning=False)
+        _apply_environment(environment, sim)
 
     max_uptake = max_uptake * len(community.organisms)
     scores = AttrDict()
@@ -337,10 +415,16 @@ def mp_score(
             return met
 
     if environment:
-        environment.apply(sim, inplace=True, warning=False)
-        env_compounds = environment.get_compounds(fmt_func=lambda x: x[5:-5])
+        _apply_environment(environment, sim)
+        # shared-pool metabolites supplied by the medium
+        env_compounds = {_get_exchange_metabolite(sim, r_id) for r_id, (lb, _) in environment.items() if lb < 0}
     else:
         env_compounds = set()
+
+    ext_mets = set(community.ext_mets)
+
+    def pool_met(r_id):
+        return next((m_id for m_id in sim.get_reaction_metabolites(r_id) if m_id in ext_mets), None)
 
     for org_id in community.organisms:
         org_ex = community.organisms[org_id].get_exchange_reactions()
@@ -361,7 +445,7 @@ def mp_score(
 
         scores[org_id] = {}
 
-        remaining = [r_id for r_id in exchange_rxns if ex_met(r_id) not in env_compounds]
+        remaining = [r_id for r_id in exchange_rxns if pool_met(r_id) not in env_compounds]
 
         while len(remaining) > 0:
             sol = solver.solve(linear={r_id: 1 for r_id in remaining}, minimize=False, get_values=remaining)
@@ -428,18 +512,18 @@ def mip_score(
         else:
             return met
 
-    # revisit for noninteracting
-    noninteracting = community.copy()
+    # organisms share the medium but cannot exchange metabolites
+    noninteracting = _noninteracting_model(community)
 
     exch_reactions = set(sim.get_exchange_reactions())
     max_uptake = max_uptake * len(community.organisms)
 
     if environment:
-        environment.apply(noninteracting.merged, inplace=True, warning=False)
-        exch_reactions &= set(environment)
+        _apply_environment(environment, noninteracting)
+        exch_reactions &= _supplied_exchanges(environment, sim)
 
     noninteracting_medium, sol1 = minimal_medium(
-        noninteracting.get_community_model(),
+        noninteracting,
         exchange_reactions=exch_reactions,
         direction=direction,
         min_mass_weight=min_mol_weight,
@@ -456,7 +540,7 @@ def mip_score(
 
     # anabiotic environment is limited to non-interacting community minimal media
     noninteracting_env = Environment.from_reactions(noninteracting_medium, max_uptake=max_uptake)
-    noninteracting_env.apply(sim, inplace=True)
+    _apply_environment(noninteracting_env, sim)
 
     interacting_medium, sol2 = minimal_medium(
         sim,
@@ -476,9 +560,9 @@ def mip_score(
         return None, None
 
     if exclude is not None:
-        exclude_rxns = {"R_EX_M_{}_e_pool".format(x) for x in exclude}
-        interacting_medium = set(interacting_medium) - exclude_rxns
-        noninteracting_medium = set(noninteracting_medium) - exclude_rxns
+        # exclude holds trimmed metabolite ids (e.g. 'h2o'), as in mro_score
+        interacting_medium = {r_id for r_id in interacting_medium if ex_met(r_id, True) not in exclude}
+        noninteracting_medium = {r_id for r_id in noninteracting_medium if ex_met(r_id, True) not in exclude}
 
     score = len(noninteracting_medium) - len(interacting_medium)
 
@@ -517,10 +601,14 @@ def mro_score(
     """
     community.add_compartments = True
     sim = community.get_community_model()
+    ext_mets = set(community.ext_mets)
 
-    # Helper function using module-level utilities
+    # Name compounds by their shared-pool metabolite, so that organism transport reactions
+    # (whose first metabolite is organism-specific) map to the same id across organisms
     def ex_met(r_id, trim=False):
-        met = _get_exchange_metabolite(sim, r_id)
+        met = next((m_id for m_id in sim.get_reaction_metabolites(r_id) if m_id in ext_mets), None)
+        if met is None:
+            met = _get_exchange_metabolite(sim, r_id)
         if trim:
             return _trim_metabolite_prefix(sim, met)
         else:
@@ -530,8 +618,8 @@ def mro_score(
     max_uptake = max_uptake * len(community.organisms)
 
     if environment:
-        environment.apply(sim, inplace=True, warning=False)
-        exch_reactions &= set(environment)
+        _apply_environment(environment, sim)
+        exch_reactions &= _supplied_exchanges(environment, sim)
 
     medium, sol = minimal_medium(
         sim,
@@ -551,7 +639,7 @@ def mro_score(
         return None, None
 
     interacting_env = Environment.from_reactions(medium, max_uptake=max_uptake)
-    interacting_env.apply(sim, inplace=True)
+    _apply_environment(interacting_env, sim)
 
     if exclude is None:
         exclude = set()

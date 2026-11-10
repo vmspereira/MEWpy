@@ -155,7 +155,7 @@ def set_default_ode_solver(solvername):
     """Sets default solver.
 
     Arguments:
-        solvername : (str) solver name (currently available: 'gurobi', 'cplex')
+        solvername : (str) ODE solver name ('scikits', 'scipy' or 'odespy', when installed; see ode_solvers())
     """
 
     global default_ode_solver

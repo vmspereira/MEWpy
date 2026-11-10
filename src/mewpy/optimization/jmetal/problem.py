@@ -65,7 +65,7 @@ class KOSolution(Solution[int], SolutionInterface):
 
     def __eq__(self, solution) -> bool:
         if isinstance(solution, self.__class__):
-            return self.variables.sort() == solution.variables.sort()
+            return sorted(self.variables) == sorted(solution.variables)
         return False
 
     # JMetal consideres all problems as minimization
@@ -144,7 +144,7 @@ class OUSolution(Solution[IntTupple], SolutionInterface):
 
     def __eq__(self, solution) -> bool:
         if isinstance(solution, self.__class__):
-            return self.variables.sort() == solution.variables.sort()
+            return sorted(self.variables) == sorted(solution.variables)
         return False
 
     # JMetal consideres all problems as minimization
@@ -237,7 +237,7 @@ class JMetalKOProblem(Problem[KOSolution], Evaluable):
     def number_of_constraints(self) -> int:
         return self._number_of_constraints
 
-    def create_solution(self) -> KOSolution:
+    def create_solution(self, rng=None) -> KOSolution:  # jmetalpy >= 1.10 passes an rng
         solution = None
         flag = False
         while self.__next_ini_sol < len(self.initial_population) and not flag:
@@ -342,7 +342,7 @@ class JMetalOUProblem(Problem[OUSolution], Evaluable):
     def number_of_constraints(self) -> int:
         return self._number_of_constraints
 
-    def create_solution(self) -> OUSolution:
+    def create_solution(self, rng=None) -> OUSolution:  # jmetalpy >= 1.10 passes an rng
         solution = None
         flag = False
         while self.__next_ini_sol < len(self.initial_population) and not flag:

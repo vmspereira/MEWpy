@@ -2,7 +2,7 @@ import os
 from functools import partial
 from typing import TYPE_CHECKING, Union
 
-from mewpy.germ.algebra import Expression, Float, NoneAtom, Symbol
+from mewpy.germ.algebra import Expression, Float, NoneAtom, One, Symbol, Zero
 from mewpy.germ.models import MetabolicModel, RegulatoryModel
 from mewpy.io.dto import CompartmentRecord, DataTransferObject, FunctionTerm, History, VariableRecord
 from mewpy.util.constants import ModelConstants
@@ -126,8 +126,12 @@ class RegulatorySBML(Engine):
 
         coefficients = self.dto.variables[qual_species].coefficients
 
-        if min(coefficients) > value > max(coefficients):
-            raise SyntaxError
+        if not min(coefficients) <= value <= max(coefficients):
+            # out-of-range levels are reported but kept: mewpy encodes reactions/metabolites as qual species
+            # whose thresholds (e.g. negative fluxes) fall outside the [0, maxLevel] range
+            self.warnings.append(
+                partial(sbml_warning, f"Level {value} is outside the levels {sorted(coefficients)} of {qual_species}")
+            )
 
         coefficients.add(value)
 
@@ -207,6 +211,21 @@ class RegulatorySBML(Engine):
         elif node_type == ASTNODE_NAME:
 
             return self._parse_symbols(ast_node)
+
+        elif node_type in ASTNODE_BOOLEAN_VALUES:
+
+            # constant function terms, e.g. <true/>
+            return ASTNODE_BOOLEAN_VALUES[node_type]
+
+        elif node_type in ASTNODE_VALUES:
+
+            # constant function terms, e.g. <cn>1</cn> as written for a TRUE rule
+            value = ast_node.getValue()
+            if value == 1:
+                return One()
+            if value == 0:
+                return Zero()
+            return Float(value)
 
         else:
 
@@ -437,16 +456,17 @@ class RegulatorySBML(Engine):
 
                     active_coefficient = 0.0
 
-            if minimum_level > active_coefficient > maximum_level:
+            if not minimum_level <= active_coefficient <= maximum_level:
 
-                raise ValueError(
-                    f"Initial level is higher/lower than the minimum/maximum level for the {identifier} "
-                    f"qual species"
+                self.warnings.append(
+                    partial(
+                        sbml_warning,
+                        f"Initial level is higher/lower than the minimum/maximum level for the {identifier} "
+                        f"qual species",
+                    )
                 )
 
-            else:
-
-                coefficients.add(active_coefficient)
+            coefficients.add(active_coefficient)
 
             variable = VariableRecord(
                 id=identifier,

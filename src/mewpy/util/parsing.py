@@ -76,8 +76,18 @@ BOOLEAN_STATES = [S_ON, S_OFF]
 BOOLEAN_RELATIONALS = [S_GREATER, S_LESS, S_EQUAL]
 BOOLEAN_EQUAL_RELATIONALS = [S_GREATER_THAN_EQUAL, S_LESS_THAN_EQUAL]
 
-# Increases the system recursion limit for long expressions
-sys.setrecursionlimit(100000)
+# Unary minus operator as kept in the operators stack while parsing (the tree node value is "-")
+S_NEG = "u-"
+
+
+def _ensure_recursion_limit(size: int) -> None:
+    """Parsing trees are traversed recursively (to_infix, evaluate, replace, ...) with a depth that grows
+    with the expression length. The recursion limit is raised, only when required, to fit the expression.
+    It is not restored afterwards because the trees outlive build_tree."""
+    required = 2 * size + 1000
+    if sys.getrecursionlimit() < required:
+        sys.setrecursionlimit(required)
+
 
 # latex #############################################
 
@@ -601,14 +611,17 @@ class Arithmetic(Syntax):
     def is_operator(op):
         return op in ["+", "-", "*", "/", "^"]
 
+    # signs that can be unary, e.g. '-x' or '2 * -x'
+    unary_operators = ["-", "+"]
+
     @staticmethod
     def is_greater_precedence(op1, op2):
-        pre = {"+": 0, "-": 0, "*": 1, "/": 1, "^": 2}
+        pre = {"+": 0, "-": 0, "*": 1, "/": 1, S_NEG: 1.5, "^": 2}
         return pre[op1] >= pre[op2]
 
     @staticmethod
     def associativity(op):
-        ass = {"+": 0, "-": 0, "*": 0, "/": 0, "^": 1}
+        ass = {"+": 0, "-": 0, "*": 0, "/": 0, S_NEG: 1, "^": 1}
         return ass[op]
 
     @staticmethod
@@ -662,7 +675,7 @@ class Boolean(Syntax):
 
     @staticmethod
     def is_greater_precedence(op1, op2):
-        pre = {S_AND: 0, S_OR: 0, S_NOT: 1}
+        pre = {S_OR: 0, S_AND: 1, S_NOT: 2}
         return pre[op1] >= pre[op2]
 
     @staticmethod
@@ -826,6 +839,13 @@ def build_tree(exp: str, rules: Syntax) -> Node:
             exp_list.extend(replace_dic[token.lower()])
         else:
             exp_list.append(token)
+    _ensure_recursion_limit(len(exp_list))
+    unary_operators = getattr(rules, "unary_operators", [])
+
+    def operator_node(op):
+        # a unary minus is a binary '-' node with an empty left leaf, as NOT in the Boolean syntax
+        return Node("-") if op == S_NEG else Node(op)
+
     stack = []
     tree_stack = []
     predecessor = None
@@ -862,6 +882,12 @@ def build_tree(exp: str, rules: Syntax) -> Node:
                 else:
                     t = Node(token)
                 tree_stack.append(t)
+        elif token in unary_operators and (predecessor is None or predecessor == "(" or rules.is_operator(predecessor)):
+            # a sign where an operand is expected: '-x' becomes (EMPTY_LEAF - x); '+x' is just x
+            if token == "-":
+                tree_stack.append(Node(EMPTY_LEAF))
+                stack.append(S_NEG)
+
         elif rules.is_operator(token):
             if not stack or stack[-1] == "(":
                 stack.append(token)
@@ -877,7 +903,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
                     and rules.associativity(token) == 0
                 ):
                     popped_item = stack.pop()
-                    t = Node(popped_item)
+                    t = operator_node(popped_item)
                     t1 = tree_stack.pop()
                     t2 = tree_stack.pop()
                     t.right = t1
@@ -891,7 +917,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
         elif token == ")":
             while stack[-1] != "(":
                 popped_item = stack.pop()
-                t = Node(popped_item)
+                t = operator_node(popped_item)
                 t1 = tree_stack.pop()
                 t2 = tree_stack.pop()
                 t.right = t1
@@ -903,7 +929,7 @@ def build_tree(exp: str, rules: Syntax) -> Node:
 
     while stack:
         popped_item = stack.pop()
-        t = Node(popped_item)
+        t = operator_node(popped_item)
         t1 = tree_stack.pop()
         t2 = tree_stack.pop()
         t.right = t1
@@ -915,18 +941,32 @@ def build_tree(exp: str, rules: Syntax) -> Node:
     return t
 
 
+# exponent sign of a number in scientific notation (e.g. 2.5e-05), which is not an operator
+_SCI_NOTATION_SIGN = re.compile(r"(?<![\w.])((?:\d+\.?\d*|\.\d+)[eE])([+-])(?=\d)")
+_SIGN_PLACEHOLDER = {"+": "\x01", "-": "\x02"}
+_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
+
+
 def tokenize_infix_expression(exp: str, rules: Syntax = None) -> T.List[str]:
     _exp = exp.replace("(", " ( ").replace(")", " ) ")
     if rules:
+        protect = "-" in rules.operators or "+" in rules.operators
+        if protect:
+            _exp = _SCI_NOTATION_SIGN.sub(lambda m: m.group(1) + _SIGN_PLACEHOLDER[m.group(2)], _exp)
         for op in rules.operators:
             _exp = _exp.replace(op, " " + rules.sub(op) + " ")
+        if protect:
+            for sign, placeholder in _SIGN_PLACEHOLDER.items():
+                _exp = _exp.replace(placeholder, sign)
     tokens = _exp.split(" ")
     return list(filter(lambda x: x != "", tokens))
 
 
 def is_number(token: str) -> bool:
-    """Returns True if the token is a number"""
-    return token.replace(".", "", 1).replace("-", "", 1).isnumeric()
+    """Returns True if the token is a number (including scientific notation, e.g. 2.5e-05)"""
+    if isinstance(token, (int, float)):
+        return True
+    return bool(_NUMBER.match(str(token)))
 
 
 def is_condition(token: str) -> bool:

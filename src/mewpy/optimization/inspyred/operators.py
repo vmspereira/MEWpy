@@ -201,7 +201,8 @@ def grow_mutation_KO(random, candidate, args):
         return candidate
 
     mutant = copy.copy(candidate)
-    if len(mutant) < maxSize:
+    # the candidate may already hold every target when there are fewer targets than maxSize
+    if len(mutant) < min(maxSize, bounder.upper_bound - bounder.lower_bound + 1):
         idx = random.randint(bounder.lower_bound, bounder.upper_bound)
         while idx in mutant:
             idx = idx + 1
@@ -240,7 +241,8 @@ def grow_mutation_OU(random, candidate, args):
         return candidate
 
     mutant = copy.copy(candidate)
-    if len(mutant) < maxSize:
+    # the candidate may already hold every target when there are fewer targets than maxSize
+    if len(mutant) < min(maxSize, bounder.upper_bound[0] - bounder.lower_bound[0] + 1):
         idx = random.randint(bounder.lower_bound[0], bounder.upper_bound[0])
         idxs = [a for (a, _) in mutant]
         while idx in idxs:
@@ -303,8 +305,6 @@ def single_mutation_OU(random, candidate, args):
     bounder = args["_ec"].bounder
     mutRate = args.setdefault("mutation_rate", 0.1)
 
-    import random
-
     n = bounder.upper_bound[0] - bounder.lower_bound[0] + 1
     if random.random() > mutRate or len(candidate) >= n:
         return candidate
@@ -348,8 +348,6 @@ def single_mutation_OU_level(random, candidate, args):
     - *mutation_rate* -- the rate at which mutation is performed (default 0.1)
 
     """
-    import random
-
     bounder = args["_ec"].bounder
     mutRate = args.setdefault("mutation_rate", 0.1)
     if random.random() > mutRate:

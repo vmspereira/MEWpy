@@ -83,6 +83,17 @@ def get_sbml_doc_to_write(io, level, version, packages, packages_version, packag
 
         raise OSError(f"{io} is not a valid input. Provide the path or file handler")
 
+    if doc is not None and (doc.getModel() is None or (doc.getLevel(), doc.getVersion()) != (level, version)):
+        # an existing document of another SBML level/version cannot host the packages: it is overwritten
+        doc = None
+
+    if doc is not None:
+        # an existing document (e.g. written by another writer) is extended with the missing packages
+        for package, package_version in zip(packages, packages_version):
+            if not doc.isPackageEnabled(package):
+                uri = libsbml.SBMLNamespaces(level, version, package, package_version).getNamespaces().getURI(package)
+                doc.enablePackage(uri, package, True)
+
     if doc is None:
 
         # only supporting SBML level 3 version 1 with fbc version 2 or qual version 1
@@ -193,6 +204,8 @@ def _clip(sid, prefix):
     return sid[len(prefix) :] if sid.startswith(prefix) else sid
 
 
+# Deliberately format-level: these translate between SBML ids (R_/M_/G_) and GERM ids when reading/writing files,
+# independently of any Simulator (Simulator.prefix/resolve/to_native handle backend ids).
 def _f_gene(sid, prefix="G_"):
     """Clips gene prefix from id."""
     sid = sid.replace(SBML_DOT, ".")

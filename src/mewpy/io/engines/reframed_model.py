@@ -3,13 +3,25 @@ from typing import TYPE_CHECKING, Union
 
 from mewpy.germ.algebra import Expression, NoneAtom
 from mewpy.germ.models.unified_factory import unified_factory
-from mewpy.io.dto import DataTransferObject, FunctionTerm, VariableRecord
+from mewpy.io.dto import CompartmentRecord, DataTransferObject, FunctionTerm, VariableRecord
 
 from .engine import Engine
 from .engines_utils import build_symbolic, cobra_warning, expression_warning
 
 if TYPE_CHECKING:
     from mewpy.germ.models import MetabolicModel, Model, RegulatoryModel
+
+
+def _parse_charge(charge):
+    """Reframed keeps the SBML charge as a string in the metabolite metadata"""
+    if charge is None or charge == "":
+        return None
+
+    try:
+        return int(float(charge))
+
+    except (TypeError, ValueError):
+        return None
 
 
 class ReframedModel(Engine):
@@ -64,6 +76,14 @@ class ReframedModel(Engine):
             raise OSError("Model is not open")
 
         # -----------------------------------------------------------------------------
+        # Compartments
+        # -----------------------------------------------------------------------------
+        self.dto.compartments = {
+            c_id: CompartmentRecord(id=c_id, name=compartment.name)
+            for c_id, compartment in self.dto.reframed_model.compartments.items()
+        }
+
+        # -----------------------------------------------------------------------------
         # Reactions
         # -----------------------------------------------------------------------------
         processed_metabolites = set()
@@ -113,7 +133,7 @@ class ReframedModel(Engine):
                     name=met.name,
                     aliases={met.id, met.name},
                     compartment=met.compartment,
-                    charge=met.metadata.get("CHARGE", None),
+                    charge=_parse_charge(met.metadata.get("CHARGE", None)),
                     formula=met.metadata.get("FORMULA", None),
                 )
 
@@ -158,7 +178,7 @@ class ReframedModel(Engine):
                     name=met.name,
                     aliases={met.id, met.name},
                     compartment=met.compartment,
-                    charge=met.metadata.get("CHARGE", None),
+                    charge=_parse_charge(met.metadata.get("CHARGE", None)),
                     formula=met.metadata.get("FORMULA", None),
                 )
 
@@ -190,6 +210,8 @@ class ReframedModel(Engine):
 
         if self.dto.name:
             model.name = self.dto.name
+
+        model.compartments = {compartment.id: compartment.name for compartment in self.dto.compartments.values()}
 
         processed_metabolites = set()
         processed_genes = set()

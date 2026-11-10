@@ -107,11 +107,12 @@ class GurobiSolver(Solver):
             lb (float): lower bound
             ub (float): upper bound
         """
+        # None keeps the current value; a bound of 0 must still be applied
         var = self.problem.getVarByName(var_id)
-        if lb:
-            var.lb = lb
-        if ub:
-            var.ub = ub
+        if lb is not None:
+            var.lb = infinity_fix(lb)
+        if ub is not None:
+            var.ub = infinity_fix(ub)
 
     def add_constraint(self, constr_id, lhs, sense="=", rhs=0, update=True):
         """Add a constraint to the current problem.

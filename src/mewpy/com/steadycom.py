@@ -29,11 +29,15 @@ from mewpy.util.constants import ModelConstants
 from mewpy.util.utilities import molecular_weight
 
 
-def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=10):
+def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=1):
     """
     Calculate an appropriate BigM value for SteadyCom based on model characteristics.
 
     BigM is used in SteadyCom constraints to handle reactions with infinite bounds.
+    With the default safety_factor of 1, infinite bounds count as the largest finite member bound
+    (at least min_value). REFRAMED reads the SBML default bounds (e.g. +-1000) as +-inf while
+    COBRApy keeps them, so this gives a REFRAMED member the bounds the same model has in COBRApy,
+    whatever the backends of the other members.
     The value must be:
     - Large enough to not artificially constrain fluxes
     - Small enough to avoid numerical instability in LP solvers
@@ -41,21 +45,21 @@ def calculate_bigM(community, min_value=1000, max_value=1e6, safety_factor=10):
 
     Algorithm:
     1. Find maximum finite flux bound across all organisms
-    2. Apply safety factor (default 10x)
+    2. Apply safety factor (default 1x)
     3. Clamp between min_value and max_value
 
     Args:
         community (CommunityModel): The community model
         min_value (float): Minimum BigM value (default 1000)
         max_value (float): Maximum BigM value to avoid numerical issues (default 1e6)
-        safety_factor (float): Multiplier for max bound (default 10)
+        safety_factor (float): Multiplier for max bound (default 1)
 
     Returns:
         float: Calculated BigM value
 
     Example:
-        If max reaction bound is 100, with safety_factor=10:
-        BigM = min(1000 * 10, 1e6) = min(10000, 1e6) = 10000
+        If the largest finite reaction bound is 1000: BigM = 1000 (10000 with safety_factor=10).
+        If it is 100: BigM = max(1000, 100) = 1000.
     """
     max_bound = 0.0
 
@@ -91,12 +95,14 @@ def SteadyCom(community, constraints=None, solver=None):
     """
     # set the proper community building configuration
     community.add_compartments = False
-    community.merged_biomasses = False
+    community.merge_biomasses = False
     community.balance_exchanges = False
 
     if solver is None:
         solver = build_problem(community)
 
+    # ids may be given with or without the backend prefix (e.g. 'EX_glc__D_e' for 'R_EX_glc__D_e')
+    constraints = community.merged_model.resolve_keys(constraints, "reaction")
     objective = community.biomass
     sol = binary_search(solver, objective, minimize=False, constraints=constraints)
 
@@ -116,11 +122,12 @@ def SteadyComVA(community, obj_frac=1.0, constraints=None, solver=None):
         dict: species abundance variability
     """
 
-    community.merged_biomasses = False
+    community.merge_biomasses = False
 
     if solver is None:
         solver = build_problem(community)
 
+    constraints = community.merged_model.resolve_keys(constraints, "reaction")
     objective = {community.biomass: 1}
 
     sol = binary_search(solver, objective, constraints=constraints)
@@ -197,6 +204,7 @@ def build_problem(community, growth=1, bigM=None):
 
     solver = solver_instance()
     community.add_compartments = False
+    community.merge_biomasses = False
     sim = community.get_community_model()
 
     # create biomass variables
@@ -209,13 +217,13 @@ def build_problem(community, growth=1, bigM=None):
         if r_id in sim.get_exchange_reactions():
             solver.add_variable(r_id, reaction.lb, reaction.ub, update=False)
         else:
-            # For internal reactions, use tighter bounds based on original reaction bounds
-            # Since fluxes are scaled by abundance (v = X * flux) and X <= 1,
-            # we can use the original bounds directly (multiplied by max abundance = 1)
-            # This provides better numerical conditioning than using (-inf, inf)
+            # Internal fluxes are abundance-scaled (v = X * flux, X <= 1): the variable bounds are the
+            # original bounds widened to include 0, and the scaled bounds lb * X <= v <= ub * X are
+            # added below. A bound that excludes 0 (e.g. a positive ATPM lower bound) is therefore
+            # only enforced scaled by the abundance, not in full by every member.
             lb = reaction.lb if not isinf(reaction.lb) else (-bigM if reaction.lb < 0 else 0)
             ub = reaction.ub if not isinf(reaction.ub) else (bigM if reaction.ub > 0 else 0)
-            solver.add_variable(r_id, lb, ub, update=False)
+            solver.add_variable(r_id, min(lb, 0), max(ub, 0), update=False)
 
     solver.update()
 
@@ -424,30 +432,21 @@ class CommunitySolution(object):
     # calculate overall exchanges (organism x metabolite) -> rate
 
     def compute_exchanges(self):
+        # Work on merged-model ids: organism ids may use another prefix than the community
+        # (e.g. COBRA organisms in a REFRAMED community) and would never match shared metabolites.
         sim = self.community.merged_model
-        reaction_map = self.community.reaction_map
+        ext_mets = set(self.community.ext_mets)
         exchanges = {}
 
-        for m_id in sim.get_external_metabolites():
+        for (org_id, _), new_id in self.community.reaction_map.items():
+            flux = self.values[new_id]
+            if flux == 0:
+                continue
+            for m_id, coeff in sim.get_reaction(new_id).stoichiometry.items():
+                if m_id in ext_mets:
+                    exchanges[(org_id, m_id)] = exchanges.get((org_id, m_id), 0) + coeff * flux
 
-            for org_id, organism in self.community.organisms.items():
-                rate = 0
-                if m_id not in organism.metabolites:
-                    continue
-                for r_id in organism.get_metabolite_reactions(m_id):
-                    if (org_id, r_id) not in reaction_map:
-                        continue
-
-                    flux = self.values[reaction_map[(org_id, r_id)]]
-
-                    if flux != 0:
-                        coeff = organism.get_reaction(r_id).stoichiometry[m_id]
-                        rate += coeff * flux
-
-                if rate != 0:
-                    exchanges[(org_id, m_id)] = rate
-
-        return exchanges
+        return {key: rate for key, rate in exchanges.items() if rate != 0}
 
     def cross_feeding(self, as_df=True, abstol=1e-6):
         exchanges = self.compute_exchanges()
@@ -478,8 +477,12 @@ class CommunitySolution(object):
 
     def mass_flow(self, element=None, as_df=False, abstol=1e-6):
 
-        def get_mass(x):
-            formula = x.formula
+        model = self.community.merged_model
+
+        def get_mass(m_id):
+            formula = model.get_metabolite(m_id).formula
+            if not formula:
+                return 0
             mw = molecular_weight(formula, element=element)
             return 0.001 * mw
 

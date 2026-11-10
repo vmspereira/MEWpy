@@ -29,13 +29,48 @@ from tqdm import tqdm
 
 from mewpy.simulation import Simulator, get_simulator
 from mewpy.util.constants import ModelConstants
-from mewpy.util.parsing import Boolean, build_tree, isozymes
+from mewpy.util.parsing import S_AND, S_OR, Boolean, build_tree, isozymes
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from cobra import Model
     from reframed.core.cbmodel import CBModel
+
+
+def _dnf_terms(node):
+    """Returns the DNF of a Boolean parsing tree (without negations) as a list of sets of genes"""
+    if node.is_leaf():
+        return [frozenset([node.value])]
+    if node.value == S_OR:
+        return _dnf_terms(node.left) + _dnf_terms(node.right)
+    if node.value == S_AND:
+        return [a | b for a in _dnf_terms(node.left) for b in _dnf_terms(node.right)]
+    raise ValueError(f"Operator {node.value} cannot be converted to DNF")
+
+
+def gpr_to_dnf(gpr: str) -> str:
+    """Converts a GPR rule string, e.g. '(a or b) and c', to DNF, e.g. '(a and c) or (b and c)'"""
+    terms = []
+    for term in _dnf_terms(build_tree(gpr, Boolean)):
+        if term not in terms:
+            terms.append(term)
+    if len(terms) == 1:
+        return " and ".join(sorted(terms[0]))
+    return " or ".join("(" + " and ".join(sorted(t)) + ")" if len(t) > 1 else next(iter(t)) for t in terms)
+
+
+def _set_gpr(sim, rxn_id, gpr):
+    """Sets the GPR of a reaction in the model of a COBRApy or REFRAMED simulator"""
+    reactions = sim.model.reactions
+    if isinstance(reactions, dict):
+        # REFRAMED
+        from reframed.io.sbml import parse_gpr_rule
+
+        reactions[rxn_id].gpr = parse_gpr_rule(gpr)
+    else:
+        # COBRApy
+        reactions.get_by_id(rxn_id).gene_reaction_rule = gpr
 
 
 def convert_gpr_to_dnf(model) -> None:
@@ -47,24 +82,25 @@ def convert_gpr_to_dnf(model) -> None:
 
     :param model: A COBRApy or REFRAMED Model or an instance of Simulator
     """
-    sim = get_simulator(model)
+    import warnings
+
+    # get_simulator returns a copy of a Simulator: the GPRs are converted in place
+    sim = model if isinstance(model, Simulator) else get_simulator(model)
     for rxn_id in tqdm(sim.reactions, desc="Converting GPRs to DNF"):
         rxn = sim.get_reaction(rxn_id)
         if not rxn.gpr:
             continue
         try:
-            tree = build_tree(rxn.gpr, Boolean)
-            gpr_dnf = tree.to_dnf().to_infix()
-            # Update the reaction's GPR
-            rxn.gpr = gpr_dnf
+            gpr_dnf = gpr_to_dnf(rxn.gpr)
         except Exception as e:
             # If conversion fails, keep original GPR
-            import warnings
-
             warnings.warn(f"Failed to convert GPR for reaction {rxn_id}: {e}")
+            continue
+        # Update the reaction's GPR in the model
+        _set_gpr(sim, rxn_id, gpr_dnf)
 
 
-def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
+def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"], verbose: bool = False):
     """Split reversible reactions into two irreversible reactions
     These two reactions will proceed in opposite directions. This
     guarentees that all reactions in the model will only allow
@@ -72,6 +108,7 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
 
     :param model: A COBRApy or REFRAMED Model or an instance of
         mewpy.simulation.simulation.Simulator
+    :param verbose: show a progress bar, defaults to False
     :return: A new irreversible model simulator and a reverse mapping.
     :rtype: (Simulator, dict)
 
@@ -83,7 +120,7 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
 
     objective = sim.objective.copy()
     irrev_map = dict()
-    for r_id in tqdm(sim.reactions, "Converting to irreversible"):
+    for r_id in tqdm(sim.reactions, "Converting to irreversible", disable=not verbose):
         lb, _ = sim.get_reaction_bounds(r_id)
         if lb < 0:
             rxn = sim.get_reaction(r_id)
@@ -91,7 +128,8 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
 
             rev_rxn = dict()
             rev_rxn["name"] = rxn.name + " reverse"
-            rev_rxn["lb"] = 0
+            # a forced reverse flux (ub < 0) becomes a positive lower bound of the reverse reaction
+            rev_rxn["lb"] = max(0, -rxn.ub)
             rev_rxn["ub"] = -rxn.lb
             rev_rxn["gpr"] = rxn.gpr
             sth = {k: v * -1 for k, v in rxn.stoichiometry.items()}
@@ -100,7 +138,7 @@ def convert_to_irreversible(model: Union[Simulator, "Model", "CBModel"]):
             rev_rxn["annotations"] = copy(rxn.annotations)
 
             sim.add_reaction(rev_rxn_id, **rev_rxn)
-            sim.set_reaction_bounds(r_id, 0, rxn.ub, False)
+            sim.set_reaction_bounds(r_id, 0, max(0, rxn.ub), False)
 
             irrev_map[r_id] = rev_rxn_id
 
@@ -198,7 +236,7 @@ def __enzime_constraints(
     if prot_mw is None:
         prot_mw = dict()
         for gene in sim.genes:
-            prot_mw[gene] = {"protein": gene[len(sim._g_prefix) :], "mw": 1}
+            prot_mw[gene] = {"protein": sim.to_canonical(gene, "gene"), "mw": 1}
 
     if enz_kcats is None:
         enz_kcats = dict()
@@ -206,11 +244,11 @@ def __enzime_constraints(
             enz_kcats[gene] = dict()
             rxns = sim.get_gene(gene).reactions
             for rxn in rxns:
-                enz_kcats[gene][rxn] = {"protein": gene[len(sim._g_prefix) :], "kcat": 1}
+                enz_kcats[gene][rxn] = {"protein": sim.to_canonical(gene, "gene"), "kcat": 1}
 
     # Add protein pool and species
-    common_protein_pool_id = sim._m_prefix + "prot_pool_c"
-    pool_reaction = sim._r_prefix + "prot_pool_exchange"
+    common_protein_pool_id = sim.to_native("prot_pool_c", "metabolite")
+    pool_reaction = sim.to_native("prot_pool_exchange", "reaction")
 
     sim.add_metabolite(common_protein_pool_id, name="prot_pool [cytoplasm]", compartment=c_compartment)
 
@@ -227,6 +265,7 @@ def __enzime_constraints(
     # Add gene/protein species and draw protein pseudo-reactions
     # MW in kDa, [kDa = g/mmol]
     gene_meta = dict()
+    draw_reactions = set()
     skipped_gene = []
     for gene in tqdm(sim.genes, "Adding gene species"):
         if gene not in prot_mw.keys():
@@ -249,6 +288,7 @@ def __enzime_constraints(
             reversible=False,
             gpr=gene,
         )
+        draw_reactions.add(r_prot_id)
 
     if skipped_gene:
         logger.info(
@@ -258,6 +298,9 @@ def __enzime_constraints(
     # Add enzymes to reactions stoichiometry.
     # 1/Kcats in per hour. Considering kcats in per second.
     for rxn_id in tqdm(sim.reactions, "Adding proteins usage to reactions"):
+        if rxn_id in draw_reactions:
+            # the draw reactions produce the proteins (their GPR is the gene itself); they use no enzyme
+            continue
         rxn = sim.get_reaction(rxn_id)
         if rxn.gpr:
             s = rxn.stoichiometry
@@ -306,7 +349,26 @@ def add_enzyme_constraints(
     .. note::
         This function always returns a new model; the input model is not modified.
     """
-    sim, _ = convert_to_irreversible(model)
-    sim, _ = split_isozymes(sim)
+    sim, irrev_map = convert_to_irreversible(model)
+    sim, iso_map = split_isozymes(sim)
+    if enz_kcats is not None:
+        enz_kcats = _map_kcats(enz_kcats, irrev_map, iso_map)
     sim = __enzime_constraints(sim, prot_mw=prot_mw, enz_kcats=enz_kcats, c_compartment=c_compartment, inline=True)
     return sim
+
+
+def _map_kcats(enz_kcats, irrev_map, iso_map):
+    """Maps kcats given for the original reactions to the reactions created by convert_to_irreversible
+    (reverse reactions) and split_isozymes (one reaction per isozyme). Entries already keyed by the
+    transformed reaction identifiers are kept."""
+    derived = {}
+    for r_id, rev_id in irrev_map.items():
+        derived.setdefault(r_id, []).append(rev_id)
+    mapped = {}
+    for gene, kcats in enz_kcats.items():
+        mapped[gene] = {}
+        for r_id, data in kcats.items():
+            for rx in [r_id] + derived.get(r_id, []):
+                for target in iso_map.get(rx, [rx]):
+                    mapped[gene].setdefault(target, data)
+    return mapped

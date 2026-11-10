@@ -175,3 +175,18 @@ Desktop.ini
 tests/reports/
 examples/models/gecko/eciML1515_batch.xml
 run_tox.sh
+
+# Outputs written by examples/scripts and the example notebooks (run from their own directory)
+examples/solutions.csv
+examples/scripts/data/
+examples/scripts/gecko_*_*.csv
+examples/scripts/CBMODEL_*.csv
+examples/scripts/OPTRAM*_OU_*.csv
+examples/scripts/sMOMEMT*_OU_*.csv
+examples/scripts/protein_reaction_under.csv
+examples/scripts/target-prot-single-pool.txt
+
+# setuptools-generated metadata
+PKG-INFO
+examples/scripts/QualityIndicatorSummary.csv
+examples/scripts/*.pf

@@ -9,7 +9,7 @@ from warnings import warn
 
 from mewpy.simulation import Simulator, SStatus, get_simulator
 from mewpy.solvers import solver_instance
-from mewpy.solvers.solution import to_simulation_result
+from mewpy.solvers.solution import Status, to_simulation_result
 
 from . import CommunityModel
 
@@ -25,6 +25,9 @@ def regComFBA(cmodel, objective=None, maximize=True, constraints=None, obj_frac=
 
     Returns:
         Solution: solution
+
+    Raises:
+        RuntimeError: if the LP solver cannot optimize the quadratic objective
     """
     if isinstance(cmodel, CommunityModel):
         sim = cmodel.get_community_model()
@@ -43,8 +46,7 @@ def regComFBA(cmodel, objective=None, maximize=True, constraints=None, obj_frac=
 
     solver = solver_instance(sim)
 
-    if not constraints:
-        constraints = {}
+    constraints = sim.resolve_keys(constraints, "reaction") if constraints else {}
 
     if not objective:
         objective = sim.get_objective()
@@ -59,7 +61,19 @@ def regComFBA(cmodel, objective=None, maximize=True, constraints=None, obj_frac=
     org_bio = list(sim.community.organisms_biomass.values())
     qobjective = {(rid, rid): 1 for rid in org_bio}
 
-    solution = solver.solve(quadratic=qobjective, minimize=True, constraints=constraints)
+    no_qp = (
+        f"regComFBA minimizes a quadratic objective, which the {type(solver).__name__} solver interface "
+        "cannot optimize; select a solver with quadratic objectives (SCIP, CPLEX or Gurobi) with "
+        "mewpy.solvers.set_default_solver"
+    )
+    try:
+        solution = solver.solve(quadratic=qobjective, minimize=True, constraints=constraints)
+    except (NotImplementedError, ValueError) as error:
+        raise RuntimeError(no_qp) from error
+    # an interface that drops the quadratic term returns objective 0 although the growth rates are not 0
+    if solution.status == Status.OPTIMAL and not solution.fobj:
+        if any(abs(solution.values.get(r_id, 0)) > 1e-9 for r_id in org_bio):
+            raise RuntimeError(no_qp)
 
     result = to_simulation_result(sim, solution.fobj, constraints, sim, solution, regComFBA)
 

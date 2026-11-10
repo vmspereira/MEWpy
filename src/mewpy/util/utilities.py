@@ -186,9 +186,10 @@ def elements(formula):
     all_elements = re.findall(chemical_formula_re, formula)
     atoms = {}
     for atom, count in all_elements:
-        if not count:
-            count = "1"
-        atoms[atom] = atoms.get(atom, 0) + int(count)
+        # counts may be fractional (e.g. 'C1.5'); keep integral counts as int
+        count = float(count) if count else 1.0
+        count = int(count) if count.is_integer() else count
+        atoms[atom] = atoms.get(atom, 0) + count
     return atoms
 
 

@@ -27,12 +27,13 @@ from jmetal.algorithm.multiobjective.nsgaii import NSGAII
 from jmetal.algorithm.multiobjective.spea2 import SPEA2
 from jmetal.core.quality_indicator import GenerationalDistance, EpsilonIndicator, HyperVolume
 from jmetal.lab.experiment import Experiment, Job, generate_summary_from_experiment
-from jmetal.util.evaluator import MultiprocessEvaluator
+# Experiment.run() already runs each Job in its own process and pickles it, so the
+# per-job evaluator must be picklable: a MultiprocessEvaluator (it holds a Pool) is not.
+from jmetal.util.evaluator import SequentialEvaluator
 from jmetal.util.termination_criterion import StoppingByEvaluations
 
 candidate_max_size = 6
 max_evaluations = 100
-N_CPU = 2
 
 
 def configure_experiment(problems: dict, n_run: int):
@@ -63,7 +64,7 @@ def configure_experiment(problems: dict, n_run: int):
                 Job(
                     algorithm=NSGAII(
                         problem=problem,
-                        population_evaluator=MultiprocessEvaluator(N_CPU),
+                        population_evaluator=SequentialEvaluator(),
                         population_size=100,
                         offspring_population_size=100,
                         mutation=mutation,
@@ -79,7 +80,7 @@ def configure_experiment(problems: dict, n_run: int):
                 Job(
                     algorithm=SPEA2(
                         problem=problem,
-                        population_evaluator=MultiprocessEvaluator(N_CPU),
+                        population_evaluator=SequentialEvaluator(),
                         population_size=100,
                         offspring_population_size=100,
                         mutation=mutation,
@@ -95,7 +96,7 @@ def configure_experiment(problems: dict, n_run: int):
                 Job(
                     algorithm=IBEA(
                         problem=problem,
-                        population_evaluator=MultiprocessEvaluator(N_CPU),
+                        population_evaluator=SequentialEvaluator(),
                         kappa=1.,
                         population_size=100,
                         offspring_population_size=100,

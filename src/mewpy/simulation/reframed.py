@@ -23,6 +23,7 @@ Author: Vítor Pereira
 """
 
 import logging
+import warnings
 from collections import OrderedDict
 
 import numpy as np
@@ -98,7 +99,8 @@ class CBModelContainer(ModelContainer):
         return list(self.model.reactions.keys())
 
     def get_reaction(self, r_id: str):
-        if r_id not in self.reactions:
+        r_id = self.resolve(r_id, "reaction")
+        if r_id not in self._native_ids("reaction"):
             raise ValueError(f"Reactions {r_id} does not exist")
         rxn = self.model.reactions[r_id]
         res = {"id": r_id, "name": rxn.name, "lb": rxn.lb, "ub": rxn.ub, "stoichiometry": rxn.stoichiometry}
@@ -111,6 +113,7 @@ class CBModelContainer(ModelContainer):
         return list(self.model.genes.keys())
 
     def get_gene(self, g_id: str):
+        g_id = self.resolve(g_id, "gene")
         g = self.model.genes[g_id]
         gr = self.get_gene_reactions()
         r = gr.get(g_id, [])
@@ -122,6 +125,7 @@ class CBModelContainer(ModelContainer):
         return list(self.model.metabolites.keys())
 
     def get_metabolite(self, m_id: str):
+        m_id = self.resolve(m_id, "metabolite")
         met = self.model.metabolites[m_id]
         res = {"id": m_id, "name": met.name, "compartment": met.compartment, "formula": met.metadata.get("FORMULA", "")}
         return AttrDict(res)
@@ -222,7 +226,8 @@ class Simulation(CBModelContainer, Simulator):
             # If setting the solver fails, just use reframed's default
             pass
         # keep track on reaction bounds changes
-        self._environmental_conditions = OrderedDict() if envcond is None else envcond
+        self._environmental_conditions = OrderedDict() if envcond is None else self._resolve_mapping(envcond)
+        constraints = self._resolve_mapping(constraints)
         self._constraints = (
             dict()
             if constraints is None
@@ -230,7 +235,7 @@ class Simulation(CBModelContainer, Simulator):
         )
 
         self.solver = solver
-        self._reference = reference
+        self._reference = self._resolve_mapping(reference)
         self._gene_to_reaction = None
         self._reset_solver = reset_solver
         self.reverse_syntax = [("_b", "_f")]
@@ -260,6 +265,18 @@ class Simulation(CBModelContainer, Simulator):
             # Model doesn't have biomass_reaction attribute or detection failed
             pass
 
+    def _solver_instance(self):
+        """A reframed solver for the model; with SCIP, its zero threshold is set below the model's smallest
+        coefficient (see mewpy.solvers.pyscipopt_solver.adapt_scip_epsilon)."""
+        solver = solver_instance(self.model)
+        problem = getattr(solver, "problem", None)
+        if type(problem).__module__.startswith("pyscipopt"):
+            from mewpy.solvers.pyscipopt_solver import adapt_scip_epsilon
+
+            coefficients = [abs(v) for rxn in self.model.reactions.values() for v in rxn.stoichiometry.values() if v]
+            adapt_scip_epsilon(problem, min(coefficients) if coefficients else None)
+        return solver
+
     def _set_model_reaction_bounds(self, r_id, bounds):
         if isinstance(bounds, tuple):
             lb = bounds[0]
@@ -285,6 +302,7 @@ class Simulation(CBModelContainer, Simulator):
 
     @objective.setter
     def objective(self, objective):
+        objective = self._resolve_objective(objective)
         a = self.model.get_objective()
         d = {k: 0 for k in a}
         if isinstance(objective, str):
@@ -300,7 +318,10 @@ class Simulation(CBModelContainer, Simulator):
         self.model.set_objective(d)
 
     def set_objective(self, reaction_id: str):
-        self.model.set_objective({reaction_id: 1})
+        # replaces the objective, as COBRApy does: the other reactions' coefficients become 0
+        objective = {r_id: 0 for r_id in self.model.get_objective()}
+        objective[self.resolve(reaction_id, "reaction")] = 1
+        self.model.set_objective(objective)
 
     def update(self):
         """Updates the model"""
@@ -335,12 +356,14 @@ class Simulation(CBModelContainer, Simulator):
         meta = Metabolite(id, name=name, compartment=compartment)
         meta.metadata["FORMULA"] = formula
         self.model.add_metabolite(meta)
+        self._invalidate_id_cache()
 
     def add_gene(self, id, name):
         from reframed.core.cbmodel import Gene
 
         g = Gene(id, name)
         self.model.add_gene(g)
+        self._invalidate_id_cache()
 
     def add_reaction(
         self,
@@ -385,7 +408,7 @@ class Simulation(CBModelContainer, Simulator):
         _reaction_type = reaction_type_map.get(reaction_type, None)
         reaction = CBReaction(
             rxn_id,
-            stoichiometry=stoichiometry,
+            stoichiometry=self.resolve_keys(stoichiometry, "metabolite"),
             name=name,
             lb=lb,
             ub=ub,
@@ -397,6 +420,7 @@ class Simulation(CBModelContainer, Simulator):
 
         reaction.metadata = annotations
         self.model.add_reaction(reaction, replace=replace)
+        self._invalidate_id_cache()
 
     def remove_reaction(self, r_id: str):
         """Removes a reaction from the model.
@@ -404,7 +428,8 @@ class Simulation(CBModelContainer, Simulator):
         Args:
             r_id (str): The reaction identifier.
         """
-        self.model.remove_reaction(r_id)
+        self.model.remove_reaction(self.resolve(r_id, "reaction"))
+        self._invalidate_id_cache()
 
     def remove_reactions(self, rxn_ids):
         """_summary_
@@ -412,12 +437,13 @@ class Simulation(CBModelContainer, Simulator):
         Args:
             rxn_ids (List[str]): _description_
         """
-        for r_id in rxn_ids:
-            self.model.remove_reactions(r_id)
+        # reframed's remove_reactions takes a list (a single id string was iterated char by char)
+        self.model.remove_reactions(self.resolve_many(rxn_ids, "reaction"))
+        self._invalidate_id_cache()
 
     def update_stoichiometry(self, rxn_id: str, stoichiometry: dict):
-        rxn = self.model.reactions[rxn_id]
-        rxn.stoichiometry = OrderedDict(stoichiometry)
+        rxn = self.model.reactions[self.resolve(rxn_id, "reaction")]
+        rxn.stoichiometry = OrderedDict(self.resolve_keys(stoichiometry, "metabolite"))
         self.model._needs_update = True
         self.solver = None
 
@@ -443,36 +469,6 @@ class Simulation(CBModelContainer, Simulator):
         ]
         return reacs
 
-    def get_transport_reactions(self):
-        """
-        :returns: The list of transport reactions.
-        """
-        transport_reactions = []
-        for rx in self.reactions:
-            s_set = set()
-            p_set = set()
-            s = self.model.reactions[rx].get_substrates()
-            for x in s:
-                c = self.model.metabolites[x].compartment
-                s_set.add(c)
-            p = self.model.reactions[rx].get_products()
-            for x in p:
-                c = self.model.metabolites[x].compartment
-                p_set.add(c)
-            if len(s) == 1 and len(p) == 1 and len(p_set.intersection(s_set)) == 0:
-                transport_reactions.append(rx)
-        return transport_reactions
-
-    def get_transport_genes(self):
-        """Returns the list of genes that only catalyze transport reactions."""
-        trp_rxs = self.get_transport_reactions()
-        r_g = self.get_gene_reactions()
-        genes = []
-        for g, rxs in r_g.items():
-            if set(rxs).issubset(set(trp_rxs)):
-                genes.append(g)
-        return genes
-
     def reverse_reaction(self, reaction_id: str):
         """
         Identify if a reaction is reversible and returns the
@@ -485,6 +481,7 @@ class Simulation(CBModelContainer, Simulator):
         # NOTE: String slicing approach is efficient and clear for simple suffix matching.
         # Regex would add complexity without significant benefit.
 
+        reaction_id = self.resolve(reaction_id, "reaction")
         rxn = self.model.reactions[reaction_id]
         reactions = self.model.reactions
         if rxn.lb < 0:
@@ -524,7 +521,7 @@ class Simulation(CBModelContainer, Simulator):
         return self.model.metabolite_reaction_lookup()
 
     def metabolite_elements(self, metabolite_id):
-        formula = self.model.metabolites[metabolite_id].metadata["FORMULA"]
+        formula = self.model.metabolites[self.resolve(metabolite_id, "metabolite")].metadata["FORMULA"]
         return elements(formula)
 
     def get_reaction_bounds(self, reaction):
@@ -533,6 +530,7 @@ class Simulation(CBModelContainer, Simulator):
         :param reaction: str, reaction ID
         :return: lb(s), ub(s), tuple
         """
+        reaction = self.resolve(reaction, "reaction")
         lb, ub = self.model.reactions[reaction].lb, self.model.reactions[reaction].ub
         # return lb if lb > -np.inf else ModelConstants.REACTION_LOWER_BOUND,\
         #    ub if ub < np.inf else ModelConstants.REACTION_UPPER_BOUND
@@ -546,6 +544,7 @@ class Simulation(CBModelContainer, Simulator):
         :param float ub: upper bound
         :param bool track: if the changes are to be logged. Default True
         """
+        reaction = self.resolve(reaction, "reaction")
         if track:
             if reaction in self.get_uptake_reactions():
                 self._environmental_conditions[reaction] = (lb, ub)
@@ -600,6 +599,10 @@ class Simulation(CBModelContainer, Simulator):
         :param float scalefactor: A positive scaling factor for the solver. Default None.
         :param solver: An instance of the solver.
         """
+        # ids may be given with or without the SBML prefix
+        objective = self._resolve_objective(objective)
+        constraints = self.resolve_keys(constraints)
+        reference = self._resolve_mapping(reference)
 
         if callable(method):
             return self._simulate_callable(
@@ -618,36 +621,44 @@ class Simulation(CBModelContainer, Simulator):
             else:
                 simul_constraints.update(constraints)
 
+        reference_methods = (SimulationMethod.lMOMA, SimulationMethod.MOMA, SimulationMethod.ROOM)
         if solver is not None:
             a_solver = solver
-        elif self._reset_solver:
-            a_solver = solver_instance(self.model)
+        elif self._reset_solver or method in reference_methods:
+            # reframed keeps the MOMA/ROOM rows (built from the first reference) on a reused solver
+            a_solver = self._solver_instance()
         else:
             if self.solver is None:
-                self.solver = solver_instance(self.model)
+                self.solver = self._solver_instance()
             a_solver = self.solver
 
-        # scales the model if a scalling factor is defined.
-        # ... scalling should be implemented at the solver level.
-        if scalefactor:
-            for _, rxn in self.model.reactions.items():
-                rxn.lb = rxn.lb * scalefactor
-                rxn.ub = rxn.ub * scalefactor
-            if simul_constraints:
-                for idx, constraint in simul_constraints.items():
-                    if isinstance(constraint, (int, float)):
-                        simul_constraints[idx] = constraint * scalefactor
-                    elif isinstance(constraint, tuple):
-                        simul_constraints[idx] = tuple(x * scalefactor for x in constraint)
-                    else:
-                        raise ValueError("Could not scale the model")
-
         # NOTE: Could use Python 3.10+ match/case for cleaner method dispatch if minimum version is raised
-        if method in [SimulationMethod.lMOMA, SimulationMethod.MOMA, SimulationMethod.ROOM] and reference is None:
+        if method in reference_methods and reference is None:
             reference = self.reference
 
+        # scales the problem if a scalling factor is defined. The scaled bounds are passed to the
+        # solver as temporary constraints, since a solver built from the model keeps its own bounds.
+        if scalefactor:
+            scaled = OrderedDict(
+                (r_id, (rxn.lb * scalefactor, rxn.ub * scalefactor)) for r_id, rxn in self.model.reactions.items()
+            )
+            for idx, constraint in simul_constraints.items():
+                if isinstance(constraint, (int, float)):
+                    scaled[idx] = constraint * scalefactor
+                elif isinstance(constraint, tuple):
+                    scaled[idx] = tuple(x * scalefactor for x in constraint)
+                else:
+                    raise ValueError("Could not scale the model")
+            simul_constraints = scaled
+            if reference is not None:
+                reference = {r_id: value * scalefactor for r_id, value in reference.items()}
+
+        if method == SimulationMethod.MOMA and MOMA is lMOMA:
+            warnings.warn("reframed provides no quadratic MOMA; running lMOMA instead.", UserWarning)
+
         if method == SimulationMethod.FBA:
-            get_values = not slim
+            # only reaction fluxes: a reused solver may also hold pFBA auxiliary variables
+            get_values = False if slim else list(self.model.reactions)
             solution = FBA(
                 self.model,
                 objective=objective,
@@ -663,7 +674,7 @@ class Simulation(CBModelContainer, Simulator):
                 minimize=not maximize,
                 constraints=simul_constraints,
                 solver=a_solver,
-                obj_frac=0.999,
+                obj_frac=ModelConstants.PFBA_OBJ_FRAC,
             )
         elif method == SimulationMethod.lMOMA:
             solution = lMOMA(self.model, constraints=simul_constraints, reference=reference, solver=a_solver)
@@ -677,33 +688,30 @@ class Simulation(CBModelContainer, Simulator):
         else:
             raise Exception("Unknown method to perform the simulation.")
 
-        # undoes the model scaling
+        # undoes the scaling
         if scalefactor:
-            for _, rxn in self.model.reactions.items():
-                rxn.lb = rxn.lb / scalefactor
-                rxn.ub = rxn.ub / scalefactor
             if solution.status in (s_status.OPTIMAL, s_status.SUBOPTIMAL):
                 solution.fobj = solution.fobj / scalefactor
-                for x, y in solution.values.items():
+                for x, y in (solution.values or {}).items():
                     solution.values[x] = y / scalefactor
 
+        status = self.__status_mapping[solution.status]
+        solved = status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL)
         if slim:
-            return solution.fobj
+            return solution.fobj if solved else None
 
-        else:
-            status = self.__status_mapping[solution.status]
-            result = SimulationResult(
-                self,
-                solution.fobj,
-                fluxes=solution.values,
-                status=status,
-                envcond=self.environmental_conditions,
-                model_constraints=self._constraints.copy(),
-                simul_constraints=constraints,
-                maximize=maximize,
-                method=method,
-            )
-            return result
+        result = SimulationResult(
+            self,
+            solution.fobj if solved else None,
+            fluxes=solution.values if solved else None,
+            status=status,
+            envcond=self.environmental_conditions,
+            model_constraints=self._constraints.copy(),
+            simul_constraints=dict(constraints) if constraints else None,
+            maximize=self._optimised_sense(method, maximize),
+            method=method,
+        )
+        return result
 
     def FVA(
         self, reactions=None, obj_frac=0.9, constraints=None, loopless=False, internal=None, solver=None, format="dict"
@@ -724,6 +732,7 @@ class Simulation(CBModelContainer, Simulator):
                   or pandas.DataFrame with columns ['Reaction ID', 'Minimum', 'Maximum'] if format='df'.
 
         """
+        constraints = self.resolve_keys(constraints)
         simul_constraints = {}
         if constraints:
             simul_constraints.update(
@@ -732,9 +741,9 @@ class Simulation(CBModelContainer, Simulator):
         if reactions is None:
             _reactions = self.reactions
         elif isinstance(reactions, str):
-            _reactions = [reactions]
+            _reactions = [self.resolve(reactions, "reaction")]
         elif isinstance(reactions, list):
-            _reactions = reactions
+            _reactions = self.resolve_many(reactions, "reaction")
         else:
             raise ValueError("Invalid reactions.")
 
@@ -747,7 +756,7 @@ class Simulation(CBModelContainer, Simulator):
             constraints=simul_constraints,
             loopless=loopless,
             internal=internal,
-            solver=solver,
+            solver=solver if solver is not None else self._solver_instance(),
         )
         if format == "df":
             import pandas as pd
@@ -775,7 +784,7 @@ class GeckoSimulation(Simulation):
         protein_prefix=None,
     ):
         super(GeckoSimulation, self).__init__(model, envcond, constraints, solver, reference, reset_solver)
-        self.protein_prefix = protein_prefix if protein_prefix else "R_draw_prot_"
+        self.protein_prefix = protein_prefix if protein_prefix else self._draw_protein_prefix()
         self._essential_proteins = None
 
     @property
@@ -790,7 +799,16 @@ class GeckoSimulation(Simulation):
     def protein_rev_reactions(self):
         return self.model.protein_rev_reactions
 
+    def _draw_protein_prefix(self):
+        """The prefix of the protein draw reactions as this model names them: 'R_draw_prot_' or 'draw_prot_'."""
+        candidates = (self.to_native("draw_prot_", "reaction"), "draw_prot_")
+        for prefix in candidates:
+            if any(r_id.startswith(prefix) for r_id in self.reactions):
+                return prefix
+        return candidates[0]
+
     def essential_proteins(self, min_growth=0.01):
+        """Proteins (ids, as in self.proteins) whose draw reaction knockout leaves growth below min_growth x WT."""
         if self._essential_proteins is not None:
             return self._essential_proteins
         wt_solution = self.simulate()
@@ -804,7 +822,7 @@ class GeckoSimulation(Simulation):
                 if (
                     res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth
                 ) or res.status == SStatus.INFEASIBLE:
-                    self._essential_proteins.append(rxn)
+                    self._essential_proteins.append(p)
         return self._essential_proteins
 
     def protein_reactions(self, protein: str):
@@ -872,7 +890,7 @@ class GeckoSimulation(Simulation):
         """
         if kcat <= 0:
             raise ValueError("kcat value needs to be positive.")
-        rx = self.model.reactions[reaction]
+        rx = self.model.reactions[self.resolve(reaction, "reaction")]
         st = rx.stoichiometry
         mets = [x for x in list(st.keys()) if protein in x]
         if len(mets) == 1:

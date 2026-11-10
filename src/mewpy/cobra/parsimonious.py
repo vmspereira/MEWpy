@@ -75,8 +75,8 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
 
     solver.update()
 
-    # add biomass constraint
-    pre_solution = sim.simulate(constraints=constraints)
+    # add biomass constraint (the optimum of the objective being used)
+    pre_solution = sim.simulate(objective=objective, constraints=constraints)
 
     if pre_solution.status != SStatus.OPTIMAL:
         return pre_solution
@@ -93,8 +93,10 @@ def pFBA(model, objective=None, reactions=None, constraints=None, obj_frac=None)
             proteins = sim.proteins
             if proteins:
                 reactions = [f"{sim.protein_prefix}{protein}" for protein in proteins]
-        except AttributeError:
+        except (AttributeError, NotImplementedError):
             # Simulator doesn't have protein constraints (not a GECKO-style model)
+            pass
+        if not reactions:
             reactions = sim.reactions
 
     sobjective = dict()

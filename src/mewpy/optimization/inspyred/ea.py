@@ -100,10 +100,15 @@ class EA(AbstractEA):
     def get_population_size(self):
         return self.population_size
 
+    def _prng(self):
+        """A random generator seeded with the user seed, or with the time when no seed was given."""
+        prng = Random()
+        prng.seed(time() if self.seed is None else self.seed)
+        return prng
+
     def _run_so(self):
         """Runs a single objective EA optimization"""
-        prng = Random()
-        prng.seed(time())
+        prng = self._prng()
 
         if self.mp:
             self.evaluator = get_evaluator(self.ea_problem, n_mp=cpu_count())
@@ -139,8 +144,7 @@ class EA(AbstractEA):
 
     def _run_mo(self):
         """Runs a multi objective EA (NSGAII) optimization"""
-        prng = Random()
-        prng.seed(time())
+        prng = self._prng()
 
         if self.mp:
             self.evaluator = get_evaluator(self.ea_problem, n_mp=cpu_count())
@@ -192,6 +196,8 @@ class EA(AbstractEA):
             values = self.problem.decode(val)
             const = self.problem.solution_to_constraints(values)
             solution = Solution(values, obj, const)
+            # the EA representation: decode is not always invertible (see AbstractProblem.simplify)
+            solution.encoded = set(val)
             p.append(solution)
         return p
 

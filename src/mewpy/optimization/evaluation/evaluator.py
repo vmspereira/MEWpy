@@ -23,20 +23,57 @@ Author: Vitor Pereira
 import math
 from abc import ABCMeta, abstractmethod
 
+from mewpy.util.constants import EAConstants
+
 
 class EvaluationFunction:
     __metaclass__ = ABCMeta
 
-    def __init__(self, maximize: bool = True, worst_fitness: float = 0.0):
+    def __init__(self, maximize: bool = True, worst_fitness: float = None):
         """This abstract class should be extended by all evaluation functions.
 
         :param maximize: Wether to maximize (True) or minimize (False), defaults to True
         :type maximize: bool, optional
-        :param worst_fitness: The worst fitness value, defaults to 0.0
+        :param worst_fitness: The fitness of infeasible or failed solutions. Defaults to None, \
+            meaning EAConstants.MIN_THRESHOLD when maximizing and EAConstants.MAX_THRESHOLD when \
+            minimizing.
         :type worst_fitness: float, optional
         """
         self.worst_fitness = worst_fitness
         self.maximize = maximize
+
+    @property
+    def worst_fitness(self):
+        if self._worst_fitness is not None:
+            return self._worst_fitness
+        # a direction-free default such as 0.0 would be the best value of a minimized objective
+        return EAConstants.MIN_THRESHOLD if self.maximize else EAConstants.MAX_THRESHOLD
+
+    @worst_fitness.setter
+    def worst_fitness(self, value):
+        self._worst_fitness = value
+
+    def _native_id(self, result, identifier, kind="reaction"):
+        """An id, given with or without its SBML prefix, in the native form of the simulator that
+        produced `result`: fluxes are keyed by native ids. Cached per simulator."""
+        simulator = getattr(result, "model", None)
+        if identifier is None or not hasattr(simulator, "resolve"):
+            return identifier
+        cache = self.__dict__.get("_id_cache")
+        if cache is None or cache[0] is not simulator:
+            cache = (simulator, {})
+            self._id_cache = cache
+        key = (identifier, kind)
+        if key not in cache[1]:
+            cache[1][key] = simulator.resolve(identifier, kind)
+        return cache[1][key]
+
+    def __getstate__(self):
+        # caches hold simulators: rebuilt where the function is unpickled
+        state = self.__dict__.copy()
+        state.pop("_id_cache", None)
+        state.pop("_sim_cache", None)
+        return state
 
     @abstractmethod
     def get_fitness(self, simul_results, candidate, **kwargs):
@@ -200,11 +237,11 @@ class EvaluationFunction:
 
 class PhenotypeEvaluationFunction(EvaluationFunction):
 
-    def __init__(self, maximize=True, worst_fitness=0.0):
+    def __init__(self, maximize=True, worst_fitness=None):
         super(PhenotypeEvaluationFunction, self).__init__(maximize=maximize, worst_fitness=worst_fitness)
 
 
 class KineticEvaluationFunction(EvaluationFunction):
 
-    def __init__(self, maximize=True, worst_fitness=0.0):
+    def __init__(self, maximize=True, worst_fitness=None):
         super(KineticEvaluationFunction, self).__init__(maximize=maximize, worst_fitness=worst_fitness)

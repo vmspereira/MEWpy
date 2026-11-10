@@ -41,6 +41,13 @@ class GERMModel(ModelContainer):
 
         self.model = model
 
+    def _id_count(self, kind):
+        # the GERM model containers return copies; count the backing dicts instead
+        container = getattr(self.model, "_" + self._ID_KINDS[kind], None)
+        if isinstance(container, dict):
+            return len(container)
+        return super()._id_count(kind)
+
     # -----------------------------------------------------------------------------
     # Metabolic static attributes
     # -----------------------------------------------------------------------------
@@ -116,7 +123,7 @@ class GERMModel(ModelContainer):
         :return: a reaction dict
         """
         if self.model.is_metabolic():
-            reaction = self.model.get(r_id)
+            reaction = self.model.get(self.resolve(r_id, "reaction"))
             if reaction:
                 reaction = {
                     "id": reaction.id,
@@ -136,7 +143,7 @@ class GERMModel(ModelContainer):
         :return: a gene dict
         """
         if self.model.is_metabolic():
-            gene = self.model.get(g_id)
+            gene = self.model.get(self.resolve(g_id, "gene"))
             if gene:
                 gene = {"id": gene.id, "name": gene.name, "reactions": list(gene.reactions.keys())}
                 return AttrDict(gene)
@@ -154,6 +161,12 @@ class GERMModel(ModelContainer):
                 compartment = {"id": c_id, "name": compartment, "external": c_id == self.model.external_compartment}
                 return AttrDict(compartment)
         return AttrDict()
+
+    def _compartment_of(self, m_id):
+        return self.model.get(m_id).compartment
+
+    def _formula_of(self, m_id):
+        return self.model.get(m_id).formula or ""
 
     def get_gene_reactions(self) -> Dict[str, List[str]]:
         """
@@ -181,7 +194,7 @@ class GERMModel(ModelContainer):
         """
         if self.model.is_metabolic():
 
-            reaction = self.model.get(reaction_id)
+            reaction = self.model.get(self.resolve(reaction_id, "reaction"))
 
             if reaction:
 
@@ -200,7 +213,7 @@ class GERMModel(ModelContainer):
         :return:
         """
         if self.model.is_metabolic():
-            self.model.objective = reaction
+            self.model.objective = self._resolve_objective(reaction)
 
     # -----------------------------------------------------------------------------
     # Regulatory static attributes
@@ -307,12 +320,12 @@ class Simulation(GERMModel, Simulator):
 
         self.model = model
 
-        self.environmental_conditions = envcond
-        self.constraints = constraints
+        self.environmental_conditions = self._resolve_mapping(envcond)
+        self.constraints = self._resolve_mapping(constraints)
 
         self._essential_reactions = None
         self._essential_genes = None
-        self._reference = reference
+        self._reference = self._resolve_mapping(reference)
         self._reset_solver = reset_solver
 
         self._m_r_lookup = None
@@ -344,7 +357,7 @@ class Simulation(GERMModel, Simulator):
         :param value: a dictionary of the objective function, namely the variable identifier and its coefficient
         :return:
         """
-        self.model.objective = value
+        self.model.objective = self._resolve_objective(value)
 
     @property
     def reference(self) -> Dict[str, Union[float, int]]:
@@ -436,7 +449,7 @@ class Simulation(GERMModel, Simulator):
             if (
                 res.status == SStatus.OPTIMAL and res.objective_value < wt_growth * min_growth
             ) or res.status == SStatus.INFEASIBLE:
-                self._essential_genes.append(gene)
+                self._essential_genes.append(gene.id)
 
             values[gene.id] = gene_coefficient
 
@@ -452,6 +465,7 @@ class Simulation(GERMModel, Simulator):
         if not self.model.is_metabolic():
             return []
 
+        active_genes = set(self.resolve_many(active_genes, "gene"))
         values = {gene.id: 1.0 if gene.id in active_genes else 0.0 for gene in self.model.yield_genes()}
 
         return [rxn.id for rxn in self.model.yield_reactions() if rxn.gpr.is_none or rxn.gpr.evaluate(values=values)]
@@ -473,6 +487,7 @@ class Simulation(GERMModel, Simulator):
         else:
             if reaction.id not in self.model.reactions:
                 self.model.add(reaction, comprehensive=comprehensive, history=False)
+        self._invalidate_id_cache()
 
     def remove_reaction(self, reaction: Reaction, remove_orphans: bool = True):
         """
@@ -485,6 +500,7 @@ class Simulation(GERMModel, Simulator):
             return
 
         self.model.remove(reaction, remove_orphans=remove_orphans, history=False)
+        self._invalidate_id_cache()
 
     def get_uptake_reactions(self) -> List[str]:
         """
@@ -496,37 +512,6 @@ class Simulation(GERMModel, Simulator):
 
         return [rxn.id for rxn in self.model.yield_exchanges() if rxn.reversibility or rxn.lower_bound < 0]
 
-    def get_transport_reactions(self) -> List[str]:
-        """
-        Get the transport reactions
-        :return: The list of transport reactions.
-        """
-        if not self.model.is_metabolic():
-            return []
-
-        ext = self.model.external_compartment
-
-        return [rxn.id for rxn in self.model.yield_reactions() if ext in rxn.compartments and len(rxn.compartments) > 1]
-
-    def get_transport_genes(self) -> List[str]:
-        """
-        Get genes associated with transport reactions
-        :return: the list genes associated with transport reactions.
-        """
-        if not self.model.is_metabolic():
-            return []
-
-        ext = self.model.external_compartment
-
-        genes = set()
-
-        for rxn in self.model.yield_reactions():
-
-            if ext in rxn.compartments and len(rxn.compartments) > 1:
-                genes.update(rxn.genes.keys())
-
-        return list(genes)
-
     def reverse_reaction(self, reaction_id: str) -> Union[str, None]:
         """
         Identify if a reaction is reversible and returns the reverse reaction if it is the case.
@@ -534,6 +519,7 @@ class Simulation(GERMModel, Simulator):
         :param reaction_id: a reaction identifier
         :return: a reverse reaction identifier or None
         """
+        reaction_id = self.resolve(reaction_id, "reaction")
         reaction = self.model.get(reaction_id)
         if reaction:
             if reaction.reversibility:
@@ -565,6 +551,7 @@ class Simulation(GERMModel, Simulator):
         :param reaction: reaction identifier
         :return: a tuple with the reaction bounds
         """
+        reaction = self.resolve(reaction, "reaction")
         if reaction in self.constraints:
             lb, ub = self.constraints[reaction]
 
@@ -695,9 +682,22 @@ class Simulation(GERMModel, Simulator):
             return Solution(status=solver_status, fobj=result.objective_value, values=result.fluxes)
 
         # Fallback to native GERM pFBA for regulatory models or pure metabolic models
-        pfba = _pFBA(model).build()
         solver_kwargs = {"linear": objective, "minimize": minimize, "constraints": constraints}
-        sol = pfba.optimize(solver_kwargs=solver_kwargs, to_solver=True, get_values=True)
+        try:
+            pfba = _pFBA(model).build()
+            # the fraction of the optimum kept is shared by every backend
+            sol = pfba.optimize(
+                fraction=ModelConstants.PFBA_OBJ_FRAC, solver_kwargs=solver_kwargs, to_solver=True, get_values=True
+            )
+        except RuntimeError:
+            # _pFBA raises when its first FBA step has no optimum; report that status like the other methods.
+            # (Status is a local name in this function because of the import above, hence the alias.)
+            from mewpy.solvers.solution import Status as SolverStatus
+
+            fba_sol = self._fba(model, objective, minimize, constraints)
+            if fba_sol.status != SolverStatus.OPTIMAL:
+                return fba_sol
+            raise
         return sol
 
     @dispatcher.register(SimulationMethod.MOMA)
@@ -728,9 +728,11 @@ class Simulation(GERMModel, Simulator):
         reference: Dict[str, Union[int, float]] = None,
         scalefactor: float = None,
         solver: Union["Solver", "CplexSolver", "GurobiSolver", "OptLangSolver"] = None,
+        slim: bool = False,
     ) -> SimulationResult:
         """
         Simulates a phenotype for a given objective and set of constraints using the specified method.
+        With slim=True only the objective value is returned (None without an optimum).
         Reference wild-type conditions are also accepted
 
         :param objective: a dictionary with the objective function
@@ -743,6 +745,10 @@ class Simulation(GERMModel, Simulator):
         :return: SimulationResult object that holds the model, objective, solution values, status,
         environmental conditions and further constraints
         """
+        # ids may be given with or without the SBML prefix
+        objective = self._resolve_objective(objective)
+        constraints = self.resolve_keys(constraints)
+
         if not objective:
 
             objective = {}
@@ -753,23 +759,31 @@ class Simulation(GERMModel, Simulator):
         if not constraints:
             constraints = {}
 
-        simulation_constraints = {**constraints, **self.constraints, **self.environmental_conditions}
+        # simulation constraints override persistent ones; environmental conditions win (as in COBRA/REFRAMED)
+        simulation_constraints = {**self.constraints, **constraints, **self.environmental_conditions}
+
+        registry = type(self).dispatcher.registry
+        if method not in registry:
+            raise ValueError(f"Unknown simulation method {method!r}; use one of {[str(m) for m in registry]}")
 
         solution: Solution = self.dispatcher(
             method, model=self.model, objective=objective, minimize=not maximize, constraints=simulation_constraints
         )
 
         status = self.__status_mapping[solution.status]
+        solved = status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL)
+        if slim:
+            return solution.fobj if solved else None
 
         return SimulationResult(
             model=self.model,
-            objective_value=solution.fobj,
-            fluxes=solution.values,
+            objective_value=solution.fobj if solved else None,
+            fluxes=solution.values if solved else None,
             status=status,
-            envcond=self.environmental_conditions,
-            model_constraints=self.constraints,
-            simul_constraints=constraints,
-            maximize=maximize,
+            envcond=dict(self.environmental_conditions),
+            model_constraints=dict(self.constraints),
+            simul_constraints=dict(constraints),
+            maximize=self._optimised_sense(method, maximize),
             method=method,
         )
 
@@ -799,16 +813,21 @@ class Simulation(GERMModel, Simulator):
         :return: Flux variation ranges. Returns dict[str, list[float, float]] if format='dict',
                  or pandas.DataFrame with columns ['Reaction ID', 'Minimum', 'Maximum'] if format='df'.
         """
+        # ids may be given with or without the SBML prefix
+        constraints = self.resolve_keys(constraints)
+        if isinstance(reactions, str):
+            reactions = [self.resolve(reactions, "reaction")]
+        elif reactions is not None:
+            reactions = self.resolve_many(reactions, "reaction")
 
         # Check if this is a SimulatorBasedMetabolicModel and delegate to external simulator
         from ..germ.models.simulator_model import SimulatorBasedMetabolicModel
 
         if isinstance(self.model, SimulatorBasedMetabolicModel):
             # Prepare constraints for external simulator
-            external_constraints = {}
+            external_constraints = dict(self.constraints)
             if constraints:
                 external_constraints.update(constraints)
-            external_constraints.update(self.constraints)
             external_constraints.update(self.environmental_conditions)
 
             # Delegate to external simulator
@@ -819,14 +838,14 @@ class Simulation(GERMModel, Simulator):
         if not constraints:
             constraints = {}
 
-        simulation_constraints = {**constraints, **self.constraints, **self.environmental_conditions}
+        simulation_constraints = {**self.constraints, **constraints, **self.environmental_conditions}
 
         solution = fva(model=self.model, fraction=obj_frac, reactions=reactions, constraints=simulation_constraints)
 
+        # the same layouts as the other backends: {id: [min, max]}, or columns Reaction ID, Minimum, Maximum
+        variability = {r_id: [float(row.iloc[0]), float(row.iloc[1])] for r_id, row in solution.iterrows()}
         if format == "df":
-            df = pd.concat([pd.DataFrame(solution.index), solution], axis=1)
-            df.columns = ["Reaction ID", "Minimum", "Maximum"]
+            rows = [[r_id, low, high] for r_id, (low, high) in variability.items()]
+            return pd.DataFrame(rows, columns=["Reaction ID", "Minimum", "Maximum"])
 
-            return df
-
-        return solution.to_dict()
+        return variability

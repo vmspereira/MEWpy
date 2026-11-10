@@ -22,9 +22,38 @@ from math import inf
 from warnings import warn
 
 from pyscipopt import Model as SCIPModel
+from pyscipopt import quicksum
 
 from .solution import Solution, Status
 from .solver import Parameter, Solver, VarType, default_parameters
+
+# SCIP accepts changes to the model only in the problem stage (SCIP_STAGE_PROBLEM)
+_SCIP_STAGE_PROBLEM = 1
+# lowest numerics/epsilon set automatically: at 1e-12 SCIP's LP failed on ecYeastGEM (GECKO)
+_MIN_EPSILON = 1e-11
+
+
+def adapt_scip_epsilon(problem, min_abs_coef):
+    """Lower SCIP's zero threshold below the smallest constraint coefficient of the model.
+
+    SCIP treats values below numerics/epsilon (default 1e-9) as zero. GECKO models have kcat-derived
+    coefficients down to ~3e-10, and with the default threshold SCIP's presolve returned OPTIMAL 0.0 for a
+    knockout that GLPK solves to the wild-type growth. Sets epsilon to min_abs_coef / 10 (not below 1e-11)
+    when that is lower than the current value; models without such coefficients are left unchanged.
+
+    :param problem: a pyscipopt Model.
+    :param min_abs_coef: the smallest nonzero |coefficient| of the constraints (None if unknown).
+    :returns: True if the parameter was changed.
+    """
+    if not min_abs_coef:
+        return False
+    target = max(min_abs_coef / 10, _MIN_EPSILON)
+    if problem.getParam("numerics/epsilon") <= target:
+        return False
+    if problem.getStage() > _SCIP_STAGE_PROBLEM:
+        problem.freeTransform()
+    problem.setParam("numerics/epsilon", target)
+    return True
 
 
 class PySCIPOptSolver(Solver):
@@ -51,6 +80,10 @@ class PySCIPOptSolver(Solver):
 
         # Cache constraint data for reconstruction (needed for SCIP's change_coefficients limitation)
         self._constr_data = {}  # {constr_id: (lhs, sense, rhs)}
+        # smallest nonzero |coefficient| in the constraints (see adapt_scip_epsilon)
+        self._min_abs_coef = None
+        # epigraph variable and constraint of a quadratic objective (see set_objective)
+        self._quadratic_objective = None
 
         # Caching for efficient updates
         self._cached_lin_obj = {}
@@ -83,6 +116,11 @@ class PySCIPOptSolver(Solver):
         if model:
             self.build_problem(model)
 
+    def _to_problem_stage(self):
+        """Free the transformed problem left by a previous solve so the model can be modified."""
+        if self.problem.getStage() > _SCIP_STAGE_PROBLEM:
+            self.problem.freeTransform()
+
     def add_variable(self, var_id, lb=-inf, ub=inf, vartype=VarType.CONTINUOUS, update=True):
         """Add a variable to the current problem.
 
@@ -109,6 +147,7 @@ class PySCIPOptSolver(Solver):
             vartypes (list): variable types
         """
 
+        self._to_problem_stage()
         for var_id, lb, ub, vartype in zip(var_ids, lbs, ubs, vartypes):
             # Handle infinities
             lb = None if lb == -inf else lb
@@ -181,12 +220,10 @@ class PySCIPOptSolver(Solver):
             rhs (list): right-hand side of equations
         """
 
+        self._to_problem_stage()
         for constr_id, lh, sense, rh in zip(constr_ids, lhs, senses, rhs):
-            # Cache constraint data for potential reconstruction
-            self._constr_data[constr_id] = (lh.copy(), sense, rh)
-
-            # Build the linear expression
-            expr = sum(coeff * self._vars[var_id] for var_id, coeff in lh.items() if var_id in self._vars)
+            # Build the linear expression (quicksum keeps an empty left-hand side a SCIP expression)
+            expr = quicksum(coeff * self._vars[var_id] for var_id, coeff in lh.items() if var_id in self._vars)
 
             # Add constraint based on sense
             if sense == "=":
@@ -198,8 +235,17 @@ class PySCIPOptSolver(Solver):
             else:
                 raise ValueError(f"Invalid constraint sense: {sense}")
 
+            # Cache constraint data for potential reconstruction
+            self._constr_data[constr_id] = (lh.copy(), sense, rh)
             self._constrs[constr_id] = constr
             self.constr_ids.append(constr_id)
+            self._track_coefficients(lh.values())
+
+    def _track_coefficients(self, coefficients):
+        nonzero = [abs(c) for c in coefficients if c]
+        if nonzero:
+            smallest = min(nonzero)
+            self._min_abs_coef = smallest if self._min_abs_coef is None else min(self._min_abs_coef, smallest)
 
     def remove_variable(self, var_id):
         """Remove a variable from the current problem.
@@ -216,6 +262,7 @@ class PySCIPOptSolver(Solver):
             var_ids (list): variable identifiers
         """
 
+        self._to_problem_stage()
         for var_id in var_ids:
             if var_id in self._vars:
                 var = self._vars[var_id]
@@ -242,6 +289,7 @@ class PySCIPOptSolver(Solver):
             constr_ids (list): constraint identifiers
         """
 
+        self._to_problem_stage()
         for constr_id in constr_ids:
             if constr_id in self._constrs:
                 constr = self._constrs[constr_id]
@@ -282,21 +330,23 @@ class PySCIPOptSolver(Solver):
             Setting the objective is optional. It can also be passed directly when calling **solve**.
         """
 
+        if isinstance(linear, str):
+            linear = {linear: 1.0}
+
         if quadratic:
-            warn("PySCIPOpt solver does not fully support quadratic objectives in this interface.")
+            self._set_quadratic_objective(linear or {}, quadratic, minimize)
+            return
 
         if linear:
-            if isinstance(linear, str):
-                linear = {linear: 1.0}
-
             # Free the transformed problem to allow modifications
             try:
                 self.problem.freeTransform()
             except:
                 pass  # Might not be transformed yet
+            self._drop_quadratic_objective()
 
             # Build objective expression
-            obj_expr = sum(coeff * self._vars[var_id] for var_id, coeff in linear.items() if var_id in self._vars)
+            obj_expr = quicksum(coeff * self._vars[var_id] for var_id, coeff in linear.items() if var_id in self._vars)
 
             # Set objective
             sense = "minimize" if minimize else "maximize"
@@ -309,6 +359,39 @@ class PySCIPOptSolver(Solver):
             for var_id in linear:
                 if var_id not in self._vars:
                     warn(f"Objective variable not previously declared: {var_id}")
+
+    def _set_quadratic_objective(self, linear, quadratic, minimize):
+        """Optimise linear + quadratic through an epigraph: an unbounded variable t, the constraint
+        expr <= t (expr >= t when maximising) and the objective t, as SCIP only takes linear objectives.
+
+        :param dict quadratic: {(var_id_1, var_id_2): coefficient}
+        """
+        self._to_problem_stage()
+        self._drop_quadratic_objective()
+        for var_id in list(linear) + [v for pair in quadratic for v in pair]:
+            if var_id not in self._vars:
+                warn(f"Objective variable not previously declared: {var_id}")
+        expr = quicksum(c * self._vars[v] for v, c in linear.items() if v in self._vars)
+        expr += quicksum(
+            c * self._vars[a] * self._vars[b] for (a, b), c in quadratic.items() if a in self._vars and b in self._vars
+        )
+        t = self.problem.addVar(name="_quadratic_objective", lb=None, ub=None)
+        if minimize:
+            cons = self.problem.addCons(expr - t <= 0, name="_quadratic_objective_epigraph")
+        else:
+            cons = self.problem.addCons(expr - t >= 0, name="_quadratic_objective_epigraph")
+        self.problem.setObjective(t, "minimize" if minimize else "maximize")
+        self._quadratic_objective = (t, cons)
+        self._cached_lin_obj.update(linear)
+        self._cached_sense = minimize
+
+    def _drop_quadratic_objective(self):
+        if self._quadratic_objective is not None:
+            self._to_problem_stage()
+            t, cons = self._quadratic_objective
+            self.problem.delCons(cons)
+            self.problem.delVar(t)
+            self._quadratic_objective = None
 
     def solve(
         self,
@@ -344,10 +427,15 @@ class PySCIPOptSolver(Solver):
         if model:
             self.build_problem(model)
 
+        # rows added with update=False must reach SCIP before solving
+        if self._cached_vars or self._cached_constrs:
+            self.update()
+        adapt_scip_epsilon(self.problem, self._min_abs_coef)
+
         if constraints:
             temp_constrs = self._apply_temporary_constraints(constraints)
 
-        if minimize is not None or linear is not None:
+        if minimize is not None or linear is not None or quadratic:
             self.set_objective(linear, quadratic, minimize if minimize is not None else True)
 
         # Solve the problem
@@ -358,7 +446,10 @@ class PySCIPOptSolver(Solver):
         status = self.status_mapping.get(status_str, Status.UNKNOWN)
         message = status_str
 
-        if status == Status.OPTIMAL:
+        if pool_size > 1:
+            # callers of a pool expect a list, as with CPLEX and Gurobi (which also treat pool_size <= 1 as one solve)
+            solution = self._get_solution_pool(status, get_values, pool_size, pool_gap)
+        elif status == Status.OPTIMAL:
             fobj = self.problem.getObjVal()
             values, s_prices, r_costs = None, None, None
 
@@ -401,6 +492,29 @@ class PySCIPOptSolver(Solver):
             self._remove_temporary_constraints(temp_constrs)
 
         return solution
+
+    def _get_solution_pool(self, status, get_values, pool_size, pool_gap):
+        """Solutions SCIP stored during the search, best first, at most pool_size of them.
+
+        With pool_gap, only solutions within that relative gap of the optimum are kept.
+        """
+        if status != Status.OPTIMAL:
+            return []
+        if isinstance(get_values, list):
+            var_ids = [var_id for var_id in get_values if var_id in self._vars]
+        else:
+            var_ids = list(self._vars) if get_values else []
+        best = self.problem.getObjVal()
+        solutions = []
+        for sol in self.problem.getSols():
+            fobj = self.problem.getSolObjVal(sol)
+            if pool_gap is not None and abs(fobj - best) > pool_gap * max(abs(best), 1e-9):
+                continue
+            values = {var_id: self.problem.getSolVal(sol, self._vars[var_id]) for var_id in var_ids}
+            solutions.append(Solution(status, None, fobj, values if get_values else None))
+            if len(solutions) >= pool_size:
+                break
+        return solutions
 
     def _apply_temporary_constraints(self, constraints):
         """Apply temporary constraints and return them for later removal."""
@@ -512,7 +626,7 @@ class PySCIPOptSolver(Solver):
             self._constr_data[constr_id] = (new_lhs, sense, rhs)
 
             # Build new expression
-            expr = sum(coeff * self._vars[var_id] for var_id, coeff in new_lhs.items() if var_id in self._vars)
+            expr = quicksum(coeff * self._vars[var_id] for var_id, coeff in new_lhs.items() if var_id in self._vars)
 
             # Recreate constraint
             if sense == "=":
@@ -526,3 +640,4 @@ class PySCIPOptSolver(Solver):
 
             # Update constraint reference
             self._constrs[constr_id] = new_constr
+            self._track_coefficients(var_changes.values())

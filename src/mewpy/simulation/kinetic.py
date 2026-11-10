@@ -20,9 +20,9 @@ Kinetic simulation module
 Author: Vitor Pereira
 ##############################################################################
 """
+import multiprocessing
 import warnings
 from collections import OrderedDict
-from multiprocessing import Manager, Process
 from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
 import numpy as np
@@ -75,7 +75,11 @@ def kinetic_solve(
         neg_tolerance = -SolverConfigurations.RELATIVE_TOL
         for c in C:
             if c < neg_tolerance:
-                return ODEStatus.ERROR, {}, {}
+                return ODEStatus.ERROR, {}, {}, None, None
+
+        # NaN concentrations or rates (e.g. a rate law divided by a zeroed parameter) are not a steady state
+        if np.isnan(np.asarray(C, dtype=float)).any() or np.isnan(np.asarray(list(rates.values()), dtype=float)).any():
+            return ODEStatus.ERROR, {}, {}, None, None
 
         # Values below solver precision will be set to 0
         abs_tol = SolverConfigurations.ABSOLUTE_TOL
@@ -92,7 +96,12 @@ def kinetic_solve(
         return ODEStatus.ERROR, None, None, None, None
 
 
-class KineticThread(Process):
+# mewpy no longer sets a global start method. A forked worker starts in about 0.1 s; a spawned one re-imports
+# mewpy (several seconds on macOS, where spawn is the default). Use fork locally when the platform has it.
+_MP_CONTEXT = multiprocessing.get_context("fork" if "fork" in multiprocessing.get_all_start_methods() else None)
+
+
+class KineticThread(_MP_CONTEXT.Process):
     """
     Solves the ODE inside a thread enabling to impose a timeout limit
     with thread.join(timeout)
@@ -122,14 +131,14 @@ class KineticThread(Process):
         :type factors: Dict[str, float], optional
         """
 
-        Process.__init__(self, daemon=False)
+        _MP_CONTEXT.Process.__init__(self, daemon=False)
         self.model = model
         self.parameters = parameters
         self.factors = factors
         self.initial_concentrations = initial_concentrations
         self.time_steps = time_steps
 
-        self.result = Manager().dict()
+        self.result = _MP_CONTEXT.Manager().dict()
         self.result["status"] = None
         self.result["rates"] = None
         self.result["concentrations"] = None
@@ -214,8 +223,6 @@ class KineticSimulationResult(SimulationResult):
     def plot(self, met: List[str] = None, size: Tuple[int, int] = None):
         import matplotlib.pyplot as plt
 
-        if size:
-            plt.rcParams["figure.figsize"] = size
         if not met:
             _mets = list(self.concentrations.keys())
         elif isinstance(met, str):
@@ -224,7 +231,8 @@ class KineticSimulationResult(SimulationResult):
             _mets = met
         else:
             raise ValueError("fluxes should be a reaction identifier," "a list of reaction identifiers or None.")
-        ax = plt.subplot()
+        # a new figure; the size applies to it only, not to matplotlib's global rcParams
+        _, ax = plt.subplots(figsize=size)
         if len(_mets) != 2:
             for k in _mets:
                 ax.plot(self.t, self.get_y(k), label=k)
@@ -345,6 +353,10 @@ class KineticSimulation(SimulationInterface):
 
                 th.start()
                 th.join(self.timeout)
+                if th.is_alive():
+                    # timed out: stop the worker instead of leaving it running
+                    th.terminate()
+                    th.join()
                 status = th.result["status"]
                 sstateRates = th.result["rates"]
                 sstateConc = th.result["concentrations"]

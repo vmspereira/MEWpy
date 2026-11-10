@@ -39,7 +39,7 @@ class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         :param tradeoffs: (list) Tradeoff values for each evaluation function. If None, all functions have \
             the same associated weight.
     """
-        super(AggregatedSum, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(AggregatedSum, self).__init__(maximize=maximize)
         self.fevaluation = fevaluation
         if tradeoffs and len(tradeoffs) == len(fevaluation):
             self.tradeoffs = tradeoffs
@@ -49,8 +49,8 @@ class AggregatedSum(PhenotypeEvaluationFunction, KineticEvaluationFunction):
     def required_simulations(self):
         methods = []
         for f in self.fevaluation:
-            methods.extend(f.required_simulations())
-        return list(set(methods))
+            methods.extend(f.required_simulations() or [])
+        return list(dict.fromkeys(methods))  # deterministic order, see AbstractProblem.methods
 
     def get_fitness(self, simul_results, candidate, **kwargs):
         """Evaluates a candidate
@@ -81,7 +81,7 @@ class CandidateSize(PhenotypeEvaluationFunction, KineticEvaluationFunction):
 
         :param (bool) maximize: Optimization sense. Default False (minimize)
         """
-        super(CandidateSize, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(CandidateSize, self).__init__(maximize=maximize)
 
     def get_fitness(self, simulResult, candidate, **kwargs):
         return len(candidate)
@@ -102,7 +102,7 @@ class CandidateSize(PhenotypeEvaluationFunction, KineticEvaluationFunction):
 class MinCandSize(CandidateSize):
 
     def __init__(self, maximize=False):
-        super(MinCandSize, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(MinCandSize, self).__init__(maximize=maximize)
         warnings.warn("MinCandSize is deprecated. Use CandidateSize instead.", DeprecationWarning, stacklevel=2)
 
 
@@ -118,10 +118,13 @@ class ModificationType(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         :param maximize: optimization direction: True (maximize) False (minimize), defaults to True
         :type maximize: bool, optional
         """
-        super(ModificationType, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(ModificationType, self).__init__(maximize=maximize)
         self.penalizations = penalizations
 
     def get_fitness(self, simulResult, candidate, **kwargs):
+        if not candidate:
+            # no modification, no modification type: the mean below is undefined
+            return self.no_solution
         total = 0
         for v in candidate.values():
             if v == 0:

@@ -113,7 +113,7 @@ def test2(compoud='R_EX_tyr__L_e', filename=None):
     # evaluator_3 = TargetFlux(PRODUCT_ID)
     from mewpy.problems.genes import GOUProblem
     problem = GOUProblem(model, fevaluation=[
-        evaluator_1, evaluator_2], max_candidate_size=30)
+        evaluator_1, evaluator_2], candidate_max_size=30)
     print(problem.target_list)
     from mewpy.optimization import EA
     ea = EA(problem, max_generations=20, mp=True)

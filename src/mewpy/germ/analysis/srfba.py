@@ -6,10 +6,12 @@ No backwards compatibility with legacy GERM models.
 """
 
 import logging
+from math import isfinite
 from typing import TYPE_CHECKING, Dict, Union
 from warnings import warn
 
 from mewpy.germ.algebra import parse_expression
+from mewpy.germ.analysis.analysis_utils import regulator_exchanges
 from mewpy.germ.analysis.fba import _RegulatoryAnalysisBase
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.solvers import Solution
@@ -21,6 +23,20 @@ if TYPE_CHECKING:
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
+
+# Margin of the indicator constraints (x > c, metabolite uptake): 10x the default feasibility tolerance of
+# SCIP/CPLEX/Gurobi (1e-6), so that a solution within the solver tolerance cannot flip an indicator
+INDICATOR_TOLERANCE = 1e-5
+
+
+def _finite_bounds(lb: float, ub: float):
+    """Bounds usable as big-M coefficients: infinite bounds are replaced by the model default bounds."""
+    lb, ub = float(lb), float(ub)
+    if not isfinite(lb):
+        lb = float(ModelConstants.REACTION_LOWER_BOUND)
+    if not isfinite(ub):
+        ub = float(ModelConstants.REACTION_UPPER_BOUND)
+    return lb, ub
 
 
 class SRFBA(_RegulatoryAnalysisBase):
@@ -94,12 +110,73 @@ class SRFBA(_RegulatoryAnalysisBase):
         # Build the base metabolic model first
         super().build()
 
+        # Names already in the problem: GPRs and interactions share symbols and sub-expressions
+        self._variable_names = set(self.solver.var_ids)
+        self._constraint_names = set(self.solver.constr_ids)
+        # Bounds of the variables known to the linearization (reaction fluxes first)
+        self._bounds = {}
+        for rxn_id in self.model.reactions:
+            rxn_data = self._get_reaction(rxn_id)
+            self._bounds[rxn_id] = _finite_bounds(rxn_data["lb"], rxn_data["ub"])
+        # Target variable -> switch variable that relaxes its regulatory rule (see _linearize_expression)
+        self._overrides = {}
+        # Coefficients of the regulatory variables: RegulatoryExtension GPR symbols carry none, and ko()
+        # fixes them to (0, 0)
+        self._coefficients = self._regulatory_coefficients()
+
         # Build GPR and regulatory interaction constraints
         if self._has_regulatory_network():
+            self._link_metabolite_regulators()
             self._build_gprs()
             self._build_interactions()
 
+        # The rows above are added with update=False; push them into the solver problem
+        self.solver.update()
+
         return self
+
+    def _add_variable(self, var_id: str, lb: float, ub: float, vartype: VarType, update: bool = False):
+        """Add a variable once. A repeated add would create a duplicate column (SCIP) or raise (CPLEX)."""
+        if var_id in self._variable_names:
+            return
+        self._variable_names.add(var_id)
+        self._bounds[var_id] = _finite_bounds(lb, ub)
+        self.solver.add_variable(var_id, lb, ub, vartype, update=update)
+
+    def _add_constraint(self, constr_id: str, lhs: Dict, sense: str, rhs: float, update: bool = False):
+        """Add a constraint once. Equal names encode equal sub-expressions, so the repeat is redundant."""
+        if constr_id in self._constraint_names:
+            return
+        self._constraint_names.add(constr_id)
+        self.solver.add_constraint(constr_id, lhs, sense, rhs, update=update)
+
+    def _regulatory_coefficients(self) -> Dict[str, tuple]:
+        """Regulator and target id -> (min, max) of its coefficients."""
+        coefficients = {}
+        for variables in (getattr(self.model, "targets", None) or {}, dict(self._get_regulators())):
+            for var_id, variable in variables.items():
+                values = getattr(variable, "coefficients", None)
+                if values:
+                    coefficients[var_id] = (float(min(values)), float(max(values)))
+        return coefficients
+
+    def _link_metabolite_regulators(self):
+        """
+        A metabolite regulator m is 1 iff its exchange reaction v carries uptake (v < -tol):
+        v + (tol + ub) m <= ub      (m = 1 -> v <= -tol)
+        v - (lb + tol) m >= -tol    (m = 0 -> v >= -tol)
+        A regulator fixed by ko() (coefficients (0, 0)) forbids the uptake.
+        """
+        tol = INDICATOR_TOLERANCE
+        for reg_id, (exchange_id, _) in regulator_exchanges(self.model).items():
+            if exchange_id not in self._bounds:
+                continue
+            lb, ub = self._bounds[exchange_id]
+            m_lb, m_ub = self._coefficients.get(reg_id, (0.0, 1.0))
+            fixed = m_lb == m_ub
+            self._add_variable(reg_id, float(fixed and m_lb > 0), float(not fixed or m_ub > 0), VarType.INTEGER)
+            self._add_constraint(f"uptake_{reg_id}_on", {exchange_id: 1.0, reg_id: tol + ub}, "<", ub)
+            self._add_constraint(f"uptake_{reg_id}_off", {exchange_id: 1.0, reg_id: -(lb + tol)}, ">", -tol)
 
     def _build_gprs(self):
         """Build the GPR (Gene-Protein-Reaction) constraints for the solver."""
@@ -145,21 +222,23 @@ class SRFBA(_RegulatoryAnalysisBase):
         self._boolean_variables[boolean_variable] = rxn_id
 
         # Add the boolean variable to solver
-        self.solver.add_variable(boolean_variable, 0.0, 1.0, VarType.INTEGER, update=False)
+        self._add_variable(boolean_variable, 0.0, 1.0, VarType.INTEGER, update=False)
 
-        # Add constraints linking reaction flux to boolean variable
-        lb = rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND)
-        ub = rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND)
+        # Add constraints linking reaction flux to boolean variable (big-M needs finite bounds)
+        lb, ub = _finite_bounds(
+            rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
+            rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND),
+        )
 
         # V - Y*Vmax <= 0  ->  V <= Y*Vmax
         if ub != 0:
-            self.solver.add_constraint(
+            self._add_constraint(
                 f"gpr_upper_{rxn_id}", {rxn_id: 1.0, boolean_variable: -float(ub)}, "<", 0.0, update=False
             )
 
         # V - Y*Vmin >= 0  ->  V >= Y*Vmin
         if lb != 0:
-            self.solver.add_constraint(
+            self._add_constraint(
                 f"gpr_lower_{rxn_id}", {rxn_id: 1.0, boolean_variable: -float(lb)}, ">", 0.0, update=False
             )
 
@@ -205,10 +284,10 @@ class SRFBA(_RegulatoryAnalysisBase):
 
             # Add target variable
             target_id = interaction.target.id
-            self.solver.add_variable(target_id, lb, ub, var_type, update=False)
+            self._add_variable(target_id, lb, ub, var_type, update=False)
 
-            # Add constraints for the regulatory expression
-            self._linearize_expression(target_id, symbolic)
+            # Add constraints for the regulatory expression (relaxed when the target state is set explicitly)
+            self._linearize_expression(target_id, symbolic, override=True)
         except Exception as e:
             # If constraint building fails for this interaction, skip it but log warning
             logger.warning(
@@ -216,273 +295,178 @@ class SRFBA(_RegulatoryAnalysisBase):
                 f"This regulatory interaction will be skipped."
             )
 
-    def _linearize_expression(self, boolean_variable: str, symbolic):
+    def _linearize_expression(self, boolean_variable: str, symbolic, override: bool = False):
         """
-        Linearize a boolean expression into solver constraints.
+        Linearize a boolean expression into solver rows so that boolean_variable takes its value.
 
-        :param boolean_variable: the boolean variable name
+        :param boolean_variable: the variable that must take the value of the expression
         :param symbolic: the symbolic expression to linearize
+        :param override: if True (regulatory targets), the link is relaxed when the variable is fixed explicitly
+        through initial_state in optimize, so that a knockout wins over the regulatory rule
         """
-        if symbolic.is_atom:
-            self._linearize_atomic_expression(boolean_variable, symbolic)
-        else:
-            self._linearize_complex_expression(boolean_variable, symbolic)
+        result = self._linearize_node(symbolic)
 
-    def _linearize_atomic_expression(self, boolean_variable: str, symbolic):
-        """
-        Linearize an atomic boolean expression.
+        # x = x (autoregulation): a tautology that constrains nothing
+        if result == boolean_variable:
+            return
 
-        :param boolean_variable: the boolean variable name
-        :param symbolic: the atomic symbolic expression
-        """
-        if symbolic.is_symbol:
-            # Add symbol variable if not exists
-            name = symbolic.key()
-            lb, ub = symbolic.bounds
-            var_type = VarType.INTEGER if (float(lb), float(ub)) in [(0, 1), (0.0, 1.0)] else VarType.CONTINUOUS
+        if not override:
+            if isinstance(result, str):
+                self._add_constraint(f"link_{boolean_variable}", {boolean_variable: 1.0, result: -1.0}, "=", 0.0)
+            else:
+                self._add_constraint(f"link_{boolean_variable}", {boolean_variable: 1.0}, "=", float(result))
+            return
 
-            try:
-                self.solver.add_variable(name, float(lb), float(ub), var_type, update=False)
-            except:
-                pass  # Variable already exists
+        # |target - result| <= M * switch; the switch is fixed to 0 unless the target state is set explicitly,
+        # through initial_state in optimize or by fixing the target's coefficients (ko())
+        lb, ub = self._bounds.get(boolean_variable, (0.0, 1.0))
+        switch = f"override_{boolean_variable}"
+        fixed = float(lb == ub)
+        self._add_variable(switch, fixed, fixed, VarType.CONTINUOUS)
+        self._overrides[boolean_variable] = switch
 
-        # Add constraint based on symbolic type
-        constraint_coefs, lb, ub = self._get_atomic_constraint(boolean_variable, symbolic)
-        if constraint_coefs:
-            self.solver.add_constraint(f"atomic_{boolean_variable}", constraint_coefs, "=", 0.0, update=False)
-
-    def _linearize_complex_expression(self, boolean_variable: str, symbolic):
-        """
-        Linearize a complex boolean expression with operators.
-
-        :param boolean_variable: the boolean variable name
-        :param symbolic: the complex symbolic expression
-        """
-        auxiliary_variables = []
-        last_variable = None
-
-        # Process each atom in the expression
-        for atom in symbolic:
-            last_variable = atom
-            var_name = atom.key()
-
-            # Add auxiliary variables for operators
-            if atom.is_and or atom.is_or:
-                for i, _ in enumerate(atom.variables[:-1]):
-                    aux_var = f"{var_name}_{i}"
-                    auxiliary_variables.append(aux_var)
-                    self.solver.add_variable(aux_var, 0.0, 1.0, VarType.INTEGER, update=False)
-            elif atom.is_not:
-                aux_var = f"{var_name}_0"
-                auxiliary_variables.append(aux_var)
-                self.solver.add_variable(aux_var, 0.0, 1.0, VarType.INTEGER, update=False)
-
-            # Add symbol variables
-            if atom.is_symbol:
-                try:
-                    lb, ub = atom.bounds
-                    var_type = VarType.INTEGER if (float(lb), float(ub)) in [(0, 1), (0.0, 1.0)] else VarType.CONTINUOUS
-                    self.solver.add_variable(var_name, float(lb), float(ub), var_type, update=False)
-                except:
-                    pass  # Variable already exists
-
-            # Add operator constraints
-            self._add_operator_constraints(atom)
-
-        # Link the final result to the boolean variable
-        if last_variable:
-            last_var_name = last_variable.key()
-            names = [f"{last_var_name}_{i}" for i, _ in enumerate(last_variable.variables[:-1])]
-            final_var = names[-1] if names else last_var_name
-
-            self.solver.add_constraint(
-                f"link_{boolean_variable}", {boolean_variable: 1.0, final_var: -1.0}, "=", 0.0, update=False
+        if isinstance(result, str):
+            r_lb, r_ub = self._bounds.get(result, (0.0, 1.0))
+            big_m = 1.0 + max(abs(lb), abs(ub), abs(r_lb), abs(r_ub))
+            self._add_constraint(
+                f"link_{boolean_variable}_ub", {boolean_variable: 1.0, result: -1.0, switch: -big_m}, "<", 0.0
             )
-
-    def _get_atomic_constraint(self, boolean_variable: str, symbolic):
-        """Get constraint coefficients for atomic expressions."""
-        if symbolic.is_true:
-            return {boolean_variable: 1.0}, 1.0, 1.0
-        elif symbolic.is_false:
-            return {boolean_variable: 1.0}, 0.0, 0.0
-        elif symbolic.is_numeric:
-            val = float(symbolic.value)
-            return {boolean_variable: 1.0}, val, val
-        elif symbolic.is_symbol:
-            return {boolean_variable: 1.0, symbolic.key(): -1.0}, 0.0, 0.0
-
-        return {}, 0.0, 1.0
-
-    def _add_operator_constraints(self, symbolic):
-        """Add constraints for boolean operators (AND, OR, NOT)."""
-        if symbolic.is_and:
-            self._add_and_constraints(symbolic)
-        elif symbolic.is_or:
-            self._add_or_constraints(symbolic)
-        elif symbolic.is_not:
-            self._add_not_constraints(symbolic)
-        elif symbolic.is_greater or symbolic.is_greater_equal:
-            self._add_greater_constraints(symbolic)
-        elif symbolic.is_less or symbolic.is_less_equal:
-            self._add_less_constraints(symbolic)
-        elif symbolic.is_equal:
-            self._add_equal_constraints(symbolic)
-
-    def _add_and_constraints(self, symbolic):
-        """
-        Add constraints for AND operator: a = b AND c
-        Constraint: -1 <= 2*b + 2*c - 4*a <= 3
-        """
-        name = symbolic.key()
-        names = [f"{name}_{i}" for i, _ in enumerate(symbolic.variables[:-1])]
-
-        # Handle first AND operation
-        and_op = names[0]
-        op_l = symbolic.variables[0]
-        op_r = symbolic.variables[1]
-
-        coefs = {and_op: -4.0}
-        if not (op_l.is_one or op_l.is_true):
-            coefs[op_l.key()] = 2.0
-        if not (op_r.is_one or op_r.is_true):
-            coefs[op_r.key()] = 2.0
-
-        self.solver.add_constraint(f"and_{and_op}", coefs, ">", -1.0, update=False)
-        self.solver.add_constraint(f"and_{and_op}_ub", coefs, "<", 3.0, update=False)
-
-        # Handle nested AND operations
-        if len(symbolic.variables) > 2:
-            children = symbolic.variables[2:]
-            for i, op_r in enumerate(children):
-                op_l_name = names[i]
-                and_op = names[i + 1]
-
-                coefs = {and_op: -4.0, op_l_name: 2.0}
-                if not (op_r.is_one or op_r.is_true):
-                    coefs[op_r.key()] = 2.0
-
-                self.solver.add_constraint(f"and_{and_op}", coefs, ">", -1.0, update=False)
-                self.solver.add_constraint(f"and_{and_op}_ub", coefs, "<", 3.0, update=False)
-
-    def _add_or_constraints(self, symbolic):
-        """
-        Add constraints for OR operator: a = b OR c
-        Constraint: -2 <= 2*b + 2*c - 4*a <= 1
-        """
-        name = symbolic.key()
-        names = [f"{name}_{i}" for i, _ in enumerate(symbolic.variables[:-1])]
-
-        # Handle first OR operation
-        or_op = names[0]
-        op_l = symbolic.variables[0]
-        op_r = symbolic.variables[1]
-
-        coefs = {or_op: -4.0}
-        if not (op_l.is_one or op_l.is_true):
-            coefs[op_l.key()] = 2.0
-        if not (op_r.is_one or op_r.is_true):
-            coefs[op_r.key()] = 2.0
-
-        self.solver.add_constraint(f"or_{or_op}", coefs, ">", -2.0, update=False)
-        self.solver.add_constraint(f"or_{or_op}_ub", coefs, "<", 1.0, update=False)
-
-        # Handle nested OR operations
-        if len(symbolic.variables) > 2:
-            children = symbolic.variables[2:]
-            for i, op_r in enumerate(children):
-                op_l_name = names[i]
-                or_op = names[i + 1]
-
-                coefs = {or_op: -4.0, op_l_name: 2.0}
-                if not (op_r.is_one or op_r.is_true):
-                    coefs[op_r.key()] = 2.0
-
-                self.solver.add_constraint(f"or_{or_op}", coefs, ">", -2.0, update=False)
-                self.solver.add_constraint(f"or_{or_op}_ub", coefs, "<", 1.0, update=False)
-
-    def _add_not_constraints(self, symbolic):
-        """
-        Add constraints for NOT operator: a = NOT b
-        Constraint: a + b = 1
-        """
-        op_l = symbolic.variables[0]
-
-        if op_l.is_numeric:
-            coefs = {symbolic.key(): 1.0}
-            val = float(op_l.value)
+            self._add_constraint(
+                f"link_{boolean_variable}_lb", {boolean_variable: -1.0, result: 1.0, switch: -big_m}, "<", 0.0
+            )
         else:
-            coefs = {symbolic.key(): 1.0, op_l.key(): 1.0}
-            val = 1.0
+            value = float(result)
+            big_m = 1.0 + max(abs(lb), abs(ub), abs(value))
+            self._add_constraint(f"link_{boolean_variable}_ub", {boolean_variable: 1.0, switch: -big_m}, "<", value)
+            self._add_constraint(f"link_{boolean_variable}_lb", {boolean_variable: -1.0, switch: -big_m}, "<", -value)
 
-        self.solver.add_constraint(f"not_{symbolic.key()}", coefs, "=", val, update=False)
+    def _add_binary(self, name: str) -> str:
+        self._add_variable(name, 0.0, 1.0, VarType.INTEGER)
+        return name
 
-    def _add_greater_constraints(self, symbolic):
-        """Add constraints for GREATER operator: a => r > value"""
-        greater_op = symbolic.key()
-        op_l = symbolic.variables[0]
-        op_r = symbolic.variables[1]
+    def _linearize_node(self, node):
+        """
+        Add the rows of one node of an expression tree and return the name of the variable holding its value,
+        or a float when the node is constant. Parents reference their children through these names, so a nested
+        operator such as (a & b) | c is linked to the variable of (a & b) itself.
 
-        if op_l.is_numeric:
-            operand = op_r
-            c_val = float(op_l.value)
+        :param node: a Symbolic node
+        :return: variable name or constant value
+        """
+        if node.is_true or node.is_one:
+            return 1.0
+
+        if node.is_false or node.is_zero:
+            return 0.0
+
+        if node.is_symbol:
+            name = node.key()
+            # an existing variable (e.g. a reaction flux used as regulator) keeps its own bounds; a regulatory
+            # variable takes its coefficients (fixed to (0, 0) by ko())
+            lb, ub = (
+                self._bounds.get(name)
+                or (None if node.model_variable else self._coefficients.get(name))
+                or tuple(float(bound) for bound in node.bounds)
+            )
+            var_type = VarType.INTEGER if (lb, ub) == (0.0, 1.0) else VarType.CONTINUOUS
+            self._add_variable(name, lb, ub, var_type)
+            return name
+
+        if node.is_numeric:
+            return float(node.value)
+
+        if node.is_and or node.is_or:
+            return self._linearize_and_or(node)
+
+        if node.is_not:
+            child = self._linearize_node(node.variables[0])
+            if not isinstance(child, str):
+                return 0.0 if child else 1.0
+            name = self._add_binary(f"not_{node.key()}")
+            # a = NOT b  ->  a + b = 1
+            self._add_constraint(name, {name: 1.0, child: 1.0}, "=", 1.0)
+            return name
+
+        if node.is_relational:
+            return self._linearize_relational(node)
+
+        raise ValueError(f"unsupported expression node {node.to_string()}")
+
+    def _linearize_and_or(self, node):
+        """
+        a = AND(x1..xn):  a <= xi for all i,  a >= sum(xi) - (n - 1)
+        a = OR(x1..xn):   a >= xi for all i,  a <= sum(xi)
+        """
+        is_and = node.is_and
+        children = [self._linearize_node(child) for child in node.variables]
+        constants = [child for child in children if not isinstance(child, str)]
+        names = list(dict.fromkeys(child for child in children if isinstance(child, str)))
+
+        if is_and and any(not constant for constant in constants):
+            return 0.0
+        if not is_and and any(constant for constant in constants):
+            return 1.0
+        if not names:
+            return 1.0 if is_and else 0.0
+        if len(names) == 1:
+            return names[0]
+
+        name = self._add_binary(f"{'and' if is_and else 'or'}_{node.key()}")
+        for i, child in enumerate(names):
+            self._add_constraint(f"{name}_{i}", {name: 1.0, child: -1.0}, "<" if is_and else ">", 0.0)
+
+        coefs = {name: 1.0, **{child: -1.0 for child in names}}
+        if is_and:
+            self._add_constraint(f"{name}_all", coefs, ">", -(len(names) - 1.0))
         else:
-            operand = op_l
-            c_val = float(op_r.value)
+            self._add_constraint(f"{name}_any", coefs, "<", 0.0)
+        return name
 
-        _lb, _ub = operand.bounds
-        _lb = float(_lb)
-        _ub = float(_ub)
+    def _linearize_relational(self, node):
+        """
+        Indicator a of a comparison between a variable r (bounds [lb, ub]) and a constant c:
+        a = (r > c):  a(c + tol - ub) + r <= c + tol  and  a(lb - c - tol) + r >= lb
+        a = (r < c):  a(c + tol - lb) + r >= c + tol  and  a(ub - c - tol) + r <= ub
+        a = (r == c): only for binary r and c in {0, 1}
+        """
+        op_l, op_r = node.variables[0], node.variables[1]
+        greater = node.is_greater or node.is_greater_equal or node.is_inequality
+        less = node.is_less or node.is_less_equal
 
-        # First constraint: a(value + tolerance - r_UB) + r <= value + tolerance
-        coefs1 = {greater_op: c_val + ModelConstants.TOLERANCE - _ub, operand.key(): 1.0}
-        self.solver.add_constraint(
-            f"greater_{greater_op}_1", coefs1, "<", c_val + ModelConstants.TOLERANCE, update=False
-        )
-
-        # Second constraint: a(r_LB - value - tolerance) + r >= r_LB
-        coefs2 = {greater_op: _lb - c_val - ModelConstants.TOLERANCE, operand.key(): 1.0}
-        self.solver.add_constraint(f"greater_{greater_op}_2", coefs2, ">", _lb, update=False)
-
-    def _add_less_constraints(self, symbolic):
-        """Add constraints for LESS operator: a => r < value"""
-        less_op = symbolic.key()
-        op_l = symbolic.variables[0]
-        op_r = symbolic.variables[1]
-
-        if op_l.is_numeric:
-            operand = op_r
-            c_val = float(op_l.value)
+        if op_l.is_numeric and not op_r.is_numeric:
+            # c > r is r < c
+            operand, c_val = op_r, float(op_l.value)
+            greater, less = less, greater
         else:
-            operand = op_l
-            c_val = float(op_r.value)
+            operand, c_val = op_l, float(op_r.value)
 
-        _lb, _ub = operand.bounds
-        _lb = float(_lb)
-        _ub = float(_ub)
+        r = self._linearize_node(operand)
+        if not isinstance(r, str):
+            raise ValueError(f"comparison between constants {node.to_string()}")
 
-        # First constraint: a(value + tolerance - r_LB) + r >= value + tolerance
-        coefs1 = {less_op: c_val + ModelConstants.TOLERANCE - _lb, operand.key(): 1.0}
-        self.solver.add_constraint(f"less_{less_op}_1", coefs1, ">", c_val + ModelConstants.TOLERANCE, update=False)
+        lb, ub = self._bounds.get(r, (0.0, 1.0))
+        tol = INDICATOR_TOLERANCE
 
-        # Second constraint: a(r_UB - value - tolerance) + r <= r_UB
-        coefs2 = {less_op: _ub - c_val - ModelConstants.TOLERANCE, operand.key(): 1.0}
-        self.solver.add_constraint(f"less_{less_op}_2", coefs2, "<", _ub, update=False)
+        if node.is_equal:
+            if (lb, ub) != (0.0, 1.0) or c_val not in (0.0, 1.0):
+                raise ValueError(f"equality on a non-binary operand {node.to_string()}")
+            if c_val == 1.0:
+                return r
+            name = self._add_binary(f"rel_{node.key()}")
+            self._add_constraint(name, {name: 1.0, r: 1.0}, "=", 1.0)
+            return name
 
-    def _add_equal_constraints(self, symbolic):
-        """Add constraints for EQUAL operator: a => r = value"""
-        equal_op = symbolic.key()
-        op_l = symbolic.variables[0]
-        op_r = symbolic.variables[1]
+        if not (greater or less):
+            raise ValueError(f"unsupported comparison {node.to_string()}")
 
-        if op_l.is_numeric:
-            operand = op_r
-            c_val = float(op_l.value)
+        name = self._add_binary(f"rel_{node.key()}")
+        if greater:
+            self._add_constraint(f"{name}_1", {name: c_val + tol - ub, r: 1.0}, "<", c_val + tol)
+            self._add_constraint(f"{name}_2", {name: lb - c_val - tol, r: 1.0}, ">", lb)
         else:
-            operand = op_l
-            c_val = float(op_r.value)
-
-        coefs = {equal_op: -c_val, operand.key(): 1.0}
-        self.solver.add_constraint(f"equal_{equal_op}", coefs, "=", 0.0, update=False)
+            self._add_constraint(f"{name}_1", {name: c_val + tol - lb, r: 1.0}, ">", c_val + tol)
+            self._add_constraint(f"{name}_2", {name: ub - c_val - tol, r: 1.0}, "<", ub)
+        return name
 
     def optimize(
         self, solver_kwargs: Dict = None, initial_state: Dict[str, float] = None, to_solver: bool = False, **kwargs
@@ -504,11 +488,15 @@ class SRFBA(_RegulatoryAnalysisBase):
         if not initial_state:
             initial_state = {}
 
-        # Apply regulatory constraints via initial_state
+        # Ids may be given in either SBML form or as original TRN ids
+        initial_state = self._ids.keys(initial_state)
+
+        # Apply regulatory constraints via initial_state (new dicts: the caller's must not be mutated).
+        # An explicit state of a regulatory target (e.g. a gene knockout) overrides its regulatory rule.
         if self._has_regulatory_network() and initial_state:
-            constraints = solver_kwargs.get("constraints", {})
-            constraints.update(initial_state)
-            solver_kwargs["constraints"] = constraints
+            switches = {self._overrides[key]: (1.0, 1.0) for key in initial_state if key in self._overrides}
+            constraints = {**(solver_kwargs.get("constraints") or {}), **initial_state, **switches}
+            solver_kwargs = {**solver_kwargs, "constraints": constraints}
 
         # Use the base FBA optimization with regulatory constraints
         solution = super().optimize(solver_kwargs=solver_kwargs, **kwargs)

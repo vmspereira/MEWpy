@@ -5,10 +5,14 @@ Test to validate the SteadyCom BigM automatic calculation fix.
 This test verifies that BigM is calculated appropriately based on model
 characteristics rather than using a hardcoded value.
 """
+
 import unittest
 import warnings
 
 from cobra.io.sbml import read_sbml_model
+
+# the community oracle: identical members grow as one alone in the open community medium
+from test_g_com import check_steadycom
 
 from mewpy.com import CommunityModel
 from mewpy.com.steadycom import SteadyCom, build_problem, calculate_bigM
@@ -79,22 +83,24 @@ class TestSteadyComBigMFix(unittest.TestCase):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             solver = build_problem(self.community, bigM=50)
-            self.assertIsNotNone(solver)  # Use the variable
 
             # Should warn about small BigM
             bigm_warnings = [x for x in w if "small" in str(x.message).lower()]
-            self.assertGreater(len(bigm_warnings), 0, "Should warn when BigM is too small")
+            self.assertEqual(len(bigm_warnings), 1, "Should warn when BigM is too small")
+            self.assertIn("50", str(bigm_warnings[0].message))
+        # the solver is still the SteadyCom problem: one abundance variable per member
+        self.assertLessEqual({f"x_{org_id}" for org_id in self.community.organisms}, set(solver.list_variables()))
 
     def test_build_problem_warns_on_large_bigM(self):
         """Test that build_problem warns when BigM is too large."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             solver = build_problem(self.community, bigM=1e8)
-            self.assertIsNotNone(solver)  # Use the variable
 
             # Should warn about large BigM
             bigm_warnings = [x for x in w if "large" in str(x.message).lower()]
-            self.assertGreater(len(bigm_warnings), 0, "Should warn when BigM is too large")
+            self.assertEqual(len(bigm_warnings), 1, "Should warn when BigM is too large")
+        self.assertLessEqual({f"x_{org_id}" for org_id in self.community.organisms}, set(solver.list_variables()))
 
     def test_steadycom_works_with_automatic_bigM(self):
         """Test that SteadyCom works correctly with automatic BigM calculation."""
@@ -111,14 +117,14 @@ class TestSteadyComBigMFix(unittest.TestCase):
         total_abundance_vars = sum(abundance_vars.values())
         self.assertAlmostEqual(total_abundance_vars, 1.0, places=6, msg="Abundance variables (x_org) should sum to 1")
 
-        # Each abundance variable should be between 0 and 1
+        # Each abundance variable should be between 0 and 1 (up to solver round-off)
         for org_id, x_value in abundance_vars.items():
-            self.assertGreaterEqual(x_value, 0, f"Abundance variable x_{org_id} should be non-negative")
-            self.assertLessEqual(x_value, 1, f"Abundance variable x_{org_id} should not exceed 1")
+            self.assertGreaterEqual(x_value, -1e-9, f"Abundance variable x_{org_id} should be non-negative")
+            self.assertLessEqual(x_value, 1 + 1e-9, f"Abundance variable x_{org_id} should not exceed 1")
 
-        # Biomass fluxes (result.abundance) should be positive
-        for org_id, biomass_flux in result.abundance.items():
-            self.assertGreater(biomass_flux, 0, f"Biomass flux for {org_id} should be positive")
+        # The organisms are identical, so any split is optimal and one abundance may be 0;
+        # the reported abundances must still sum to 1.
+        self.assertAlmostEqual(sum(result.abundance.values()), 1.0, places=6)
 
     def test_steadycom_with_manual_bigM(self):
         """Test that SteadyCom still works when BigM is manually specified."""
@@ -128,9 +134,9 @@ class TestSteadyComBigMFix(unittest.TestCase):
         # Run SteadyCom with pre-built solver
         result = SteadyCom(self.community, solver=solver)
 
-        # Should still produce valid results
-        self.assertIsNotNone(result)
-        self.assertGreater(result.growth, 0)
+        # BigM 10000 exceeds every flux bound: the same growth as with the automatic BigM
+        check_steadycom(self, self.community, result)
+        self.assertAlmostEqual(result.growth, SteadyCom(self.community).growth, places=6)
 
     def test_automatic_vs_manual_bigM_consistency(self):
         """

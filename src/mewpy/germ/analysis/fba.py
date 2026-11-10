@@ -14,6 +14,7 @@ Or use COBRApy/reframed FBA implementations directly:
 
 from typing import Dict, Union
 
+from mewpy.germ.analysis.analysis_utils import IdResolver, gene_defaults
 from mewpy.germ.models.regulatory_extension import RegulatoryExtension
 from mewpy.solvers import solver_instance
 from mewpy.solvers.solution import Solution
@@ -50,9 +51,8 @@ class _RegulatoryAnalysisBase:
         :param model: A RegulatoryExtension instance wrapping a simulator
         :param solver: A Solver instance or solver name. If None, a new solver is instantiated.
         :param build: Whether to build the problem upon instantiation. Default: False
-        :param attach: Whether to attach the problem to the model upon instantiation. Default: False
-                       **Note:** This parameter is kept for backwards compatibility but is not used.
-                       In the new architecture, analysis methods do not attach to models via observer pattern.
+        :param attach: Whether to attach the problem to the model upon instantiation. Default: False.
+                       An attached analysis is notified when the model changes and rebuilds on the next optimize.
         """
         self.model = model
         self.solver_name = solver
@@ -62,12 +62,24 @@ class _RegulatoryAnalysisBase:
         self._synchronized = False
         self.method = "FBA"  # Subclasses should override
 
+        # Observer pattern: the model calls update() when it changes; optimize then rebuilds the problem
+        if attach and hasattr(model, "attach"):
+            model.attach(self)
+
         if build:
             self.build()
 
-        # attach parameter is kept for backwards compatibility but is unused
-        # In the new architecture with RegulatoryExtension, analysis methods do not
-        # attach to models via observer pattern - they access data on-demand
+    def update(self):
+        """Called by the model when it changes: the problem is rebuilt on the next optimize."""
+        self._synchronized = False
+
+    @property
+    def _ids(self) -> IdResolver:
+        """Resolves user ids given in the other SBML form or as original TRN ids (rebuilt by build())."""
+        resolver = getattr(self, "_id_resolver", None)
+        if resolver is None:
+            resolver = self._id_resolver = IdResolver(self.model)
+        return resolver
 
     def __str__(self):
         """Simple string representation."""
@@ -320,7 +332,52 @@ class _RegulatoryAnalysisBase:
         # No GPR available
         return Expression(Symbol("true"), {})
 
+    def _new_solver(self, simulator) -> Solver:
+        """
+        A new solver problem for the simulator, from the solver given at construction (a name or a Solver
+        instance, whose class is used) or the default solver.
+        """
+        if self.solver_name is None:
+            return solver_instance(simulator)
+        if isinstance(self.solver_name, Solver):
+            return type(self.solver_name)(simulator)
+
+        from mewpy import solvers
+
+        available = solvers.__MEWPY_solvers__
+        if self.solver_name not in available:
+            raise ValueError(f"Unknown solver '{self.solver_name}'. Available: {sorted(available)}")
+        return available[self.solver_name](simulator)
+
+    def _closed_reactions(self) -> set:
+        """
+        Reactions closed by legacy GERM gene coefficients. gene.ko() sets a gene's coefficients to 0 without
+        changing the reaction bounds the simulator reports; a reaction whose GPR is then off must carry no flux.
+        """
+        if not isinstance(getattr(self.model, "genes", None), dict):
+            return set()
+        state = gene_defaults(self.model)
+        if all(state.values()):
+            return set()
+        return {
+            rxn_id
+            for rxn_id, reaction in self.model.reactions.items()
+            if not reaction.gpr.is_none and not reaction.gpr.evaluate(values=state)
+        }
+
+    def _close_reactions(self, solver):
+        """Close, in the solver, the reactions switched off by gene coefficients (see _closed_reactions)."""
+        self._closed = self._closed_reactions()
+        for rxn_id in self._closed:
+            solver.set_variable_bounds(rxn_id, 0.0, 0.0)
+
     def _get_reaction(self, rxn_id):
+        """Get reaction data (works with both model types)."""
+        if rxn_id in getattr(self, "_closed", ()):
+            return {**self._get_reaction_data(rxn_id), "lb": 0.0, "ub": 0.0}
+        return self._get_reaction_data(rxn_id)
+
+    def _get_reaction_data(self, rxn_id):
         """Get reaction data (works with both model types)."""
         if hasattr(self.model, "get_reaction"):
             # RegulatoryExtension - returns dict
@@ -368,7 +425,9 @@ class _RegulatoryAnalysisBase:
                 simulator = self.model
 
         # Create solver directly from simulator
-        self._solver = solver_instance(simulator)
+        self._solver = self._new_solver(simulator)
+        self._id_resolver = None
+        self._close_reactions(self._solver)
 
         # Set up objective
         if hasattr(self.model, "objective"):
@@ -396,6 +455,19 @@ class _RegulatoryAnalysisBase:
 
         # Return self for chaining
         return self
+
+    def _objective_from(self, solver_kwargs: Dict):
+        """
+        Pop 'linear' and 'minimize' from solver_kwargs (in place) and return the objective to solve:
+        the temporary one when given, otherwise the objective set by build().
+        """
+        linear = solver_kwargs.pop("linear", None)
+        minimize = solver_kwargs.pop("minimize", None)
+        if linear is None:
+            linear = self._linear_objective
+        if minimize is None:
+            minimize = self._minimize
+        return linear, minimize
 
     @property
     def synchronized(self):
@@ -425,15 +497,14 @@ class _RegulatoryAnalysisBase:
         if not solver_kwargs:
             solver_kwargs = {}
 
-        # Make a copy to avoid modifying the original
-        solver_kwargs_copy = solver_kwargs.copy()
+        # Make a copy to avoid modifying the original; ids may be given in either form
+        solver_kwargs_copy = self._ids.solver_kwargs(solver_kwargs)
 
-        # Remove conflicting arguments that we set explicitly
-        solver_kwargs_copy.pop("linear", None)
-        solver_kwargs_copy.pop("minimize", None)
+        # A temporary objective/direction in solver_kwargs (e.g. FVA per-reaction objectives) wins
+        linear, minimize = self._objective_from(solver_kwargs_copy)
 
         # Solve using simulator
-        solution = self.solver.solve(linear=self._linear_objective, minimize=self._minimize, **solver_kwargs_copy)
+        solution = self.solver.solve(linear=linear, minimize=minimize, **solver_kwargs_copy)
 
         # Set the method attribute for compatibility
         solution._method = self.method

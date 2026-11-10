@@ -87,13 +87,11 @@ print(f"  - Interactions: {len(list(model_from_cobra.yield_interactions()))}")  
 print("\n3. Using factory-created models in analysis")
 print("-" * 80)
 
-from mewpy.germ.analysis import FBA, RFBA, SRFBA
+from mewpy.germ.analysis import RFBA, SRFBA
 
-# FBA on metabolic-only model
-fba = FBA(model_metabolic_only)
-fba_solution = fba.optimize()
-fba_obj = fba_solution.objective_value if fba_solution.objective_value is not None else fba_solution.fobj
-print(f"FBA (metabolic only): {fba_obj:.6f}")
+# FBA on metabolic-only model (GERM has no public FBA class; use the model's simulator)
+fba_solution = model_metabolic_only.simulator.simulate()
+print(f"FBA (metabolic only): {fba_solution.objective_value:.6f}")
 
 # RFBA on integrated model
 rfba = RFBA(model_integrated)

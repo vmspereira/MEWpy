@@ -6,7 +6,7 @@ import pandas as pd
 from mewpy.solvers import solver_prefers_fresh_instance
 from mewpy.util.constants import ModelConstants
 
-from .analysis_utils import run_method_and_decode
+from .analysis_utils import IdResolver, gene_defaults, reaction_gpr, run_method_and_decode
 from .fba import _FBA
 from .pfba import _pFBA
 
@@ -41,10 +41,10 @@ def fva(
         it reuses a single FBA instance for better performance.
     """
     if not reactions:
-        reactions = model.reactions.keys()
+        reactions = list(model.reactions)
 
-    if not constraints:
-        constraints = {}
+    # a copy: the objective bound added below must not leak into the caller's dict
+    constraints = dict(constraints) if constraints else {}
 
     if objective:
         if hasattr(objective, "keys"):
@@ -53,12 +53,20 @@ def fva(
             obj = str(objective)
 
     else:
-        obj = next(iter(model.objective)).id
+        obj = next(iter(model.objective))
+        obj = getattr(obj, "id", obj)
 
     # Get optimal objective value
     _fba = _FBA(model).build()
     objective_value, _ = run_method_and_decode(method=_fba, objective=objective, constraints=constraints)
-    constraints[obj] = (fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND)
+    lower, upper = fraction * objective_value, ModelConstants.REACTION_UPPER_BOUND
+    if obj in constraints:
+        # a user bound on the objective reaction (e.g. a flux envelope fixing growth) still applies
+        bound = constraints[obj]
+        user_lb, user_ub = bound if isinstance(bound, (tuple, list)) else (bound, bound)
+        upper = min(upper, user_ub)
+        lower = min(max(lower, user_lb), upper)
+    constraints[obj] = (lower, upper)
 
     # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
     use_fresh_instance = solver_prefers_fresh_instance()
@@ -118,10 +126,27 @@ def single_gene_deletion(
     if not constraints:
         constraints = {}
 
-    if not genes:
-        genes = model.yield_genes()
+    # gene id -> default activity, and gene id -> [(reaction id, parsed GPR)], for legacy GERM models
+    # (Gene/Reaction objects) and RegulatoryExtension (ids, GPRs parsed from the simulator)
+    state = gene_defaults(model)
+    if isinstance(model.genes, dict):
+        gene_reactions = {
+            gene.id: [(reaction.id, reaction.gpr) for reaction in gene.yield_reactions()]
+            for gene in model.yield_genes()
+        }
     else:
-        genes = [model.genes[gene] for gene in genes if gene in model.genes]
+        gene_reactions = {
+            gene_id: [(rxn_id, reaction_gpr(model, rxn_id)) for rxn_id in rxn_ids]
+            for gene_id, rxn_ids in model.get_gene_reactions().items()
+        }
+
+    # (given id, native id); ids may be given in either SBML form. Results are indexed by the given ids
+    if not genes:
+        genes = [(gene, gene) for gene in state]
+    else:
+        resolver = IdResolver(model)
+        genes = [(gene, resolver.id(gene)) for gene in genes]
+        genes = [(gene, native) for gene, native in genes if native in state]
 
     # Check if we should use fresh instances (SCIP) or reuse (CPLEX/Gurobi)
     use_fresh_instance = solver_prefers_fresh_instance()
@@ -135,26 +160,24 @@ def single_gene_deletion(
         fba = _FBA(model).build()
         wt_objective_value, wt_status = run_method_and_decode(method=fba, constraints=constraints)
 
-    state = {gene.id: max(gene.coefficients) for gene in model.yield_genes()}
-
     result = {}
-    for gene in genes:
+    for gene, native in genes:
 
-        gene_coefficient = state.pop(gene.id, 0.0)
-        state[gene.id] = 0.0
+        gene_coefficient = state.pop(native, 0.0)
+        state[native] = 0.0
 
         gene_constraints = {}
-        for reaction in gene.yield_reactions():
+        for rxn_id, gpr in gene_reactions.get(native, []):
 
-            if reaction.gpr.is_none:
+            if gpr.is_none:
                 continue
 
-            gpr_eval = reaction.gpr.evaluate(values=state)
+            gpr_eval = gpr.evaluate(values=state)
 
             if gpr_eval:
                 continue
 
-            gene_constraints[reaction.id] = (0.0, 0.0)
+            gene_constraints[rxn_id] = (0.0, 0.0)
 
         if gene_constraints:
             if use_fresh_instance:
@@ -168,12 +191,12 @@ def single_gene_deletion(
                 # CPLEX/Gurobi: Reuse FBA instance (they handle modifications efficiently)
                 solution, status = run_method_and_decode(method=fba, constraints={**constraints, **gene_constraints})
 
-            result[gene.id] = [solution, status]
+            result[gene] = [solution, status]
 
         else:
-            result[gene.id] = [float(wt_objective_value), str(wt_status)]
+            result[gene] = [float(wt_objective_value), str(wt_status)]
 
-        state[gene.id] = gene_coefficient
+        state[native] = gene_coefficient
 
     return pd.DataFrame.from_dict(data=result, orient="index", columns=["growth", "status"])
 
@@ -201,7 +224,7 @@ def single_reaction_deletion(
         it reuses a single FBA instance for better performance.
     """
     if not reactions:
-        reactions = model.reactions.keys()
+        reactions = list(model.reactions)
 
     if not constraints:
         constraints = {}

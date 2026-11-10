@@ -37,6 +37,24 @@ from mewpy.util.constants import EAConstants, ModelConstants
 from .evaluator import EvaluationFunction, KineticEvaluationFunction, PhenotypeEvaluationFunction
 
 
+class _SimulatorCopyCache:
+    """Keeps the simulator copy that an evaluation function runs its extra simulations on.
+
+    get_simulator(simulator) returns a copy, which is costly to build for every candidate. The copy
+    is rebuilt when the source simulator or its conditions change, and it is not pickled.
+    """
+
+    def _simulator_copy(self, sim):
+        cache = self.__dict__.get("_sim_cache")
+        envcond, constraints = sim.envcond, sim.model_constraints
+        stale = cache is None or cache[0] is not sim.model
+        if stale or cache[1] != envcond or cache[2] != constraints:
+            simulator = get_simulator(sim.model, envcond=envcond, constraints=constraints)
+            cache = (sim.model, dict(envcond), dict(constraints), simulator)
+            self._sim_cache = cache  # not pickled, see EvaluationFunction.__getstate__
+        return cache[3]
+
+
 class TargetFlux(PhenotypeEvaluationFunction, KineticEvaluationFunction):
 
     def __init__(
@@ -62,7 +80,7 @@ class TargetFlux(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         :param min_biomass_value: (float) The minimum biomass value.
         :param min_biomass_per: (float) Minimum biomass percentage. Only used if no min_biomass_value is provided.
         """
-        super(TargetFlux, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(TargetFlux, self).__init__(maximize=maximize)
         self.reaction = reaction
         self.biomass = biomass
         self.min_biomass_value = min_biomass_value
@@ -86,18 +104,26 @@ class TargetFlux(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         if not sim or sim.status not in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL, ODEStatus.OPTIMAL):
             return self.no_solution
 
+        # fluxes are keyed by native ids; user ids may have or lack the SBML prefix
+        biomass, reaction = self._native_id(sim, self.biomass), self._native_id(sim, self.reaction)
+
         # only executed once if required
-        if self.biomass and self.min_biomass_value is None:
+        if biomass and self.min_biomass_value is None:
             self.min_biomass_value = 0.0
             if self.min_biomass_per > 0.0:
                 simulation = get_simulator(sim.model, envcond=sim.envcond, constraints=sim.model_constraints)
-                result = simulation.simulate(objective={self.biomass: 1})
-                self.min_biomass_value = self.min_biomass_per * result.fluxes[self.biomass]
+                result = simulation.simulate(objective={biomass: 1})
+                self.min_biomass_value = self.min_biomass_per * result.fluxes[biomass]
 
-        if self.biomass and sim.fluxes[self.biomass] < self.min_biomass_value:
+        if biomass and sim.fluxes[biomass] < self.min_biomass_value:
             res = self.no_solution
-        elif self.reaction and self.reaction in sim.fluxes.keys():
-            res = sim.fluxes[self.reaction]
+        elif reaction:
+            if reaction not in sim.fluxes.keys():
+                raise ValueError(f"Reaction {reaction} is not in the flux distribution.")
+            res = sim.fluxes[reaction]
+        elif isinstance(getattr(sim.model, "objective", None), dict):
+            # the objective value of methods such as pFBA is not the model objective
+            res = sum(coef * sim.fluxes[rxn] for rxn, coef in sim.model.objective.items())
         else:
             res = sim.objective_value
 
@@ -122,7 +148,7 @@ class TargetFlux(PhenotypeEvaluationFunction, KineticEvaluationFunction):
         )
 
 
-class WYIELD(PhenotypeEvaluationFunction):
+class WYIELD(_SimulatorCopyCache, PhenotypeEvaluationFunction):
     def __init__(self, biomassId: str, productId: str, maximize: bool = True, **kwargs):
         """ Weighted Yield (WYIELD) objective function, a linear combination of the target
             product minimum and maximum FVA under the introduced metabolic modifications.
@@ -140,7 +166,7 @@ class WYIELD(PhenotypeEvaluationFunction):
         :param scale: (boolean) Defines if the WYIELD is devided by the biomass of the simulated result (default false).
     """
 
-        super(WYIELD, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(WYIELD, self).__init__(maximize=maximize)
         self.biomassId = biomassId
         self.productId = productId
         # parameters
@@ -171,24 +197,26 @@ class WYIELD(PhenotypeEvaluationFunction):
         fvaMinProd = 0.0
         scalefactor = kwargs.get("scalefactor", None)
 
-        model = sim.model
         ssFluxes = sim.fluxes
+        # fluxes are keyed by native ids; user ids may have or lack the SBML prefix
+        biomass = self._native_id(sim, self.biomassId)
+        product = self._native_id(sim, self.productId)
 
-        simulation = get_simulator(model, envcond=sim.envcond, constraints=sim.model_constraints)
+        simulation = self._simulator_copy(sim)
 
         if not ssFluxes:
             return self.no_solution
         ids = list(ssFluxes.keys())
-        if self.biomassId not in ids or self.productId not in ids:
+        if biomass not in ids or product not in ids:
             raise ValueError("Reaction ids are not present in the fluxes distribution.")
 
-        biomassFluxValue = ssFluxes[self.biomassId] * self.obj_frac
+        biomassFluxValue = ssFluxes[biomass] * self.obj_frac
 
         try:
             # computed only once
             if self.min_biomass_value is None or self.min_biomass_value < 0.0:
-                solution = simulation.simulate(objective={self.biomassId: 1}, scalefactor=scalefactor)
-                wtBiomassValue = solution.fluxes[self.biomassId]
+                solution = simulation.simulate(objective={biomass: 1}, scalefactor=scalefactor)
+                wtBiomassValue = solution.fluxes[biomass]
                 minBiomass = wtBiomassValue * self.min_biomass_per
                 self.min_biomass_value = minBiomass
             else:
@@ -197,25 +225,25 @@ class WYIELD(PhenotypeEvaluationFunction):
             constraints = {}
             constraints.update(sim.simulation_constraints)
             # add biomass constraint
-            constraints[self.biomassId] = (biomassFluxValue, ModelConstants.REACTION_UPPER_BOUND)
+            constraints[biomass] = (biomassFluxValue, ModelConstants.REACTION_UPPER_BOUND)
 
             # only need to simulate FVA max if alpha is larger than 0, otherwise it will always be zero
             if self.alpha > 0:
                 fvaMaxResult = simulation.simulate(
-                    objective={self.productId: 1}, constraints=constraints, scalefactor=scalefactor
+                    objective={product: 1}, constraints=constraints, scalefactor=scalefactor
                 )
                 if fvaMaxResult.status == SStatus.OPTIMAL:
-                    fvaMaxProd = fvaMaxResult.fluxes[self.productId]
+                    fvaMaxProd = fvaMaxResult.fluxes[product]
                 else:
                     return self.no_solution
 
             # only need to simulate FVA min if alpha is lesser than 1, otherwise it will always be zero
             if self.alpha < 1:
                 fvaMinResult = simulation.simulate(
-                    objective={self.productId: 1}, constraints=constraints, maximize=False, scalefactor=scalefactor
+                    objective={product: 1}, constraints=constraints, maximize=False, scalefactor=scalefactor
                 )
                 if fvaMinResult.status == SStatus.OPTIMAL:
-                    fvaMinProd = fvaMinResult.fluxes[self.productId]
+                    fvaMinProd = fvaMinResult.fluxes[product]
                 else:
                     return self.no_solution
 
@@ -270,13 +298,12 @@ class BPCY(PhenotypeEvaluationFunction):
         :param reference: (dic) Wild type reference values when MOMA, lMOMA or ROOM are defined as method. \
             If not provided, wild type reference values will be computed.
         """
-        super(BPCY, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(BPCY, self).__init__(maximize=maximize)
         self.biomassId = biomass
         self.productId = product
         self.uptakeId = uptake
         self.method = kwargs.get("method", SimulationMethod.pFBA)
         self.reference = kwargs.get("reference", None)
-        self.worst_fitness = 0.0
 
     def get_fitness(self, simul_results, candidate, **kwargs):
         """Evaluates a candidate
@@ -292,13 +319,20 @@ class BPCY(PhenotypeEvaluationFunction):
             return self.no_solution
 
         ssFluxes = sim.fluxes
+        # fluxes are keyed by native ids; user ids may have or lack the SBML prefix
+        biomass = self._native_id(sim, self.biomassId)
+        product = self._native_id(sim, self.productId)
+        uptake_id = self._native_id(sim, self.uptakeId)
 
         ids = list(ssFluxes.keys())
-        if self.biomassId not in ids or self.productId not in ids:
-            raise ValueError("Biomass or product reactions ids are not present in the fluxes distribution.")
+        if biomass not in ids or product not in ids:
+            raise ValueError(
+                f"Biomass ({biomass}) or product ({product}) reaction ids are not "
+                "present in the fluxes distribution."
+            )
 
-        if self.uptakeId and self.uptakeId in ids:
-            uptake = abs(ssFluxes[self.uptakeId])
+        if uptake_id and uptake_id in ids:
+            uptake = abs(ssFluxes[uptake_id])
         else:
             uptake = 1.0
 
@@ -306,11 +340,11 @@ class BPCY(PhenotypeEvaluationFunction):
             return self.no_solution
         if EAConstants.DEBUG:
             try:
-                logger.debug("BPCY Biomass: %s product: %s", ssFluxes[self.biomassId], ssFluxes[self.productId])
+                logger.debug("BPCY Biomass: %s product: %s", ssFluxes[biomass], ssFluxes[product])
             except KeyError:
                 # Flux values not available
                 logger.debug("BPCY No Fluxes")
-        return (ssFluxes[self.biomassId] * ssFluxes[self.productId]) / uptake
+        return (ssFluxes[biomass] * ssFluxes[product]) / uptake
 
     def _repr_latex_(self):
         sense = "\\max" if self.maximize else "\\min"
@@ -341,7 +375,7 @@ class BPCY(PhenotypeEvaluationFunction):
             return "BPCY (" + self.biomassId + " * " + self.productId + ")"
 
 
-class BPCY_FVA(PhenotypeEvaluationFunction):
+class BPCY_FVA(_SimulatorCopyCache, PhenotypeEvaluationFunction):
 
     def __init__(self, biomass: str, product: str, uptake: str = None, maximize: bool = True, **kwargs):
         """
@@ -365,13 +399,12 @@ class BPCY_FVA(PhenotypeEvaluationFunction):
         :param reference: (dic) Wild type reference values when MOMA, lMOMA or ROOM are defined as method. \
             If not provided, wild type reference values will be computed.
     """
-        super(BPCY_FVA, self).__init__(maximize=maximize, worst_fitness=0.0)
+        super(BPCY_FVA, self).__init__(maximize=maximize)
         self.biomassId = biomass
         self.productId = product
         self.uptakeId = uptake
         self.method = kwargs.get("method", SimulationMethod.pFBA)
         self.reference = kwargs.get("reference", None)
-        self.worst_fitness = 0.0
         self.obj_frac = kwargs.get("obj_frac", 0.99)
 
     def get_fitness(self, simul_results, candidate, **kwargs):
@@ -387,13 +420,17 @@ class BPCY_FVA(PhenotypeEvaluationFunction):
             return self.no_solution
 
         ssFluxes = sim.fluxes
+        # fluxes are keyed by native ids; user ids may have or lack the SBML prefix
+        biomass = self._native_id(sim, self.biomassId)
+        product = self._native_id(sim, self.productId)
+        uptake_id = self._native_id(sim, self.uptakeId)
 
         ids = list(ssFluxes.keys())
-        if self.biomassId not in ids or self.productId not in ids:
+        if biomass not in ids or product not in ids:
             raise ValueError("Biomass or product reactions ids are not present in the fluxes distribution.")
 
-        if self.uptakeId and self.uptakeId in ids:
-            uptake = abs(ssFluxes[self.uptakeId])
+        if uptake_id and uptake_id in ids:
+            uptake = abs(ssFluxes[uptake_id])
         else:
             uptake = 1.0
 
@@ -401,27 +438,28 @@ class BPCY_FVA(PhenotypeEvaluationFunction):
             return self.no_solution
 
         # computes target FVA min and max
-        simulation = get_simulator(sim.model, envcond=sim.envcond, constraints=sim.model_constraints)
+        simulation = self._simulator_copy(sim)
         v_min = 0
         v_max = 1
-        constraints = sim.simulation_constraints
+        # a copy: the simulation constraints may be the candidate's own constraints
+        constraints = dict(sim.simulation_constraints)
         # add biomass constraint
-        biomassFluxValue = ssFluxes[self.biomassId] * self.obj_frac
-        constraints[self.biomassId] = (biomassFluxValue, ModelConstants.REACTION_UPPER_BOUND)
+        biomassFluxValue = ssFluxes[biomass] * self.obj_frac
+        constraints[biomass] = (biomassFluxValue, ModelConstants.REACTION_UPPER_BOUND)
 
-        fvaMaxResult = simulation.simulate(objective={self.productId: 1}, constraints=constraints)
-        v_max = fvaMaxResult.fluxes[self.productId]
+        fvaMaxResult = simulation.simulate(objective={product: 1}, constraints=constraints)
+        v_max = fvaMaxResult.fluxes[product]
 
         if not v_max:
             return self.worst_fitness
 
-        fvaMinResult = simulation.simulate(objective={self.productId: 1}, constraints=constraints, maximize=False)
-        v_min = fvaMinResult.fluxes[self.productId]
+        fvaMinResult = simulation.simulate(objective={product: 1}, constraints=constraints, maximize=False)
+        v_min = fvaMinResult.fluxes[product]
 
         if abs(v_max) == abs(v_min):
-            return (ssFluxes[self.biomassId] * ssFluxes[self.productId]) / uptake
+            return (ssFluxes[biomass] * ssFluxes[product]) / uptake
         else:
-            return ((ssFluxes[self.biomassId] * ssFluxes[self.productId]) / uptake) * (
+            return ((ssFluxes[biomass] * ssFluxes[product]) / uptake) * (
                 1 - math.log(abs((v_max - v_min) / (v_max + v_min)))
             )
 
@@ -450,7 +488,7 @@ class CNRFA(PhenotypeEvaluationFunction):
         :param maximize: optimization direction: True (maximize) False (minimize), defaults to True
         :type maximize: bool, optional
         """
-        super(CNRFA, self).__init__(maximize=maximize, worst_fitness=0)
+        super(CNRFA, self).__init__(maximize=maximize)
         self.reactions = reactions
         self.method = kwargs.get("method", SimulationMethod.pFBA)
         self.threshold = threshold
@@ -469,7 +507,7 @@ class CNRFA(PhenotypeEvaluationFunction):
 
         count = 0
         for rxn in self.reactions:
-            if sim.fluxes[rxn] > self.threshold:
+            if sim.fluxes[self._native_id(sim, rxn)] > self.threshold:
                 count += 1
         return count
 
@@ -540,7 +578,7 @@ class MolecularWeight(PhenotypeEvaluationFunction):
 
         fitness = 0
         for rx in self.reactions:
-            fitness += self.__mw[rx] * abs(sim.fluxes[rx])
+            fitness += self.__mw[rx] * abs(sim.fluxes[self._native_id(sim, rx)])
 
         if fitness > 0:
             return fitness * 0.001
@@ -590,7 +628,7 @@ class FluxDistance(EvaluationFunction):
 
         total = 0
         for rxn in self.fluxes:
-            total += (sim.fluxes[rxn] - self.fluxes[rxn]) ** 2
+            total += (sim.fluxes[self._native_id(sim, rxn)] - self.fluxes[rxn]) ** 2
         return math.sqrt(total)
 
     def required_simulations(self):
@@ -638,7 +676,7 @@ class TargetFluxWithConstraints(EvaluationFunction):
 
         res = simulator.simulate(method="FBA", constraints=self.constraints)
         if res.status in (SStatus.OPTIMAL, SStatus.SUBOPTIMAL):
-            return res.fluxes[self.reaction]
+            return res.fluxes[self._native_id(res, self.reaction)]
         else:
             return self.no_solution
 

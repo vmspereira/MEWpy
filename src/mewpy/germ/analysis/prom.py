@@ -25,11 +25,8 @@ def _run_and_decode_solver(lp, additional_constraints: Dict[str, Tuple[float, fl
     if not additional_constraints:
         additional_constraints = {}
 
-    if not kwargs:
-        kwargs = {}
-
-    if "constraints" in kwargs:
-        kwargs["constraints"].update(additional_constraints)
+    # merge into a new dict: always apply the additional constraints, never mutate the caller's constraints
+    kwargs["constraints"] = {**(kwargs.get("constraints") or {}), **additional_constraints}
 
     solution = lp.solver.solve(**kwargs)
     if solution.status == Status.OPTIMAL:
@@ -74,10 +71,12 @@ class PROM(_RegulatoryAnalysisBase):
         self._linear_objective = dict(self.model.objective)
         self._minimize = False
 
-    def _max_rates(self, solver_kwargs: Dict[str, Any]):
-        """Compute maximum rates for all reactions using FVA."""
+    def _max_rates(self, solver_kwargs: Dict[str, Any], reactions: Sequence[str] = None):
+        """Compute maximum rates using FVA, for the given reactions (default: all reactions)."""
         # Wild-type reference
-        reference = self.solver.solve(**solver_kwargs)
+        reference = self.solver.solve(
+            **{**solver_kwargs, "linear": self._linear_objective, "minimize": self._minimize, "get_values": True}
+        )
         if reference.status != Status.OPTIMAL:
             raise RuntimeError("The solver did not find an optimal solution for the wild-type conditions.")
         reference = reference.values.copy()
@@ -85,7 +84,7 @@ class PROM(_RegulatoryAnalysisBase):
 
         # FVA of the reaction at fraction of 0.99 (for wild-type growth rate)
         rates = {}
-        for reaction in self.model.reactions:
+        for reaction in self.model.reactions if reactions is None else reactions:
             min_rxn = _run_and_decode_solver(
                 self,
                 additional_constraints=reference_constraints,
@@ -119,6 +118,13 @@ class PROM(_RegulatoryAnalysisBase):
 
         return rates
 
+    def _gene_reactions(self, gene_id: str) -> list:
+        """Reaction ids of a metabolic gene (RegulatoryExtension or legacy GERM model)."""
+        if hasattr(self.model, "get_gene"):
+            return list(self.model.get_gene(gene_id).reactions)
+        gene = self.model.genes[gene_id]
+        return list(gene.reactions) if hasattr(gene, "reactions") else []
+
     def _optimize_ko(
         self,
         probabilities: Dict[Tuple[str, str], float],
@@ -129,17 +135,21 @@ class PROM(_RegulatoryAnalysisBase):
         solver_kwargs: Dict[str, Any] = None,
     ):
         """Optimize with regulator knockout."""
-        solver_constrains = solver_kwargs.get("constraints", {})
+        solver_constrains = solver_kwargs.get("constraints") or {}
 
-        # Get reaction bounds from simulator
-        # yield_reactions() returns reaction IDs (strings), not objects
+        # Reaction bounds: model bounds overridden by the caller's constraints. Legacy GERM models yield
+        # Reaction objects and RegulatoryExtension yields ids; constraints are always keyed by reaction id.
         prom_constraints = {}
-        for rxn_id in self.model.yield_reactions():
+        for rxn in self.model.yield_reactions():
+            rxn_id = getattr(rxn, "id", rxn)
             rxn_data = self._get_reaction(rxn_id)
             prom_constraints[rxn_id] = (
                 rxn_data.get("lb", ModelConstants.REACTION_LOWER_BOUND),
                 rxn_data.get("ub", ModelConstants.REACTION_UPPER_BOUND),
             )
+        for key, bounds in solver_constrains.items():
+            prom_constraints[key] = tuple(bounds) if isinstance(bounds, (tuple, list)) else (bounds, bounds)
+        base_bounds = dict(prom_constraints)
 
         genes = self.model.genes
         state = {gene: 1 for gene in genes}
@@ -223,18 +233,10 @@ class PROM(_RegulatoryAnalysisBase):
 
             # For each reaction associated with this single target
             for rxn_id in reactions_list:
-                # Skip reactions not in prom_constraints (may not be in yield_reactions())
-                if rxn_id not in prom_constraints:
-                    continue
-
                 if rxn_id not in inactive_reactions:
                     continue
 
                 if interaction_probability >= 1:
-                    continue
-
-                # Skip if reaction not in max_rates or reference
-                if rxn_id not in max_rates or rxn_id not in reference:
                     continue
 
                 # Reaction old bounds
@@ -246,10 +248,8 @@ class PROM(_RegulatoryAnalysisBase):
                 # Wild-type flux value
                 wt_flux = reference[rxn_id]
 
-                # Get reaction bounds from reaction data (works with both APIs)
-                rxn_data = self._get_reaction(rxn_id)
-                reaction_lower_bound = rxn_data["lb"]
-                reaction_upper_bound = rxn_data["ub"]
+                # Reaction bounds before the knockout (model bounds or the caller's constraints)
+                reaction_lower_bound, reaction_upper_bound = base_bounds[rxn_id]
 
                 # Update flux bounds according to probability flux
                 if wt_flux < 0:
@@ -270,15 +270,14 @@ class PROM(_RegulatoryAnalysisBase):
                 "linear": self._linear_objective,
                 "minimize": self._minimize,
                 "get_values": True,
-                "constraints": {**solver_constrains, **prom_constraints},
+                "constraints": prom_constraints,
             }
         )
 
         if to_solver:
             return solution
 
-        minimize = solver_kwargs.get("minimize", self._minimize)
-        return Solution.from_solver(method=self.method, solution=solution, model=self.model, minimize=minimize)
+        return Solution.from_solver(method=self.method, solution=solution, model=self.model, minimize=self._minimize)
 
     def _optimize(
         self,
@@ -295,8 +294,17 @@ class PROM(_RegulatoryAnalysisBase):
             raise RuntimeError("The solver did not find an optimal solution for the wild-type conditions.")
         reference = reference.values.copy()
 
-        # Max and min fluxes of the reactions
-        max_rates = self._max_rates(solver_kwargs=solver_kwargs)
+        # Max and min fluxes, only of the reactions the knockouts can restrict (those of the regulators'
+        # metabolic targets): the other rates are never used, and FVA costs two solves per reaction
+        genes = set(self.model.genes)
+        regulated = {
+            rxn_id
+            for regulator in regulators
+            for target in regulator.yield_targets()
+            if target.id in genes
+            for rxn_id in self._gene_reactions(target.id)
+        }
+        max_rates = self._max_rates(solver_kwargs=solver_kwargs, reactions=sorted(regulated))
 
         # Single regulator knockout
         if len(regulators) == 1:
@@ -348,11 +356,16 @@ class PROM(_RegulatoryAnalysisBase):
         if not initial_state:
             initial_state = {}
 
+        # Ids may be given in either SBML form or as original TRN ids
+        initial_state = self._ids.keys(initial_state)
+
         if not regulators:
-            regulators = list(self.model.yield_regulators())
+            # RegulatoryExtension yields (id, regulator) tuples, legacy models yield regulators
+            regulators = [regulator for _, regulator in self._get_regulators()]
         else:
             if isinstance(regulators, str):
                 regulators = [regulators]
+            regulators = self._ids.ids(regulators)
             # Get regulator objects - handle both APIs
             if hasattr(self.model, "get_regulator"):
                 # RegulatoryExtension API
@@ -361,13 +374,19 @@ class PROM(_RegulatoryAnalysisBase):
                 # Legacy model API - regulators is a dict
                 regulators = [self.model.regulators[regulator] for regulator in regulators]
 
-        if not solver_kwargs:
-            solver_kwargs = {}
+        # a copy: the caller's dict is not mutated. 'linear'/'minimize' set a temporary objective
+        solver_kwargs = dict(self._ids.solver_kwargs(solver_kwargs)) if solver_kwargs else {}
+        linear, minimize = self._objective_from(solver_kwargs)
+        objective, direction = self._linear_objective, self._minimize
+        self._linear_objective, self._minimize = linear, minimize
 
         # Concrete optimize
-        solutions = self._optimize(
-            initial_state=initial_state, regulators=regulators, to_solver=to_solver, solver_kwargs=solver_kwargs
-        )
+        try:
+            solutions = self._optimize(
+                initial_state=initial_state, regulators=regulators, to_solver=to_solver, solver_kwargs=solver_kwargs
+            )
+        finally:
+            self._linear_objective, self._minimize = objective, direction
 
         if to_solver:
             return solutions

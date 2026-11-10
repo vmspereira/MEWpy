@@ -30,7 +30,7 @@ def test():
     regulatory modification for the increased production of tryptophan.
     """
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    PATH = os.path.join(dir_path, '../../../examples/models/optram/')
+    PATH = os.path.join(dir_path, '../models/optram/')
     gene_file = os.path.join(PATH, 'mgene.csv')
     ft_file = os.path.join(PATH, 'TFnames.csv')
     matrix_file = os.path.join(PATH, 'regnet.csv')

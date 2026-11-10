@@ -25,7 +25,7 @@ class SMomentModel(CBModel):
         """SMomentModel an extension of REFRAMED CBModel for sMOMENT models.
 
         :param model: a path to a CBM xml file or an instance of REFRAMED SBModel
-        :param enzyme_reaction_prefix: str enzyme prefix
+        :param enzyme_reaction_prefix: str enzyme prefix, with or without the SBML reaction prefix (R_)
                    GECKO_ANALOGON: "R_ENZYME_DELIVERY_"
                    GECKO: "R__TG_ER_"
         """
@@ -40,6 +40,14 @@ class SMomentModel(CBModel):
             raise ValueError("The model should be a path or a CBModel")
 
         super(SMomentModel, self).__init__(model.id)
+        # REFRAMED reaction ids carry the SBML prefix (R_): a prefix given without it, e.g. "ENZYME_DELIVERY_",
+        # is completed by the simulator, as Simulator.resolve does for ids. The default ids are unchanged.
+        if not any(rx.startswith(enzyme_reaction_prefix) for rx in model.reactions):
+            from mewpy.simulation import get_simulator
+
+            native_prefix = get_simulator(model).to_native(enzyme_reaction_prefix, "reaction")
+            if any(rx.startswith(native_prefix) for rx in model.reactions):
+                enzyme_reaction_prefix = native_prefix
         self.enzyme_prefix = enzyme_reaction_prefix
         # import CBModel's data
         self.compartments = copy.deepcopy(model.compartments)

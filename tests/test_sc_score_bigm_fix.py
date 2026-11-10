@@ -7,6 +7,7 @@ when one organism requires metabolites from another.
 
 Bug fixed: Big-M constraints had incorrect signs causing infeasibility when y_k=0.
 """
+
 import unittest
 
 from cobra.io.sbml import read_sbml_model
@@ -32,12 +33,15 @@ class TestSCScoreBigMFix(unittest.TestCase):
         self.community = CommunityModel([model1, model2])
 
     def test_sc_score_runs_without_error(self):
-        """Test that SC score completes without errors."""
+        """A score for every other member; members that grow alone (open medium) depend on nobody: 0"""
+        from test_g_com import open_medium_growth
+
         scores = sc_score(
             self.community, environment=None, min_growth=0.01, n_solutions=10, verbose=False, use_pool=True
         )
 
-        self.assertIsNotNone(scores, "SC score should not return None")
+        self.assertGreater(open_medium_growth(), 0.01)
+        self.assertEqual(dict(scores), {"ecoli1": {"ecoli2": 0.0}, "ecoli2": {"ecoli1": 0.0}})
 
     def test_sc_score_returns_valid_values(self):
         """Test that SC score returns values in valid range [0, 1]."""

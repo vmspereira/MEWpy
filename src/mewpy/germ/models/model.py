@@ -8,6 +8,35 @@ if TYPE_CHECKING:
     from mewpy.germ.models import MetabolicModel, RegulatoryModel
     from mewpy.germ.variables import Gene, Interaction, Metabolite, Reaction, Regulator, Target, Variable
 
+# Base order of multi-type models (dynamic classes), so methods and reprs do not depend on set iteration
+_TYPE_PRECEDENCE = ("metabolic", "regulatory")
+
+
+def _type_order(model_type: str):
+    if model_type in _TYPE_PRECEDENCE:
+        return _TYPE_PRECEDENCE.index(model_type), model_type
+    return len(_TYPE_PRECEDENCE), model_type
+
+
+# containers holding model variables (attribute names)
+_VARIABLE_CONTAINERS = ("_genes", "_metabolites", "_reactions", "_interactions", "_regulators", "_targets")
+
+
+def notify_observer(observer: Any):
+    """
+    It notifies an observer (e.g. an analysis method attached to a model) that the model has changed.
+    Observers implementing ``update()`` are updated; otherwise, they are marked as not synchronized,
+    so that they are rebuilt before the next optimization.
+
+    :param observer: the attached observer
+    :return:
+    """
+    update = getattr(observer, "update", None)
+    if callable(update):
+        update()
+    elif hasattr(observer, "_synchronized"):
+        observer._synchronized = False
+
 
 class MetaModel(type):
     """
@@ -279,7 +308,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
         containers = class_containers["model"].copy()
 
-        for model_type in self.types:
+        for model_type in sorted(self.types, key=_type_order):
 
             for name, (serialize_name, deserialize_name, pickle_name) in class_containers[model_type].items():
                 containers[name] = (serialize_name, deserialize_name, pickle_name)
@@ -306,7 +335,8 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
         registry = cls.get_registry()
 
-        types = tuple([registry[name] for name in args])
+        # a fixed base order: the same types always build the same class (MRO), whatever the set order
+        types = tuple([registry[name] for name in sorted(set(args), key=_type_order)])
 
         if len(types) == 1:
             return types[0]
@@ -670,7 +700,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         """
         return default
 
-    def add(self, *variables: "Variable", comprehensive: bool = True, history: bool = True):
+    def add(self, *variables: "Variable", comprehensive: bool = True, history: bool = True, _members_before=None):
         """
         It adds the given variables to the model.
         This method accepts a single variable or a list of variables to be added to specific containers in the model.
@@ -687,21 +717,25 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :param variables: the variables to be added to the model
         :param comprehensive: if True, the variables and their related variables will be added to the model too
         :param history: if True, the changes will be recorded in the history
+        :param _members_before: internal use only. Ids of the variables that were already in the model
         :return:
         """
         if history:
-            self.history.queue_command(
-                undo_func=self.remove,
-                undo_args=variables,
-                undo_kwargs={"remove_orphans": True, "history": False},
-                func=self.add,
-                args=variables,
-                kwargs={"comprehensive": comprehensive, "history": history},
-            )
+            # undoing must not remove variables that were already in the model before this call
+            added = variables if _members_before is None else [v for v in variables if id(v) not in _members_before]
+            if added:
+                self.history.queue_command(
+                    undo_func=self.remove,
+                    undo_args=tuple(added),
+                    undo_kwargs={"remove_orphans": True, "history": False},
+                    func=self.add,
+                    args=variables,
+                    kwargs={"comprehensive": comprehensive, "history": history},
+                )
 
         self.notify()
 
-    def remove(self, *variables: "Variable", remove_orphans: bool = False, history: bool = True):
+    def remove(self, *variables: "Variable", remove_orphans: bool = False, history: bool = True, _members_before=None):
         """
         It removes the given variables from the model.
         This method accepts a single variable or a list of variables to be removed from specific containers
@@ -719,19 +753,33 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :param variables: the variables to be removed from the model
         :param remove_orphans: if True, the variables and their related variables will be removed from the model too
         :param history: if True, the changes will be recorded in the history
+        :param _members_before: internal use only. Ids of the variables that were in the model before this call
         :return:
         """
         if history:
-            self.history.queue_command(
-                undo_func=self.add,
-                undo_args=variables,
-                undo_kwargs={"comprehensive": True, "history": False},
-                func=self.remove,
-                args=variables,
-                kwargs={"remove_orphans": remove_orphans, "history": history},
-            )
+            # undoing must not add variables that were not in the model before this call
+            removed = variables if _members_before is None else [v for v in variables if id(v) in _members_before]
+            if removed:
+                self.history.queue_command(
+                    undo_func=self.add,
+                    undo_args=tuple(removed),
+                    undo_kwargs={"comprehensive": True, "history": False},
+                    func=self.remove,
+                    args=variables,
+                    kwargs={"remove_orphans": remove_orphans, "history": history},
+                )
 
         self.notify()
+
+    def _members(self, variables) -> Set[int]:
+        """
+        It returns the python ids of the given variables that are currently in the model.
+
+        Internal use only.
+        :param variables: the variables to be checked
+        :return: a set with the python ids of the variables that belong to the model
+        """
+        return {id(variable) for variable in variables if self.get(variable.id) is variable}
 
     def update(self, name: str = None):
         """
@@ -783,6 +831,10 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
 
             del container[variable.id]
 
+            # a variable shared with another model (e.g. a shallow copy) keeps belonging to that model
+            if variable.model is not self:
+                return
+
             # noinspection PyProtectedMember
             if variable._model_ref < 2:
                 variable.model = None
@@ -825,7 +877,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :return:
         """
         for simulator in self.simulators:
-            simulator.update()
+            notify_observer(simulator)
 
     # -----------------------------------------------------------------------------
     # History manager command pattern
@@ -877,7 +929,7 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :param index: the index of the context to be cleaned
         :return:
         """
-        if not index:
+        if index is None:
             index = -1
 
         self.contexts[index] = HistoryManager()
@@ -895,6 +947,24 @@ class Model(Serializer, metaclass=MetaModel, factory=True):
         :return:
         """
         self.history.restore()
+
+    def __setstate__(self, state):
+        """
+        It restores the model from a pickle state and links all variables back to this model.
+        :param state: the pickle state
+        :return:
+        """
+        super().__setstate__(state)
+
+        references = {}
+        for container in _VARIABLE_CONTAINERS:
+            for variable in self.__dict__.get(container, {}).values():
+                variable, count = references.get(id(variable), (variable, 0))
+                references[id(variable)] = (variable, count + 1)
+
+        for variable, count in references.values():
+            variable._model = self
+            variable._model_ref = count
 
     def __enter__(self):
         """

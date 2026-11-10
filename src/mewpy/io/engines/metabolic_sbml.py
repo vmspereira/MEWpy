@@ -561,7 +561,8 @@ class MetabolicSBML(Engine):
 
                 rxn_metabolites[reactant_id] = reactant_record
                 rxn_reactants[reactant_id] = reactant_record
-                rxn_stoichiometry[reactant_id] = -reactant.getStoichiometry()
+                # a species may be referenced more than once (or on both sides): accumulate
+                rxn_stoichiometry[reactant_id] = rxn_stoichiometry.get(reactant_id, 0) - reactant.getStoichiometry()
 
             # products
             for product in reaction.getListOfProducts():
@@ -577,7 +578,14 @@ class MetabolicSBML(Engine):
 
                 rxn_metabolites[product_id] = product_record
                 rxn_products[product_id] = product_record
-                rxn_stoichiometry[product_id] = product.getStoichiometry()
+                rxn_stoichiometry[product_id] = rxn_stoichiometry.get(product_id, 0) + product.getStoichiometry()
+
+            # species whose references cancel out do not take part in the reaction
+            for met_id in [m_id for m_id, coef in rxn_stoichiometry.items() if coef == 0]:
+                del rxn_stoichiometry[met_id]
+                rxn_metabolites.pop(met_id, None)
+                rxn_reactants.pop(met_id, None)
+                rxn_products.pop(met_id, None)
 
             # ------------------------------------------------
             # Reaction Gene-Protein-Reaction rule
@@ -983,8 +991,10 @@ class MetabolicSBML(Engine):
             sbml_specie.setName(metabolite.name)
             sbml_specie.setCompartment(metabolite.compartment)
             specie_fbc = sbml_specie.getPlugin("fbc")
-            specie_fbc.setCharge(metabolite.charge)
-            specie_fbc.setChemicalFormula(metabolite.formula)
+            if metabolite.charge is not None:
+                specie_fbc.setCharge(int(metabolite.charge))
+            if metabolite.formula:
+                specie_fbc.setChemicalFormula(metabolite.formula)
 
         # -----------------------------------------------------------------------------
         # Genes
@@ -1007,7 +1017,7 @@ class MetabolicSBML(Engine):
         for reaction, coefficient in self.model.objective.items():
             flux_objective = objective.createFluxObjective()
             flux_objective.setReaction(f_id(reaction.id, F_REACTION_REV))
-            flux_objective.setCoefficient(coefficient)
+            flux_objective.setCoefficient(float(coefficient))
 
         # -----------------------------------------------------------------------------
         # Reactions
@@ -1065,7 +1075,7 @@ class MetabolicSBML(Engine):
             )
 
             if ub_parameter_id is None:
-                ub_parameter_id = f"{f_id(reaction.id, F_REACTION_REV)}_lb"
+                ub_parameter_id = f"{f_id(reaction.id, F_REACTION_REV)}_ub"
 
                 add_sbml_parameter(
                     sbml_model=self.dto.model,

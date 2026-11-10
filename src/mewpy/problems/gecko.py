@@ -23,7 +23,7 @@ Contributors: Sergio Salgado Briegas
 """
 import logging
 import warnings
-from copy import copy
+from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
 from mewpy.simulation import SStatus, get_simulator
@@ -85,7 +85,8 @@ class GeckoKOProblem(AbstractKOProblem):
         target = proteins - set(essential)
         if self.non_target:
             target = target - set(self.non_target)
-        self._trg_list = list(target)
+        # sorted: set order depends on the interpreter hash seed, which breaks seeded runs
+        self._trg_list = sorted(target)
 
     def decode(self, candidate):
         """
@@ -172,7 +173,7 @@ class GeckoOUProblem(AbstractOUProblem):
             target = target - set(self.non_target)
         if self._partial_solution:
             target = target - set(self._partial_solution.keys())
-        self._trg_list = list(target)
+        self._trg_list = sorted(target)
 
     def decode(self, candidate):
         """
@@ -337,7 +338,8 @@ class KcatOptProblem(AbstractOUProblem):
         :param solution: a solution, a dictionary of {(ProteinID,ReactionID): kcat value}
         :returns: A Simulator
         """
-        m = copy(self.model)
+        # a deep copy: a shallow copy shares the reactions, so set_Kcat would alter the user's model
+        m = self.model.copy() if hasattr(self.model, "copy") else deepcopy(self.model)
         sim = get_simulator(m, envcond=self.environmental_conditions, reset_solver=True)
         for k, v in solution.items():
             p = k[0]
