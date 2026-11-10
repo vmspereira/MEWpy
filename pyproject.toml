@@ -86,6 +86,8 @@ dev = [
 docs = [
     "sphinx",
     "sphinx-rtd-theme",
+    "recommonmark",
+    "nbsphinx",
 ]
 # Optional packages used by some examples (GECKO with geckopy, Escher maps in the community notebook, and the
 # Excel files of measured data that the case-study notebook reads)
@@ -97,11 +99,11 @@ examples = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/BioSystemsUM/mewpy/"
-Repository = "https://github.com/vmspereira/mewpy/"
+Homepage = "https://github.com/vmspereira/MEWpy"
+Repository = "https://github.com/vmspereira/MEWpy"
 Development = "https://github.com/vmspereira/MEWpy"
 Documentation = "https://mewpy.readthedocs.io"
-Issues = "https://github.com/vmspereira/mewpy/issues"
+Issues = "https://github.com/vmspereira/MEWpy/issues"
 
 [tool.setuptools]
 zip-safe = true
