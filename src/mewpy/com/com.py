@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2023 Centre of Biological Engineering,
+# Copyright (C) 2019-2026 Vitor Pereira and Centre of Biological Engineering,
 #     University of Minho, Portugal
 # Vitor Pereira 2019-
 

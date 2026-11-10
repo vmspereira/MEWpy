@@ -1,4 +1,4 @@
-# Copyright (C) 2019- Centre of Biological Engineering,
+# Copyright (C) 2019-2026 Vitor Pereira and Centre of Biological Engineering,
 #     University of Minho, Portugal
 
 # This program is free software: you can redistribute it and/or modify
