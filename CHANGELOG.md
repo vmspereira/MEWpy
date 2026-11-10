@@ -1,6 +1,20 @@
 # Changelog
 
-## 1.1.0 (unreleased)
+## Unreleased
+
+### Documentation
+
+- Read the Docs installs the package with the `docs` extra, so the API reference shows the classes and functions. The
+  `docs` extra lists every Sphinx extension that `docs/conf.py` loads, and replaces `docs/requirements.txt`.
+- The API reference covers every module, and the pages of removed modules (`mewpy.germ.lp`,
+  `mewpy.germ.solution.model_solution`) are gone.
+- The installation, introduction, simulation, optimization, evaluation, problems, options and GERM pages were checked
+  against the code, and their Python examples run.
+- New architecture figure, drawn by `docs/mewpy-arch.py`.
+- Copyright: Vitor Pereira and the Centre of Biological Engineering, University of Minho. The project URLs point to
+  github.com/vmspereira/MEWpy.
+
+## 1.1.0 (2026-11-10)
 
 ### Results that change: re-check work done with earlier versions
 
