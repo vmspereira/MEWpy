@@ -36,6 +36,7 @@ from tqdm import tqdm
 
 from mewpy.model.kinetic import ODEModel
 from mewpy.simulation import Simulator, get_simulator
+from mewpy.simulation.simulation import current_bounds
 from mewpy.simulation.kinetic import KineticSimulation
 from mewpy.solvers import KineticConfigurations, solver_instance
 from mewpy.solvers.solution import Status
@@ -291,18 +292,9 @@ class HybridSimulation:
 
         return True
 
-    def _current_bounds(self, r_id, constraints):
-        """A reaction's bounds now: the call's constraint, else the simulator's constraint or medium, else the model's"""
-        simulator_constraints = getattr(self.sim, "_constraints", None)
-        medium = getattr(self.sim, "environmental_conditions", None)
-        for source in (constraints, simulator_constraints, medium):
-            if source and r_id in source:
-                return source[r_id]
-        return self.sim.get_reaction_bounds(r_id)
-
     def _with_kinetic(self, constraints, kinetic):
         """The call's constraints plus kinetic bounds, intersected with each mapped reaction's current bounds"""
-        current = {r_id: self._current_bounds(r_id, constraints) for r_id in kinetic}
+        current = {r_id: current_bounds(self.sim, r_id, constraints) for r_id in kinetic}
         merged = dict(constraints or {})
         merged.update(merge_kinetic_constraints(current, kinetic))
         return merged

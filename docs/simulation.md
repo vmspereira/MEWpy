@@ -382,3 +382,45 @@ simul.essential_genes()
 ```
 
 
+
+## Dynamic FBA
+
+`DynamicFBA` simulates a batch culture with the static optimisation approach (Varma & Palsson 1994; Mahadevan et al. 2002). At each time step, uptake kinetics bound the exchange reactions of the tracked compounds, a pFBA gives the growth rate and the exchange fluxes, and biomass and concentrations are integrated over the step. Uptake never exceeds what is left in the medium. A tracked compound without kinetics, e.g. a product, keeps the uptake bound of the model. The simulator's medium and constraints apply at every step, here an oxygen uptake of at most 15 mmol/gDW/h. The same code runs on COBRApy, REFRAMED and GERM models, and reaction ids can be given with or without the SBML prefix.
+
+```python
+from cobra.io import read_sbml_model
+from mewpy.simulation import get_simulator, DynamicFBA, MichaelisMenten
+
+model = read_sbml_model('e_coli_core.xml')
+simul = get_simulator(model, envcond={'EX_o2_e': (-15, 1000)})
+
+dfba = DynamicFBA(simul,
+                  initial_biomass=0.01,                          # gDW/L
+                  initial_concentrations={'EX_glc__D_e': 10,     # mM
+                                          'EX_ac_e': 0},
+                  uptake={'EX_glc__D_e': MichaelisMenten(vmax=10, km=0.015),   # mmol/gDW/h, mM
+                          'EX_ac_e': MichaelisMenten(vmax=3, km=0.5)})
+result = dfba.simulate(t_end=12, dt=0.1)
+result
+```
+
+```
+DFBAResult(status='stopped at t = 9 h: INFEASIBLE', time 0-9 h, steps=90, biomass 0.01 -> 0.759329 gDW/L)
+```
+
+With oxygen limiting, the cells secrete acetate while glucose lasts. Glucose runs out between 6.0 and 6.1 h, and the cells then grow on the acetate. At 9 h the remaining acetate can no longer meet the maintenance demand (ATPM), the step has no feasible solution, and the simulation stops; `result.status` reports it.
+
+```python
+result.dataframe.iloc[[0, 30, 60, 75, 90]]
+```
+
+```
+    time   biomass  EX_glc__D_e   EX_ac_e
+0    0.0  0.010000    10.000000  0.000000
+30   3.0  0.085782     8.943846  0.720470
+60   6.0  0.730284     0.000434  6.679637
+75   7.5  0.748493     0.000000  3.648327
+90   9.0  0.759329     0.000000  0.910551
+```
+
+`result.plot()` draws biomass and concentrations over time. An uptake rate can be any callable that takes the compound's concentration (mM) and returns its maximal uptake rate (mmol/gDW/h), e.g. to add inhibition.
