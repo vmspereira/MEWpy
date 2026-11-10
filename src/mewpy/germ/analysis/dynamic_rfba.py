@@ -29,7 +29,6 @@ References:
     Nature 429:92-96. doi:10.1038/nature02456
 """
 
-import logging
 from typing import Callable, Dict, Mapping, Union
 
 from mewpy.germ.analysis.analysis_utils import regulator_exchanges
@@ -38,8 +37,6 @@ from mewpy.simulation import SimulationMethod
 from mewpy.simulation.dfba import DFBAResult, DynamicFBA, _bounds
 from mewpy.simulation.simulation import current_bounds
 from mewpy.util.constants import ModelConstants
-
-logger = logging.getLogger(__name__)
 
 
 class DynamicRFBAResult(DFBAResult):
@@ -109,11 +106,9 @@ class DynamicRFBA(DynamicFBA):
 
         sim = self.simulator
         regulators = [r_id for r_id, _ in self.rfba._get_regulators()]
-        targets = {interaction.target.id for interaction in self.rfba._get_interactions()}
         exchanges = regulator_exchanges(model)
         self._metabolite_regulators = {r: exchanges[r][0] for r in regulators if r in exchanges}
         self._reaction_regulators = [r for r in regulators if r in sim.reactions and r not in exchanges]
-        self._rule_regulators = [r for r in regulators if r in targets]
 
     def _regulation(self, states, inactive):
         """The step's regulatory knockouts, from the tracked concentrations and the previous step's fluxes"""
@@ -135,19 +130,8 @@ class DynamicRFBA(DynamicFBA):
                     if regulator not in fixed:
                         v = fluxes.get(regulator, 0.0)
                         state[regulator] = v if abs(v) > ModelConstants.TOLERANCE else 0.0
-            # the regulators that follow rules: evaluated (synchronously) until they no longer change
-            for _ in range(len(self._rule_regulators) + 1):
-                decoded = self.rfba.decode_regulatory_state(state)
-                changed = {
-                    r: decoded[r]
-                    for r in self._rule_regulators
-                    if r in decoded and r not in fixed and decoded[r] != state.get(r)
-                }
-                if not changed:
-                    break
-                state.update(changed)
-            else:
-                logger.debug("dynamic RFBA: the regulators did not settle in a step")
+            # the regulators that follow rules settle, as in RFBA
+            state.update(self.rfba.settle_regulatory_state(state, fixed=fixed))
             genes = {**self.rfba.decode_metabolic_state(state), **fixed}
             knockouts = self.rfba.decode_constraints(genes)
             states.append(dict(state))

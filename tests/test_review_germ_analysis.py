@@ -569,7 +569,7 @@ def test_attached_srfba_sees_regulator_knockout_regulatory_extension():
 # ----------------------------------------------------------------------------------------------------------------------
 EXAMPLES = Path(__file__).parent.parent.joinpath("examples", "models", "germ")
 # documented RFBA wild-type growth for e_coli_core + e_coli_core_trn (docs/germ.md)
-RFBA_DOCS_WT = 0.8513885233462081
+RFBA_DOCS_WT = 0.8739215069684303
 
 
 def test_rfba_wild_type_matches_documented_growth_legacy():

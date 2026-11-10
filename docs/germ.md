@@ -855,10 +855,10 @@ model.undo()
 print('RFBA WT growth rate:', rfba.optimize().objective_value)
 print('SRFBA WT growth rate:', srfba.optimize().objective_value)
 ```
-    RFBA KO growth rate: 0.8513885233462086
+    RFBA KO growth rate: 0.8739215069684303
     SRFBA KO growth rate: 0.21166294973531047
     
-    RFBA WT growth rate: 0.8513885233462086
+    RFBA WT growth rate: 0.8739215069684303
     SRFBA WT growth rate: 0.8739215066796725
 
 FBA and pFBA have no attachable analysis class; see the FBA and pFBA section below.
@@ -937,10 +937,12 @@ regulatory_truth_table(model)
 
 ## RFBA
 **`RFBA`** is a phenotype simulation method based on the integration of a GEM model with a TRN at the genome-scale. 
-**`RFBA`** performs first a synchronous evaluation of all regulatory interactions in the regulatory model. 
-This simulation is used to retrieve the regulatory state (regulators' coefficients). 
+**`RFBA`** first evaluates the regulatory interactions of the regulators that are also targets (e.g. Crp, whose rule depends on 
+the glucose signal) synchronously, until their states no longer change: a regulator at the end of a chain of regulators 
+gets the state that the chain implies. 
+This gives the regulatory state (regulators' coefficients). 
 Then, the regulatory state is translated into a metabolic state (metabolic genes' coefficients) 
-by performing a second synchronous evaluation of all regulatory interactions in the regulatory model. 
+by evaluating the regulatory interactions of the metabolic genes. 
 Finally, the resulting metabolic state is used to decode metabolic constraints upon evaluation of the reactions' GPRs 
 with the targets' state.
 
@@ -1037,7 +1039,7 @@ solution = rfba.optimize(initial_state=initial_state)
 solution
 ```
 <table>
-<tr><td>Method</td><td>RFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.8517832768455648</td></tr><tr><th>Status</th><td>optimal</td></tr>
+<tr><td>Method</td><td>RFBA</td></tr><tr><td>Model</td><td>Model iJR904 - Reed2003 - Genome-scale metabolic network of Escherichia coli (iJR904)</td></tr><tr><th>Objective</th><td>BiomassEcoli</td></tr><tr><th>Objective value</th><td>0.9205101727032998</td></tr><tr><th>Status</th><td>optimal</td></tr>
 </table>
 
 ### Dynamic RFBA in batch culture
@@ -1045,7 +1047,7 @@ solution
 **`DynamicRFBA`** simulates a batch culture over time (dynamic FBA, see the simulation docs), with the TRN switching reactions off at each time step ([Covert _et al_, 2001](https://doi.org/10.1006/jtbi.2001.2405)). At the start of each step:
 - a metabolite regulator whose exchange is tracked is present while its concentration exceeds `threshold` (1e-3 mM by default), and one whose exchange is not tracked is present when the medium allows its uptake;
 - a reaction regulator takes the flux of the previous step;
-- the other regulators follow their rules, evaluated until they no longer change, so they are consistent with the medium from the first step. **`RFBA.optimize()`** evaluates the rules once, from the regulators' initial state, so its solution can differ from the first step.
+- the other regulators follow their rules, evaluated until they no longer change, as in **`RFBA.optimize()`**.
 
 The target genes are then decoded, and the reactions whose GPR is false cannot carry flux in the step. `initial_state` fixes regulators for the whole simulation, and replaces the decoded state of the genes it names (e.g. a knockout).
 

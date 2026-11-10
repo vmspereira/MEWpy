@@ -44,7 +44,7 @@ LOOP = {"FRD7", "SUCDi"}
 FIXED_AEROBIC = ["EX_glc__D_e", "EX_o2_e", "EX_co2_e", "PGI", "CS", "ATPS4r", BIOMASS]
 FIXED_ANAEROBIC = ["EX_ac_e", "EX_etoh_e", "EX_for_e", BIOMASS]
 # docs/germ.md:861-862, e_coli_core with e_coli_core_trn.csv
-RFBA_DOCS_WT = 0.8513885233462086
+RFBA_DOCS_WT = 0.8739215069684303
 SRFBA_DOCS_WT = 0.8739215066796725
 
 

@@ -8,7 +8,7 @@ Tests verify that:
 4. Regulatory network properly constrains metabolic fluxes
 
 Oracles: COBRApy FBA on the same SBML file, with the reactions whose GPR (COBRApy) is false for the
-decoded gene state switched off; the documented RFBA growth on E. coli core (0.8514, CHANGELOG); and the
+decoded gene state switched off; the RFBA growth on E. coli core (0.8739, the FBA optimum); and the
 textbook anaerobic growth when ArcA or Fnr are forced active.
 """
 
@@ -25,8 +25,9 @@ MODEL_PATH = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_
 REG_PATH = Path(__file__).parent.parent / "examples" / "models" / "germ" / "e_coli_core_trn.csv"
 # e_coli_core_trn.csv: header row, columns bNum, Gene (alias), Rule
 TRN_CSV = dict(regulatory_format="csv", sep=",", id_col=0, rule_col=2, aliases_cols=[1], header=0)
-# RFBA growth on E. coli core with the default regulatory state (CHANGELOG, "as in the documentation")
-RFBA_GROWTH = 0.8514
+# RFBA growth on E. coli core with the default regulatory state: the FBA optimum, as the settled regulatory state of
+# aerobic growth on glucose closes no reaction that the optimum uses
+RFBA_GROWTH = 0.8739
 # Orth et al. (2010): anaerobic growth of e_coli_core on glucose
 ANAEROBIC_GROWTH = 0.2117
 
@@ -58,13 +59,17 @@ def _cobra_growth(genes_off=(), anaerobic=False):
 
 
 def _rfba_genes_off(rfba, model, initial_state=None):
-    """Metabolic genes off in RFBA: regulators that are targets follow their rules, then the targets are
-    decoded from that regulatory state; explicit states win"""
+    """Metabolic genes off in RFBA: regulators that are targets follow their rules until they no longer change,
+    then the targets are decoded from that regulatory state; explicit states win"""
     initial_state = initial_state or {}
     state = rfba.initial_state(initial_state)
-    regulators = set(model.regulators)
-    regulatory = {k: v for k, v in rfba.decode_regulatory_state(state).items() if k in regulators}
-    metabolic = {**rfba.decode_metabolic_state({**state, **regulatory, **initial_state}), **initial_state}
+    regulators = set(model.regulators) - set(initial_state)
+    for _ in range(len(regulators) + 1):
+        regulatory = {k: v for k, v in rfba.decode_regulatory_state(state).items() if k in regulators}
+        if all(state.get(k) == v for k, v in regulatory.items()):
+            break
+        state = {**state, **regulatory}
+    metabolic = {**rfba.decode_metabolic_state({**state, **initial_state}), **initial_state}
     return {g for g, v in metabolic.items() if g in model.genes and v == 0}
 
 
@@ -77,7 +82,7 @@ class TestRFBAValidation:
         return _integrated_model()
 
     def test_rfba_basic_functionality(self, integrated_model):
-        """RFBA with the default regulatory state: the documented 0.8514, FBA without the reactions it closes"""
+        """RFBA with the default regulatory state: 0.8739, FBA without the reactions it closes"""
         from mewpy.germ.analysis import RFBA
         from mewpy.solvers.solution import Status
 
@@ -109,6 +114,22 @@ class TestRFBAValidation:
 
         expected = _cobra_growth(_rfba_genes_off(rfba, integrated_model, initial_state))
         assert solution.objective_value == pytest.approx(expected, abs=1e-6)
+
+    def test_rfba_regulator_chains_settle(self, integrated_model):
+        """Nac (b1988) follows NRI_low, which follows GlnG (b3868 = NOT nh4_e > 0): with ammonium in the medium the
+        chain settles to Nac inactive, and glutamate dehydrogenase (GLUDy) stays open; without ammonium Nac is
+        active and GLUDy is closed. Crp (b3357 = CRPnoGLC) is inactive while glucose is present"""
+        from mewpy.germ.analysis import RFBA
+
+        rfba = RFBA(integrated_model).build()
+        settled = rfba.settle_regulatory_state(rfba.initial_state())
+        assert settled["b3868"] == settled["NRI_low"] == settled["b1988"] == settled["b3357"] == 0
+        assert "R_GLUDy" not in rfba.decode_constraints(rfba.decode_metabolic_state(settled))
+
+        no_ammonium = {"M_nh4_e": 0.0}
+        settled = rfba.settle_regulatory_state(rfba.initial_state(no_ammonium), fixed=no_ammonium)
+        assert settled["b3868"] == settled["NRI_low"] == settled["b1988"] == 1
+        assert "R_GLUDy" in rfba.decode_constraints(rfba.decode_metabolic_state(settled))
 
     def test_rfba_dynamic_mode(self, integrated_model):
         """Dynamic RFBA iterates until the regulatory state no longer changes: the last two steps agree and
@@ -286,7 +307,8 @@ class TestRFBAvsSRFBA:
         return _integrated_model()
 
     def test_compare_basic_results(self, integrated_model):
-        """SRFBA chooses the regulatory state, RFBA fixes it: RFBA (0.8514) <= SRFBA (FBA)"""
+        """SRFBA chooses the regulatory state, RFBA settles it from the medium: in aerobic growth on glucose neither
+        closes a reaction the optimum uses, so both reach FBA"""
         from mewpy.germ.analysis import RFBA, SRFBA
         from mewpy.solvers.solution import Status
 
@@ -302,7 +324,7 @@ class TestRFBAvsSRFBA:
         assert srfba_solution.status == Status.OPTIMAL
         assert rfba_solution.objective_value == pytest.approx(RFBA_GROWTH, abs=1e-4)
         assert srfba_solution.objective_value == pytest.approx(_cobra_growth(), abs=1e-6)
-        assert rfba_solution.objective_value < srfba_solution.objective_value - 1e-3
+        assert rfba_solution.objective_value == pytest.approx(srfba_solution.objective_value, abs=1e-6)
 
     def test_compare_with_metabolic_only(self, integrated_model):
         """Regulation only restricts: RFBA and SRFBA never exceed FBA"""

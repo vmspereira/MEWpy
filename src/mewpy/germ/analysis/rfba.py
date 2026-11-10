@@ -94,6 +94,34 @@ class RFBA(_RegulatoryAnalysisBase):
 
         return result
 
+    def settle_regulatory_state(self, state: Dict[str, float], fixed=()) -> Dict[str, float]:
+        """
+        Evaluate the regulators that follow rules (regulators that are also targets, e.g. Crp = CRPnoGLC) until
+        they no longer change.
+
+        Each pass evaluates all rules synchronously with the states of the previous pass, so a regulator downstream
+        of a chain of regulators gets the state that the chain implies. A network with a cycle that oscillates does
+        not settle: the state of the last pass is returned, with a warning.
+
+        :param state: the states of the regulators (and of any other symbol the rules use)
+        :param fixed: regulators that keep their state (e.g. given explicitly by the caller)
+        :return: a copy of the state with the rule regulators' settled states
+        """
+        state = dict(state)
+        if not self._has_regulatory_network():
+            return state
+        regulator_ids = {reg_id for reg_id, _ in self._get_regulators()}
+        targets = {interaction.target.id for interaction in self._get_interactions()}
+        rule_regulators = [r for r in regulator_ids & targets if r not in fixed]
+        for _ in range(len(rule_regulators) + 1):
+            decoded = self.decode_regulatory_state(state)
+            changed = {r: decoded[r] for r in rule_regulators if r in decoded and decoded[r] != state.get(r)}
+            if not changed:
+                return state
+            state.update(changed)
+        warn("The regulatory network did not settle: some regulators oscillate; using the last evaluation")
+        return state
+
     def decode_metabolic_state(self, state: Dict[str, float]) -> Dict[str, float]:
         """
         Decode metabolic state from regulatory state.
@@ -218,13 +246,10 @@ class RFBA(_RegulatoryAnalysisBase):
         """
         overrides = overrides or {}
 
-        # Synchronous update: regulators that are also targets (e.g. ArcA = NOT o2 > 0) first follow their own
-        # rules, then the metabolic targets are decoded from that regulatory state
-        regulator_ids = {reg_id for reg_id, _ in self._get_regulators()}
-        regulatory_state = {
-            key: value for key, value in self.decode_regulatory_state(state).items() if key in regulator_ids
-        }
-        metabolic_state = self.decode_metabolic_state({**state, **regulatory_state, **overrides})
+        # Regulators that are also targets (e.g. ArcA = NOT o2 > 0, Crp = CRPnoGLC) follow their rules until they
+        # settle, then the metabolic targets are decoded from that regulatory state
+        regulatory_state = self.settle_regulatory_state(state, fixed=overrides)
+        metabolic_state = self.decode_metabolic_state({**regulatory_state, **overrides})
 
         # States given explicitly by the caller (e.g. a gene knockout) win over the decoded target states
         metabolic_state = {**metabolic_state, **overrides}
