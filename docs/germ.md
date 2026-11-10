@@ -996,7 +996,10 @@ Even so, this initial state is likely to yield infeasible solutions.
 To mitigate conflicts between the regulatory and metabolic states, 
 one can use the **`mewpy.germ.analysis.find_conflicts()`** method. 
 This method can find regulatory states that lead to knockouts of essential genes and deletion of essential reactions.
-Note that, **`find_conflicts()`** results should be carefully analyzed, as this method does not detect indirect conflicts. 
+By default (`strategy='settle'`), it decodes the regulatory state as **`RFBA`** does: the regulators that follow rules settle from the initial state. 
+The `'one-step'` and `'two-step'` strategies evaluate the rules once or twice instead. 
+Note that, **`find_conflicts()`** results should be carefully analyzed, as this method does not detect indirect conflicts, 
+such as a conflict caused by a wrong initial state of an environmental stimulus or of a reaction regulator. 
 Please consult the method for more details and the example bellow.
 
 ```python
