@@ -8,8 +8,9 @@ are compared: objective values, FVA bounds, essential sets, knockout growth, and
 shows are fixed at the optimum.
 
 The helpers derive native and canonical ids themselves, not with Simulator.resolve, so the file
-also runs against versions without the id API. ROOM is not covered: after a PGI knockout on
-e_coli_core it took 17 s on REFRAMED/SCIP, and on COBRApy/GLPK it had not finished after 12 min.
+also runs against versions without the id API. ROOM is covered only with a partial reference (10
+reactions): with every reaction, after a PGI knockout on e_coli_core, it took 17 s on REFRAMED/SCIP,
+and on COBRApy/GLPK it had not finished after 12 min.
 """
 
 import csv
@@ -221,6 +222,56 @@ def test_lmoma_knockout_matches_cobra_moma(backend, form, knockout):
 def test_lmoma_default_reference_matches_cobra_moma(backend):
     result = load_sim(backend).simulate(method="lMOMA", constraints={native(backend, "PGI"): 0})
     assert result.objective_value == pytest.approx(oracle_lmoma("PGI"), abs=OBJ_TOL)
+
+
+# a partial reference, e.g. the fluxes a 13C study measures: MOMA, lMOMA and ROOM count its reactions only
+PARTIAL = ["PGI", "PFK", "G6PDH2r", "GND", "PDH", "CS", "ICDHyr", "AKGDH", "EX_ac_e", "PYK"]
+
+
+def partial_reference(form):
+    """10 of COBRApy's wild-type pFBA fluxes, keyed by ids in the given form"""
+    fluxes = oracle_pfba().fluxes
+    return {given(r_id, form): fluxes[r_id] for r_id in PARTIAL}
+
+
+def _partial(method, form):
+    return {
+        b: load_sim(b).simulate(method=method, constraints={given("PFK", form): 0}, reference=partial_reference(form))
+        for b in BACKENDS
+    }
+
+
+def test_lmoma_with_a_partial_reference_matches_across_backends(form):
+    """The objective is the distance to the reference over its reactions only, the same on both backends"""
+    results = _partial("lMOMA", form)
+    reference = partial_reference("unprefixed")
+    for b, result in results.items():
+        assert result.status == SStatus.OPTIMAL, b
+        distance = sum(abs(result.fluxes[native(b, r_id)] - value) for r_id, value in reference.items())
+        assert result.objective_value == pytest.approx(distance, abs=1e-6), b
+    assert results["cobra"].objective_value == pytest.approx(results["reframed"].objective_value, abs=OBJ_TOL)
+
+
+def test_room_with_a_partial_reference_matches_across_backends(form):
+    """The objective is the number of the reference's reactions whose flux leaves its band (delta 0.03, epsilon
+    0.001), the same on both backends"""
+    results = _partial("ROOM", form)
+    reference = partial_reference("unprefixed")
+    for b, result in results.items():
+        assert result.status == SStatus.OPTIMAL, b
+        changed = 0
+        for r_id, w in reference.items():
+            v = result.fluxes[native(b, r_id)]
+            changed += not (w - 0.03 * abs(w) - 0.001 - 1e-6 <= v <= w + 0.03 * abs(w) + 0.001 + 1e-6)
+        assert result.objective_value == pytest.approx(changed, abs=1e-6), b
+    assert results["cobra"].objective_value == pytest.approx(results["reframed"].objective_value, abs=1e-6)
+
+
+def test_a_reference_with_an_unknown_reaction_raises():
+    with pytest.raises(ValueError, match="not in the model"):
+        load_sim("cobra").simulate(
+            method="lMOMA", constraints={"PFK": 0}, reference={"PGI": 1.0, "NOT_A_REACTION": 1.0}
+        )
 
 
 def test_reaction_knockouts_match_cobra(backend, form):

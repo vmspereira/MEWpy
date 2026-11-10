@@ -21,6 +21,7 @@ to COBRApy.
 Author: Vítor Pereira
 ##############################################################################
 """
+
 import logging
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Union
@@ -38,6 +39,76 @@ from mewpy.util.utilities import AttrDict
 
 from . import SimulationMethod, SStatus, get_default_solver
 from .simulation import ModelContainer, SimulationResult, Simulator
+
+
+def _is_partial(model, reference):
+    """Whether a reference flux distribution leaves out some of the model's reactions"""
+    return any(rxn.id not in reference for rxn in model.reactions)
+
+
+def _add_partial_moma(model, reference, linear):
+    """COBRApy's add_moma over the reactions of a partial reference only: the distance to the reference is minimised
+    over those reactions, as REFRAMED's lMOMA does"""
+    import cobra.util.solver as sutil
+    from optlang.symbolics import Zero, add
+
+    if not linear and sutil.interface_to_str(model.problem) not in sutil.qp_solvers:
+        model.solver = sutil.choose_solver(model, qp=True)
+    prob = model.problem
+    v = prob.Variable("moma_old_objective")
+    c = prob.Constraint(model.solver.objective.expression - v, lb=0.0, ub=0.0, name="moma_old_objective_constraint")
+    to_add = [v, c]
+    model.objective = prob.Objective(Zero, direction="min", sloppy=True)
+    obj_vars = []
+    for r_id, flux in reference.items():
+        r = model.reactions.get_by_id(r_id)
+        if linear:
+            components = sutil.add_absolute_expression(
+                model, r.flux_expression, name="moma_dist_" + r.id, difference=flux, add=False
+            )
+            to_add.extend(components)
+            obj_vars.append(components.variable)
+        else:
+            dist = prob.Variable("moma_dist_" + r.id)
+            const = prob.Constraint(r.flux_expression - dist, lb=flux, ub=flux, name="moma_constraint_" + r.id)
+            to_add.extend([dist, const])
+            obj_vars.append(dist**2)
+    model.add_cons_vars(to_add)
+    if linear:
+        model.objective.set_linear_coefficients({v: 1.0 for v in obj_vars})
+    else:
+        model.objective = prob.Objective(add(obj_vars), direction="min", sloppy=True)
+
+
+def _add_partial_room(model, reference, delta=0.03, epsilon=1e-03):
+    """COBRApy's add_room over the reactions of a partial reference only: only those reactions count as changed or
+    not, as in REFRAMED's ROOM"""
+    from optlang.symbolics import Zero
+
+    prob = model.problem
+    variable = prob.Variable("room_old_objective")
+    constraint = prob.Constraint(
+        model.solver.objective.expression - variable, ub=0.0, lb=0.0, name="room_old_objective_constraint"
+    )
+    model.objective = prob.Objective(Zero, direction="min", sloppy=True)
+    vars_and_cons = [variable, constraint]
+    obj_vars = []
+    for r_id, flux in reference.items():
+        rxn = model.reactions.get_by_id(r_id)
+        y = prob.Variable("y_" + rxn.id, type="binary")
+        w_u = flux + (delta * abs(flux)) + epsilon
+        upper_const = prob.Constraint(
+            rxn.flux_expression - y * (rxn.upper_bound - w_u), ub=w_u, name="room_constraint_upper_" + rxn.id
+        )
+        w_l = flux - (delta * abs(flux)) - epsilon
+        lower_const = prob.Constraint(
+            rxn.flux_expression - y * (rxn.lower_bound - w_l), lb=w_l, name="room_constraint_lower_" + rxn.id
+        )
+        vars_and_cons.extend([y, upper_const, lower_const])
+        obj_vars.append(y)
+    model.add_cons_vars(vars_and_cons)
+    model.objective.set_linear_coefficients({v: 1.0 for v in obj_vars})
+
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -330,10 +401,8 @@ class Simulation(CobraModelContainer, Simulator):
             linear_coef = {self.model.reactions.get_by_id(r_id): v for r_id, v in objective.items()}
             set_objective(self.model, linear_coef)
         else:
-            raise ValueError(
-                "The objective must be a reaction identifier or a dictionary of \
-                reaction identifier with respective coeficients."
-            )
+            raise ValueError("The objective must be a reaction identifier or a dictionary of \
+                reaction identifier with respective coeficients.")
 
     def add_compartment(self, comp_id, name=None, external=False):
         """Adds a compartment
@@ -610,10 +679,16 @@ class Simulation(CobraModelContainer, Simulator):
 
         # MOMA, lMOMA and ROOM compare against the wild type, so the reference is computed
         # before the simulation constraints are applied (cobra would otherwise use the mutant's pFBA).
-        ref_solution = None
+        ref_solution, partial_reference = None, False
         if method in (SimulationMethod.lMOMA, SimulationMethod.MOMA, SimulationMethod.ROOM):
             if reference is None:
                 reference = self.reference
+            # reference ids may be given with or without the SBML prefix, as for constraints
+            reference = self._resolve_mapping(reference)
+            unknown = [r_id for r_id in reference if r_id not in self.model.reactions]
+            if unknown:
+                raise ValueError(f"Reference reactions not in the model: {unknown[:10]}")
+            partial_reference = _is_partial(self.model, reference)
             ref_solution = Solution(None, "optimal", fluxes=pd.Series(reference, dtype=float))
 
         simul_constraints = {}
@@ -660,14 +735,22 @@ class Simulation(CobraModelContainer, Simulator):
                     # the fraction of the optimum kept is shared by every backend
                     solution = pfba(model, fraction_of_optimum=ModelConstants.PFBA_OBJ_FRAC)
 
-                # MOMA/lMOMA
+                # MOMA/lMOMA; a reference that leaves out reactions counts only the reactions it has (as REFRAMED)
                 elif method == SimulationMethod.lMOMA or method == SimulationMethod.MOMA:
                     linear = True if method == SimulationMethod.lMOMA else False
-                    solution = moma(model, solution=ref_solution, linear=linear)
+                    if partial_reference:
+                        _add_partial_moma(model, reference, linear)
+                        solution = model.optimize()
+                    else:
+                        solution = moma(model, solution=ref_solution, linear=linear)
 
                 # ROOM
                 elif method == SimulationMethod.ROOM:
-                    solution = room(model, solution=ref_solution)
+                    if partial_reference:
+                        _add_partial_room(model, reference)
+                        solution = model.optimize()
+                    else:
+                        solution = room(model, solution=ref_solution)
 
                 # Special case in which only the simulation context is required without any simulation result
                 elif method == SimulationMethod.NONE:

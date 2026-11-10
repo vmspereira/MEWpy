@@ -63,7 +63,7 @@ the 0.1.36 and 1.0.0 release dates. "Not checked" means the earlier behaviour wa
 
 - **Installation:** `mewpy.model`, `mewpy.io.sbml`, `mewpy.problems` and kinetic simulation failed to import on fresh installs, because the undeclared `six` package is no longer installed transitively.
 - **jMetal:** the default jMetal engine failed with jmetalpy ≥ 1.10 (`create_solution(rng)`), and multi-objective runs with `algorithm="GA"`/`"SA"` crashed.
-- **COBRApy simulator:** it failed whenever MEWpy's default solver was SCIP, and errors while creating a simulator were reported as "no defined simulator".
+- **COBRApy simulator:** it failed whenever MEWpy's default solver was SCIP, and errors while creating a simulator were reported as "no defined simulator". MOMA, lMOMA and ROOM with a reference that leaves out reactions (e.g. measured fluxes) raised `KeyError`; they now count the reference's reactions only, as on REFRAMED, and reference ids may have the SBML prefix.
 - **SCIP:** changes after a solve raised, re-solving then segfaulted, empty constraints failed, and solution pools were ignored.
 - **Other solvers:** optlang/GLPK aborted on infinite bounds; optlang ignored a 0 bound and the time limit; CPLEX MIP gap parameters were swapped (untested: CPLEX not available).
 - **Kinetic models:** scientific notation and unary minus in rate laws; function definitions keyed by id with argument substitution; assignment rules; `initialAmount`; reactions without a kinetic law; `deriv(t, y)` ignoring `y`.

@@ -150,6 +150,8 @@ Flux Balance Analysis (FBA) can be run without identifying any method, or  by pa
 - Linear MOMA: `method = 'lMOMA'`
 - Regulatory on/off minimization of metabolic flux: `method = 'ROOM'`
 
+MOMA, lMOMA and ROOM compare a mutant's fluxes with a reference, by default the simulator's pFBA fluxes; `simulate(..., reference=fluxes)` sets another one. A reference may hold only some reactions, e.g. the fluxes a ¹³C study measured: then only those reactions count, on COBRApy and on REFRAMED. GERM models do not support these methods.
+
 ```python
 # pFBA
 result = simul.simulate(method = 'pFBA')
