@@ -84,6 +84,7 @@ the 0.1.36 and 1.0.0 release dates. "Not checked" means the earlier behaviour wa
 - Dynamic RFBA: `mewpy.germ.analysis.DynamicRFBA` simulates a batch culture of a `RegulatoryExtension` by dynamic FBA, with the regulatory network switching reactions off at each step (metabolite regulators from the medium concentrations, reaction regulators from the previous step's fluxes). `RFBA.settle_regulatory_state()` gives the settled regulatory state.
 - The example notebooks `GERM_Models.ipynb` and `GERM_Models_analysis.ipynb` are now `12-GERM_Models.ipynb` and `13-GERM_Models_analysis.ipynb`.
 - An optional dependency group `mewpy[examples]` (geckopy, escher), and the notebook `examples/11-omics.ipynb` (eFlux, GIMME and iMAT on yeast transcriptomics; context-specific models; COBRApy and REFRAMED).
+- The notebook `examples/14-case-study.ipynb`: a succinate-producing *E. coli*, checked against measured data (Gerosa 2015 fluxes and transcripts, Keio essentiality, Long 2019 knockout fluxes, downloaded at run time), designed with a gene knockout EA, and tested in batch culture, with regulation (iJR904 + iMC1010) and with enzyme constraints (eciML1515). `mewpy[examples]` adds openpyxl and xlrd for its Excel files.
 
 ### Packaging
 

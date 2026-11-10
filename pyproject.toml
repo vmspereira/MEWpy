@@ -87,10 +87,13 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
 ]
-# Optional packages used by some examples (GECKO with geckopy, Escher maps in the community notebook)
+# Optional packages used by some examples (GECKO with geckopy, Escher maps in the community notebook, and the
+# Excel files of measured data that the case-study notebook reads)
 examples = [
     "geckopy",
     "escher",
+    "openpyxl",
+    "xlrd",
 ]
 
 [project.urls]

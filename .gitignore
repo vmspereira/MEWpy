@@ -190,3 +190,6 @@ examples/scripts/target-prot-single-pool.txt
 PKG-INFO
 examples/scripts/QualityIndicatorSummary.csv
 examples/scripts/*.pf
+
+# measured data that the case-study notebook downloads
+examples/data/
